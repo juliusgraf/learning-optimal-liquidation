@@ -1336,11 +1336,6 @@ def evaluate_policy(env, clob_net, auct_net, eval_seeds, clob_actions, auct_acti
         'mean_clob_reward': np.mean(clob_rewards),
         'mean_auction_reward': np.mean(auction_rewards)
     }
-    
-def soft_update(local_model, target_model, tau=0.01):
-
-    for target_param, local_param in zip(target_model.parameters(), local_model.parameters()):
-        target_param.data.copy_(tau*local_param.data + (1.0-tau)*target_param.data)
 
 def train_and_evaluate_one_asset(
     symbol: str,
@@ -1515,7 +1510,6 @@ def train_and_evaluate_one_asset(
             s = s2
 
         dqn_returns.append(float(cum_r))
-
         
         if len(clob_buffer) >= min_buffer:
             
@@ -1549,9 +1543,6 @@ def train_and_evaluate_one_asset(
             print(f"Episode {ep+1}/{episodes} | Eval Return: {eval_r:.2f} | Epsilon: {eps:.3f}")
         else:
             eval_returns.append(eval_returns[-1] if len(eval_returns) else np.nan)
-            
-        soft_update(clob_net, clob_target, tau=0.01)
-        soft_update(auct_net, auct_target, tau=0.01)
 
     p = np.asarray(env.mid_price_path, dtype=float)
     r = np.diff(np.log(p))
