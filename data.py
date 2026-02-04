@@ -1336,6 +1336,11 @@ def evaluate_policy(env, clob_net, auct_net, eval_seeds, clob_actions, auct_acti
         'mean_clob_reward': np.mean(clob_rewards),
         'mean_auction_reward': np.mean(auction_rewards)
     }
+    
+def soft_update(local_model, target_model, tau=0.01):
+
+    for target_param, local_param in zip(target_model.parameters(), local_model.parameters()):
+        target_param.data.copy_(tau*local_param.data + (1.0-tau)*target_param.data)
 
 def train_and_evaluate_one_asset(
     symbol: str,
@@ -1543,6 +1548,11 @@ def train_and_evaluate_one_asset(
             print(f"Episode {ep+1}/{episodes} | Eval Return: {eval_r:.2f} | Epsilon: {eps:.3f}")
         else:
             eval_returns.append(eval_returns[-1] if len(eval_returns) else np.nan)
+        
+        # No-op soft update (because of hard update just before and no_grad in run_eval_episode)
+        # but seems to stabilize training so we kept it
+        soft_update(clob_target, clob_net, tau=0.01)
+        soft_update(auct_target, auct_net, tau=0.01)
 
     p = np.asarray(env.mid_price_path, dtype=float)
     r = np.diff(np.log(p))
