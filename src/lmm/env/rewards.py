@@ -59,8 +59,8 @@ def auction_reward(
 
     ``one_sided=True`` (benchmark hockey-stick, ruling D16): the supplied
     volume is K^a (p - S^a)_+, so the gap enters through its positive part —
-    u = K^a H^cl (H^cl - S^a)_+ >= 0 and the f_a penalty never binds
-    (recorded under "Questions for the author" in audit/AUDIT.md)."""
+    u = K^a H^cl (H^cl - S^a)_+ >= 0 and the f_a penalty never binds (the
+    benchmark is always selling; author-confirmed, ruling D18)."""
     gap = h_cl - S_a
     if one_sided:
         gap = max(gap, 0.0)

@@ -471,10 +471,11 @@ disabled the penalties).
 
 ---
 
-## D. Questions for the author
+## D. Questions for the author — ALL ANSWERED
 
-Q1–Q3 (Phase 1) are ALL ANSWERED (rulings D15–D17, 2026-06-11) and binding for
-Phases 2–6. Q4–Q5 (Phase 4, sub-questions of D16) are awaiting confirmation.
+Q1–Q3 (Phase 1) are answered by rulings D15–D17 (2026-06-11); Q4–Q5 (Phase 4,
+sub-questions of D16) are answered by rulings D18–D19 (2026-06-12). All are
+binding for Phases 2–6.
 
 **Q1 — Algorithm-1 smoothing constant. ANSWERED (ruling D15).** Context: the
 instantiation sites pass `gamma=0.95` (synthetic, `main.py:1419`) and `gamma=0.99`
@@ -506,30 +507,32 @@ the estimate (`main.py:657-658`) but the *previous H_cl* at the terminal
 cases** (estimate and terminal alike; S^mid is frozen at τ_op during the auction).
 Log when the fallback binds.
 
-### Phase-4 items, awaiting confirmation
+### Phase-4 items — ANSWERED (rulings D18–D19, 2026-06-12)
 
 New ambiguities that arose while implementing ruling D16 (benchmarks' one-sided
-auction order); the most paper-faithful reading was implemented per CLAUDE.md.
+auction order); the most paper-faithful reading was implemented per CLAUDE.md and
+the author has confirmed both.
 
-**Q4 — Reward treatment of the one-sided benchmark order (open).** The paper's
-three-regime reward is written for linear curves K^a(p − S^a). For the benchmark's
-hockey-stick z·q_{τop}(p − S̃)₊ (D16) we implemented the reading in which the
-SUPPLIED VOLUME replaces the linear leg everywhere it appears: per-step reward
+**Q4 — Reward treatment of the one-sided benchmark order. ANSWERED (ruling D18).**
+The paper's three-regime reward is written for linear curves K^a(p − S^a). For the
+benchmark's hockey-stick z·q_{τop}(p − S̃)₊ (D16) the implemented reading replaces
+the linear leg by the SUPPLIED VOLUME everywhere it appears: per-step reward
 u = K^a·H_cl·(H_cl − S̃)₊, terminal contribution K^a·S_cl·(S_cl − S̃)₊, and
 Z_{τcl} contribution K^a·(S_cl − S̃)₊. Consequently u ≥ 0 always, so the wrong-side
-penalty f_a never binds for the one-sided order (a one-sided order cannot be filled
-on the wrong side, which is the economic point of D16). Implemented in
-`src/lmm/env/rewards.py` (`one_sided` arguments) and `src/lmm/env/mdp.py::_terminal`;
-hand-checked in `tests/test_rewards.py` and `tests/test_agent_env_contract.py`.
-Please confirm.
+penalty f_a never binds for the one-sided order. **Ruling: confirmed — no
+wrong-side penalty for the benchmark, because the benchmark is always selling.**
+Implemented in `src/lmm/env/rewards.py` (`one_sided` arguments) and
+`src/lmm/env/mdp.py::_terminal`; hand-checked in `tests/test_rewards.py` and
+`tests/test_agent_env_contract.py`.
 
-**Q5 — Tick-snapping of S̃ for the benchmark auction order (open).** S̃ (mean of the
-mean and max executed CLOB prices) is generally off-grid, while the paper requires
-S^a ∈ αN. The env quotes auction orders as α·(⌊S^mid_{τop}/α⌋ + offset) (AUDIT N4),
-so the benchmarks submit offset = round(S̃/α) − ⌊S^mid_{τop}/α⌋, i.e. the executed
-quote is α·round(S̃/α) — nearest-tick rounding of S̃. (Legacy passed the raw float
-S̃, off-grid.) Implemented in
-`src/lmm/agents/benchmarks.py::_LiquidationBenchmark._auction_action`. Please confirm.
+**Q5 — Tick-snapping of S̃ for the benchmark auction order. ANSWERED (ruling D19).**
+S̃ (mean of the mean and max executed CLOB prices) is generally off-grid, while the
+paper requires S^a ∈ αN. The env quotes auction orders as
+α·(⌊S^mid_{τop}/α⌋ + offset) (AUDIT N4), so the benchmarks submit
+offset = round(S̃/α) − ⌊S^mid_{τop}/α⌋, i.e. the executed quote is α·round(S̃/α) —
+nearest-tick rounding of S̃. (Legacy passed the raw float S̃, off-grid.)
+**Ruling: confirmed — the executed quote is the nearest-tick rounding of S̃.**
+Implemented in `src/lmm/agents/benchmarks.py::_LiquidationBenchmark._auction_action`.
 
 ---
 

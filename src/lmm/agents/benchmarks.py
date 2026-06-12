@@ -11,9 +11,12 @@ q < dust_threshold => no order. One reward definition for all policies
 Conventions (Phase 4 resolutions, recorded in audit/AUDIT.md):
 - "executed CLOB price" = the agent's submitted price S^bullet_t on steps
   with E_t > 0 (legacy main.py:547-551), tracked via Transition.info;
-- S_tilde is snapped to the tick grid through the auction offset:
+- S_tilde is snapped to the tick grid through the auction offset
+  (author-confirmed, ruling D19):
   offset = round(S_tilde/alpha) - floor(S_mid_frozen/alpha), so the env's
   quote alpha*(floor(S_mid/alpha) + offset) equals alpha*round(S_tilde/alpha);
+- the one-sided order's reward uses the positive-part gap with no wrong-side
+  penalty (author-confirmed, ruling D18; see env/rewards.py);
 - benchmarks submit RAW ClobAction/AuctionAction values (off-grid allowed by
   the env); admissibility (v <= inventory, K >= 0) holds by construction.
 

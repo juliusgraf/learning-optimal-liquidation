@@ -209,8 +209,8 @@ def test_numerical_guard_never_binds_on_standard_runs():
 
 
 # ---------------------------------------------------------------------------
-# One-sided benchmark order variants (ruling D16; Phase 4 resolution recorded
-# in audit/AUDIT.md "Questions for the author")
+# One-sided benchmark order variants (ruling D16; reward treatment author-
+# confirmed as ruling D18 — see audit/AUDIT.md)
 # ---------------------------------------------------------------------------
 
 
