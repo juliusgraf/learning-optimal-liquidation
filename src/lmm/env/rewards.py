@@ -46,6 +46,7 @@ def auction_reward(
     q: float,
     d_t: float,
     cancel: int,
+    one_sided: bool = False,
 ) -> float:
     """Auction regime (ruling D4, paper):
 
@@ -54,8 +55,16 @@ def auction_reward(
 
     with d_t = (t - n - 1) d computed by the caller and c_t the SCALAR
     cancel-all (cost d_t * c_t — NOT d times the number of orders cancelled;
-    legacy was wrong). H^cl_t is the end-of-(t-1) Eq. (2) cache (ruling D1)."""
-    u = K_a * h_cl * (h_cl - S_a)
+    legacy was wrong). H^cl_t is the end-of-(t-1) Eq. (2) cache (ruling D1).
+
+    ``one_sided=True`` (benchmark hockey-stick, ruling D16): the supplied
+    volume is K^a (p - S^a)_+, so the gap enters through its positive part —
+    u = K^a H^cl (H^cl - S^a)_+ >= 0 and the f_a penalty never binds
+    (recorded under "Questions for the author" in audit/AUDIT.md)."""
+    gap = h_cl - S_a
+    if one_sided:
+        gap = max(gap, 0.0)
+    u = K_a * h_cl * gap
     return u + f_a(u, q) - d_t * float(cancel)
 
 
@@ -66,6 +75,7 @@ def terminal_reward(
     inventory_final: float,
     lambda_inv: float,
     q: float,
+    one_sided: np.ndarray | None = None,
 ) -> float:
     """Terminal regime at t = tau_cl (rulings D3, D8):
 
@@ -75,7 +85,15 @@ def terminal_reward(
 
     where ``K_live``/``S_live`` enumerate the live orders only (the
     (1 - theta) factors realized by the ledger) and ``inventory_final`` =
-    I_{tau_op} - Z_{tau_cl} with NO clipping (ruling D8)."""
-    u = np.asarray(K_live) * s_cl * (s_cl - np.asarray(S_live))
+    I_{tau_op} - Z_{tau_cl} with NO clipping (ruling D8).
+
+    ``one_sided`` (optional bool mask over the live orders, ruling D16):
+    where True the order is the benchmark hockey-stick K^a (p - S^a)_+, so
+    its gap enters through the positive part — the contribution is
+    K^a S_cl (S_cl - S^a)_+ >= 0 and f_a never binds for it."""
+    gap = s_cl - np.asarray(S_live, dtype=float)
+    if one_sided is not None:
+        gap = np.where(np.asarray(one_sided, dtype=bool), np.maximum(gap, 0.0), gap)
+    u = np.asarray(K_live) * s_cl * gap
     wrong_side = float(sum(f_a(float(ui), q) for ui in u))
     return float(np.sum(u)) - lambda_inv * abs(inventory_final) ** 2 + wrong_side

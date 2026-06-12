@@ -50,11 +50,17 @@ class ClobAction:
 @dataclass(frozen=True)
 class AuctionAction:
     """Auction action (A^3, A^4, A^5): slope K^a, quote tick offset, scalar
-    cancel-all c_t in {0, 1} (ruling D4)."""
+    cancel-all c_t in {0, 1} (ruling D4).
+
+    ``one_sided=True`` marks the BENCHMARK hockey-stick supply
+    K^a (p - S^a)_+ (ruling D16; benchmarks only liquidate). It is never on
+    the discrete grid — only raw actions submitted by the benchmark agents
+    carry it."""
 
     K_a: float
     offset: int
     cancel: int
+    one_sided: bool = False
 
 
 class ClobActionGrid:

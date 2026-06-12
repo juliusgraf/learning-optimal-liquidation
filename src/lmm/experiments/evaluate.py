@@ -1,20 +1,82 @@
 """Frozen-policy evaluation with common random numbers (Phase 4).
 
-Evaluates a checkpointed policy and the benchmarks on the SAME seed set
-(CRN: identical env seed for learned policy and benchmark within an episode;
-fixes AUDIT N10), under ONE reward definition for all policies (AUDIT C.4).
-Reported returns are UNDISCOUNTED episode sums (stated in metadata).
-Per-episode records are written to eval/ for regret.py and make_*.py.
+Evaluates the checkpointed DQN, the untrained "initial" DQN, and the AS/TWAP
+benchmarks on the SAME seed set (CRN: identical env seed for every policy
+within an episode; fixes AUDIT N10), under ONE reward definition for all
+policies (AUDIT C.4: the shared RewardParams from the run's resolved config;
+any reward override applies to ALL policies identically). Reported returns
+are UNDISCOUNTED episode sums (stated in metadata); the chi-discounted V_0
+estimate is recorded alongside for regret.py.
+
+The eval seed stream is the dedicated ``env_final_eval`` component of the
+run's seed bundle — disjoint from the training and periodic-eval streams by
+construction (ruling D10). Writes eval/records.csv (one row per (policy,
+episode)) and eval/metadata.yaml.
 """
 
 from __future__ import annotations
 
 import argparse
+import csv
+from pathlib import Path
 from typing import Optional, Sequence
 
-from lmm.config import add_config_cli
+import numpy as np
+import yaml
 
-__all__ = ["build_parser", "main"]
+from lmm.agents.benchmarks import ASBenchmarkAgent, TWAPBenchmarkAgent
+from lmm.config import load_config, to_dict
+from lmm.env.mdp import make_env
+from lmm.experiments.train import draw_seed, make_agent
+from lmm.rl.loops import SEED_COMPONENTS, EpisodeResult, run_episode
+from lmm.utils.seeding import seed_everything
+
+__all__ = ["build_parser", "main", "RECORD_COLUMNS", "POLICIES"]
+
+POLICIES = ("dqn", "initial", "as", "twap")
+
+RECORD_COLUMNS = [
+    "policy",
+    "episode",
+    "env_seed",
+    "return_undisc",
+    "return_disc",
+    "clob_reward_sum",
+    "auction_step_reward_sum",
+    "terminal_reward",
+    "S_cl",
+    "Z_tau_cl",
+    "I_final",
+    "H_at_tau_op",
+    "cancel_count",
+    "n_steps",
+    "n_clob_steps",
+    "n_degenerate_fallbacks",
+]
+
+
+def _record_row(policy: str, episode: int, res: EpisodeResult) -> list[str]:
+    def fmt(v):
+        return format(v, ".17g") if isinstance(v, float) else str(v)
+
+    return [
+        policy,
+        str(episode),
+        str(res.env_seed),
+        fmt(res.return_undisc),
+        fmt(res.return_disc),
+        fmt(res.clob_reward_sum),
+        fmt(res.auction_step_reward_sum),
+        fmt(res.terminal_reward),
+        fmt(res.s_cl),
+        fmt(res.z_tau_cl),
+        fmt(res.i_final),
+        fmt(res.h_at_tau_op),
+        str(res.cancel_count),
+        str(res.n_steps),
+        str(res.n_clob_steps),
+        str(res.n_degenerate_fallbacks),
+    ]
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -22,13 +84,75 @@ def build_parser() -> argparse.ArgumentParser:
         prog="lmm-evaluate",
         description="Evaluate a frozen policy vs benchmarks with CRN.",
     )
-    add_config_cli(parser)
     parser.add_argument("--run-dir", required=True, help="training run directory")
-    parser.add_argument("--checkpoint", default="final", help="checkpoint name")
-    parser.add_argument("--n-episodes", type=int, default=100, help="evaluation episodes")
+    parser.add_argument("--checkpoint", default="final", help="checkpoint name (without .pt)")
+    parser.add_argument("--n-episodes", type=int, default=None,
+                        help="evaluation episodes (default: algo.hyperparams.final_eval_n_seeds)")
+    parser.add_argument("--symbol", default=None, help="historical setting: symbol to replay")
     return parser
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
     args = build_parser().parse_args(argv)
-    raise NotImplementedError(f"Phase 4 (parsed: run_dir={args.run_dir})")
+    run_dir = Path(args.run_dir)
+    cfg = load_config(run_dir / "config_resolved.yaml")
+    master_seed = int((run_dir / "seed.txt").read_text().strip())
+    seeds = seed_everything(master_seed, SEED_COMPONENTS, seed_torch=True)
+    n_episodes = (
+        args.n_episodes
+        if args.n_episodes is not None
+        else int(cfg.algo.hyperparams["final_eval_n_seeds"])
+    )
+
+    # Disjoint final-eval seed stream (D10); the SAME list for every policy
+    # is the CRN coupling (the env's exogenous draws are policy-independent).
+    eval_rng = seeds.generators["env_final_eval"]
+    eval_seeds = [draw_seed(eval_rng) for _ in range(n_episodes)]
+
+    # One env per policy, all from the SAME resolved config => identical
+    # RewardParams for all policies (AUDIT C.4; asserted in tests).
+    envs = {p: make_env(cfg, symbol=args.symbol) for p in POLICIES}
+
+    dqn = make_agent(cfg, seeds)
+    dqn.load(run_dir / "checkpoints" / f"{args.checkpoint}.pt")
+    initial = make_agent(cfg, seeds)
+    initial.load(run_dir / "checkpoints" / "initial.pt")
+    as_agent = ASBenchmarkAgent(cfg)
+    calibration = as_agent.calibrate(
+        envs["as"],
+        rng_k=seeds.generators["as_calibration"],
+        rng_sigma=seeds.generators["as_sigma_paths"],
+    )
+    twap = TWAPBenchmarkAgent(cfg)
+    agents = {"dqn": dqn, "initial": initial, "as": as_agent, "twap": twap}
+    for name, agent in agents.items():
+        agent.bind(envs[name])
+
+    records_path = run_dir / "eval" / "records.csv"
+    with records_path.open("w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(RECORD_COLUMNS)
+        for episode, env_seed in enumerate(eval_seeds):
+            for name, agent in agents.items():
+                agent.start_episode(episode)
+                res = run_episode(envs[name], agent, env_seed, chi=cfg.rl.chi, train=False)
+                writer.writerow(_record_row(name, episode, res))
+
+    metadata = {
+        "master_seed": master_seed,
+        "checkpoint": str(run_dir / "checkpoints" / f"{args.checkpoint}.pt"),
+        "n_episodes": n_episodes,
+        "policies": list(POLICIES),
+        "crn": "identical env seed per episode across all policies (env_final_eval stream)",
+        "return_convention": "return_undisc = undiscounted episode sum (reported); "
+        "return_disc = sum chi^t r_t with t the decision time, terminal at chi^tau_cl",
+        "reward_params_shared_by_all_policies": to_dict(cfg.reward),  # AUDIT C.4
+        "as_calibration": {k: float(v) for k, v in calibration.items()},
+    }
+    (run_dir / "eval" / "metadata.yaml").write_text(yaml.safe_dump(metadata, sort_keys=False))
+    print(f"wrote {records_path} ({n_episodes} episodes x {len(POLICIES)} policies)")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

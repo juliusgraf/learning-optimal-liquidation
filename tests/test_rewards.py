@@ -206,3 +206,36 @@ def test_numerical_guard_never_binds_on_standard_runs():
     r_off, i_off = run(cfg_off)
     r_on, i_on = run(cfg_on)
     assert r_on == r_off and i_on == i_off
+
+
+# ---------------------------------------------------------------------------
+# One-sided benchmark order variants (ruling D16; Phase 4 resolution recorded
+# in audit/AUDIT.md "Questions for the author")
+# ---------------------------------------------------------------------------
+
+
+def test_auction_reward_one_sided_positive_gap_matches_linear():
+    # H > S^a: the hockey stick coincides with the linear curve above the kink
+    linear = auction_reward(2.0, 100.0, 101.0, Q, 0.0, 0)
+    one_sided = auction_reward(2.0, 100.0, 101.0, Q, 0.0, 0, one_sided=True)
+    assert one_sided == pytest.approx(linear)
+    assert one_sided == pytest.approx(2.0 * 101.0 * 1.0)  # u >= 0: f_a inactive
+
+
+def test_auction_reward_one_sided_negative_gap_is_zero():
+    # H < S^a: supply (H - S^a)_+ = 0 -> u = 0 and NO wrong-side penalty,
+    # while the linear order would be penalized
+    assert auction_reward(2.0, 102.0, 101.0, Q, 0.0, 0, one_sided=True) == 0.0
+    assert auction_reward(2.0, 102.0, 101.0, Q, 0.0, 0) < 0.0
+
+
+def test_terminal_reward_one_sided_mask():
+    K = np.array([1.0, 3.0])
+    S = np.array([99.0, 101.0])
+    s_cl = 100.0
+    # order 1 (one-sided) is below its kink: contributes nothing, no penalty
+    r = terminal_reward(K, S, s_cl, 0.0, 0.0, Q, one_sided=np.array([False, True]))
+    assert r == pytest.approx(1.0 * s_cl * 1.0)
+    # linear treatment of order 1 would add u = 3*100*(-1) and f_a(u) = -Q*300
+    r_linear = terminal_reward(K, S, s_cl, 0.0, 0.0, Q)
+    assert r_linear == pytest.approx(100.0 - 300.0 - Q * 300.0)

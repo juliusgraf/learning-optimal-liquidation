@@ -47,6 +47,9 @@ class AgentOrderLedger:
         self.S = np.zeros(self.n_slots)
         self.submitted = np.zeros(self.n_slots, dtype=bool)
         self.live = np.zeros(self.n_slots, dtype=bool)
+        # Ruling D16: one-sided hockey-stick orders K (p - S)_+ (benchmarks
+        # only liquidate); at most ONE may be live at any time.
+        self.one_sided = np.zeros(self.n_slots, dtype=bool)
 
     def _slot(self, t: int) -> int:
         i = int(t) - self.grid.tau_op
@@ -60,18 +63,27 @@ class AgentOrderLedger:
         self.S[:] = 0.0
         self.submitted[:] = False
         self.live[:] = False
+        self.one_sided[:] = False
 
-    def submit(self, t: int, K_a: float, S_a: float) -> None:
-        """Record the order decided at auction time t (no-op if K_a == 0)."""
+    def submit(self, t: int, K_a: float, S_a: float, one_sided: bool = False) -> None:
+        """Record the order decided at auction time t (no-op if K_a == 0).
+
+        ``one_sided=True`` records the benchmark hockey-stick K^a (p - S^a)_+
+        (ruling D16); the clearing solver handles exactly one such order, so
+        a second live one-sided order raises.
+        """
         if K_a < 0.0:
             raise ValueError(f"K^a must be >= 0, got {K_a}")
         if K_a == 0.0:
             return  # abstain convention
+        if one_sided and bool(np.any(self.live & self.one_sided)):
+            raise ValueError("at most one live one-sided order is supported (ruling D16)")
         i = self._slot(t)
         self.K[i] = float(K_a)
         self.S[i] = float(S_a)
         self.submitted[i] = True
         self.live[i] = True
+        self.one_sided[i] = one_sided
 
     def apply_cancel_all(self, t: int) -> None:
         """Apply c_t = 1: deactivate all orders submitted at times < t.
@@ -98,6 +110,20 @@ class AgentOrderLedger:
     def live_orders(self) -> tuple[np.ndarray, np.ndarray]:
         """(K^a, S^a) arrays over currently live orders (for clearing solves)."""
         return self.K[self.live].copy(), self.S[self.live].copy()
+
+    def live_orders_split(
+        self,
+    ) -> tuple[np.ndarray, np.ndarray, tuple[float, float] | None]:
+        """(K_linear, S_linear, hockey) over live orders: the linear orders
+        plus the single live one-sided order as ``(K, S)`` (None if absent;
+        ruling D16). Input to ``solve_clearing``."""
+        lin = self.live & ~self.one_sided
+        hs = self.live & self.one_sided
+        hockey: tuple[float, float] | None = None
+        if np.any(hs):
+            i = int(np.flatnonzero(hs)[0])
+            hockey = (float(self.K[i]), float(self.S[i]))
+        return self.K[lin].copy(), self.S[lin].copy(), hockey
 
     def history_at(self, t: float) -> tuple[np.ndarray, np.ndarray]:
         """(X^16, X^17) = (S^a(t), K^a(t)): zero-padded vectors in R^{m-n}

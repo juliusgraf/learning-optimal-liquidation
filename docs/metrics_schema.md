@@ -1,0 +1,85 @@
+# Output schemas (Phase 4)
+
+Every run writes `results/<experiment_name>/<run_name>/` (CLAUDE.md
+engineering conventions). All floats are written with `%.17g` (repr-exact),
+so byte-identical files certify bit-identical runs (ruling D10). Missing
+values (e.g. losses before `min_buffer` is reached, `eval_return_mean` off
+the eval cadence, NaN placeholders) are empty cells.
+
+## Discounted-return convention
+
+`return_disc` = Σ_steps χ^{t} · r_t + χ^{τ_cl} · r_terminal, where t is the
+DECISION TIME on the paper grid (CLOB decision times are real-valued and
+their count varies per episode; auction times are the integers τ_op..m) and
+the terminal reward — although folded into the final transition for the
+Bellman recursion (see `docs/rl_design.md` §5) — is re-discounted at
+χ^{τ_cl} in the reported value. `return_undisc` is the plain episode sum and
+is the headline evaluation number (CLAUDE.md).
+
+## metrics.csv (train.py; one row per training episode)
+
+| column | meaning |
+|---|---|
+| episode | 0-based training episode index |
+| env_seed | the episode's env seed (drawn from the `env_train` stream) |
+| epsilon | exploration rate used this episode |
+| return_undisc | undiscounted episode return (training policy) |
+| return_disc | discounted return per the convention above |
+| clob_reward_sum | Σ of CLOB-phase step rewards |
+| auction_step_reward_sum | Σ of auction step rewards EXCLUDING the terminal part |
+| terminal_reward | r_{τ_cl} (clearing + inventory penalty + wrong-side terms) |
+| S_cl | terminal clearing price (corrected Eq. (1)) |
+| Z_tau_cl | terminal auction execution Z_{τ_cl} |
+| I_final | I_{τ_cl} = I_{τ_op} − Z_{τ_cl} (no clipping, D8) |
+| H_at_tau_op | the H_cl cache at the first auction decision (Algorithm 1's last CLOB output) |
+| cancel_count | number of auction steps with c_t = 1 |
+| n_steps | decisions taken (CLOB steps + 30 auction steps) |
+| n_clob_steps | CLOB decisions (varies; Assumption assump:presence grid) |
+| n_degenerate_fallbacks | D17 fallbacks in the episode's Eq. (2)/(1) solves |
+| loss_{clob,auction} | mean minibatch loss over the episode's gradient steps |
+| grad_norm_{clob,auction} | mean pre-clip global gradient norm |
+| td_abs_mean_{clob,auction} | mean over updates of mean abs TD error |
+| td_abs_max_{clob,auction} | max over updates of max abs TD error |
+| n_grad_steps_{clob,auction} | gradient steps taken this episode |
+| buffer_{clob,auction} | replay sizes at episode end |
+| eval_return_mean | mean undiscounted greedy return on the fixed `env_eval` seed list (eval episodes only) |
+| wall_clock_s | episode wall time — LAST column, EXCLUDED from determinism comparisons |
+
+## eval/records.csv (evaluate.py; one row per (policy, episode))
+
+Columns: `policy` (dqn | initial | as | twap), `episode`, `env_seed` (shared
+across policies within an episode — CRN), then the return decomposition
+exactly as in metrics.csv: `return_undisc`, `return_disc`, `clob_reward_sum`,
+`auction_step_reward_sum`, `terminal_reward`, `S_cl`, `Z_tau_cl`, `I_final`,
+`H_at_tau_op`, `cancel_count`, `n_steps`, `n_clob_steps`,
+`n_degenerate_fallbacks`.
+
+## eval/metadata.yaml
+
+`master_seed`, `checkpoint`, `n_episodes`, `policies`, the CRN statement,
+the return-convention statement, `reward_params_shared_by_all_policies`
+(the single RewardParams applied to every policy — AUDIT C.4) and
+`as_calibration` (A, k, sigma).
+
+## eval/regret_<benchmark>.csv (regret.py)
+
+Columns: `episode`, `env_seed`, `v_benchmark`, `v_policy`, `regret`,
+`cum_regret`; the final `cum_regret` is PRegret(T) with T = (m+2)E printed to
+stdout. `--returns discounted` (default; the paper's V_0) selects
+`return_disc`, `--returns undiscounted` selects `return_undisc`.
+
+## checkpoints/ (train.py)
+
+- `initial.pt` — untrained networks, saved before training (the
+  "initial-DQN" baseline).
+- `best.pt` — best periodic-eval mean return so far.
+- `final.pt` — end of training.
+- `ckpt_ep{N}.pt` + `ckpt_ep{N}_trainstate.pt` — resumable pair: the agent
+  checkpoint includes replay contents and RNG states; the sidecar holds the
+  training loop's episode counter, best-eval value and the `env_train`
+  seed-stream state. `lmm-train --resume <ckpt_ep{N}.pt>` restores both.
+
+Agent checkpoints contain: hyperparams, episode/env-step counters, both
+Q-networks and both targets, both optimizers, the exploration generator
+state, the torch global RNG state, and (resumable pairs only) the full
+replay buffers including their sampling-generator states.

@@ -459,12 +459,22 @@ nonetheless a footgun (calling the manager bare silently zeroes the penalties).
 Resolution: delete the override entirely; the new evaluation harness uses one reward
 definition for every policy, asserted in tests.
 
+**Phase-4 closing note (implemented).** No per-policy reward machinery exists in the
+new code: every policy (DQN, initial-DQN, AS, TWAP) is evaluated on envs built from
+the SAME resolved config, so the single shared `RewardParams` applies identically to
+all; any `reward.*` override therefore changes all policies at once (this realizes
+the "explicit evaluation config flag" — default: no exemptions). The shared values
+are recorded in `eval/metadata.yaml` and asserted equal to the resolved config by
+`tests/test_agent_env_contract.py::test_end_to_end_pipeline_and_bit_identical_determinism`.
+This is consistent with the published legacy runs (which, per the table above, never
+disabled the penalties).
+
 ---
 
-## D. Questions for the author — ALL ANSWERED (rulings D15–D17, 2026-06-11)
+## D. Questions for the author
 
-Only items not covered by D1–D14 / the corrected equations arose; the author has
-ruled on all three. These rulings are binding for Phases 2–6.
+Q1–Q3 (Phase 1) are ALL ANSWERED (rulings D15–D17, 2026-06-11) and binding for
+Phases 2–6. Q4–Q5 (Phase 4, sub-questions of D16) are awaiting confirmation.
 
 **Q1 — Algorithm-1 smoothing constant. ANSWERED (ruling D15).** Context: the
 instantiation sites pass `gamma=0.95` (synthetic, `main.py:1419`) and `gamma=0.99`
@@ -495,6 +505,31 @@ the estimate (`main.py:657-658`) but the *previous H_cl* at the terminal
 (`main.py:685-686`). **Ruling: use H_cl = S^mid as the fallback in ALL degenerate
 cases** (estimate and terminal alike; S^mid is frozen at τ_op during the auction).
 Log when the fallback binds.
+
+### Phase-4 items, awaiting confirmation
+
+New ambiguities that arose while implementing ruling D16 (benchmarks' one-sided
+auction order); the most paper-faithful reading was implemented per CLAUDE.md.
+
+**Q4 — Reward treatment of the one-sided benchmark order (open).** The paper's
+three-regime reward is written for linear curves K^a(p − S^a). For the benchmark's
+hockey-stick z·q_{τop}(p − S̃)₊ (D16) we implemented the reading in which the
+SUPPLIED VOLUME replaces the linear leg everywhere it appears: per-step reward
+u = K^a·H_cl·(H_cl − S̃)₊, terminal contribution K^a·S_cl·(S_cl − S̃)₊, and
+Z_{τcl} contribution K^a·(S_cl − S̃)₊. Consequently u ≥ 0 always, so the wrong-side
+penalty f_a never binds for the one-sided order (a one-sided order cannot be filled
+on the wrong side, which is the economic point of D16). Implemented in
+`src/lmm/env/rewards.py` (`one_sided` arguments) and `src/lmm/env/mdp.py::_terminal`;
+hand-checked in `tests/test_rewards.py` and `tests/test_agent_env_contract.py`.
+Please confirm.
+
+**Q5 — Tick-snapping of S̃ for the benchmark auction order (open).** S̃ (mean of the
+mean and max executed CLOB prices) is generally off-grid, while the paper requires
+S^a ∈ αN. The env quotes auction orders as α·(⌊S^mid_{τop}/α⌋ + offset) (AUDIT N4),
+so the benchmarks submit offset = round(S̃/α) − ⌊S^mid_{τop}/α⌋, i.e. the executed
+quote is α·round(S̃/α) — nearest-tick rounding of S̃. (Legacy passed the raw float
+S̃, off-grid.) Implemented in
+`src/lmm/agents/benchmarks.py::_LiquidationBenchmark._auction_action`. Please confirm.
 
 ---
 

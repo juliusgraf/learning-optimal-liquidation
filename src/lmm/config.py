@@ -41,6 +41,7 @@ __all__ = [
     "AlgoConfig",
     "ExperimentConfig",
     "load_config",
+    "build_hyperparams",
     "to_dict",
     "save_resolved",
     "add_config_cli",
@@ -219,6 +220,7 @@ class BenchmarkParams:
     as_n_samples: int  # K-hat regression samples; main.py:1935 => 10000
     as_gamma: float  # AS risk aversion gamma; => 0.0
     as_sigma_rule: str  # "pooled_paths" (synthetic) | "single_path" (historical)
+    as_sigma_n_paths: int  # simulated mid paths pooled for sigma (Phase 4)
     twap_delta_mode: str  # "min" => delta = min of the grid = 1
 
 
@@ -378,6 +380,17 @@ def load_config(
     for spec in overrides:
         _apply_override(merged, spec)
     return _build_dataclass(ExperimentConfig, merged)
+
+
+def build_hyperparams(dc_type: type, mapping: dict[str, Any]) -> Any:
+    """Build an algorithm hyperparameter dataclass from ``algo.hyperparams``
+    with the same strict unknown-key check and scalar coercion as the YAML
+    tree (so a typo in configs/algo/*.yaml fails loudly, not silently)."""
+    if not isinstance(mapping, dict):
+        raise ConfigError(
+            f"algo.hyperparams: expected mapping, got {type(mapping).__name__}"
+        )
+    return _build_dataclass(dc_type, mapping, f"algo.hyperparams ({dc_type.__name__})")
 
 
 def to_dict(cfg: Any) -> dict[str, Any]:

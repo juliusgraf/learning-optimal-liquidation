@@ -36,6 +36,7 @@ __all__ = [
     "Algo1Estimator",
     "ClearingInputs",
     "Eq2Cache",
+    "solve_clearing",
     "solve_linear_clearing",
     "solve_clearing_with_hockey_stick",
     "solve_monotone_clearing",
@@ -146,7 +147,9 @@ class ClearingInputs:
 
     ``K_agent``/``S_agent`` contain only the LIVE agent orders — the
     (1 - theta^{(s-n)}) factors are realized by the ledger's live mask
-    before these arrays are built.
+    before these arrays are built. ``hockey`` is the single live one-sided
+    benchmark order (K, S) contributing K (p - S)_+ (ruling D16; None for
+    the RL agent, whose orders are all linear).
     """
 
     K_exo: np.ndarray  # exogenous MM slopes K^i
@@ -155,6 +158,16 @@ class ClearingInputs:
     S_agent: np.ndarray  # corresponding agent quotes
     net_market_volume: float  # sum nu^{+,i} - sum nu^{-,i} (buys positive)
     fallback_mid: float  # H_cl = S^mid fallback when slope is zero (D17)
+    hockey: tuple[float, float] | None = None  # live one-sided (K, S) (D16)
+
+
+def solve_clearing(inputs: ClearingInputs) -> tuple[float, bool]:
+    """Dispatch on ``inputs.hockey``: the pure linear closed form, or the
+    two-case solve with the single one-sided benchmark order (ruling D16)."""
+    if inputs.hockey is None:
+        return solve_linear_clearing(inputs)
+    z_slope, s_tilde = inputs.hockey
+    return solve_clearing_with_hockey_stick(inputs, z_slope, s_tilde)
 
 
 def solve_linear_clearing(inputs: ClearingInputs) -> tuple[float, bool]:
@@ -203,7 +216,7 @@ class Eq2Cache:
 
     def recompute(self, inputs: ClearingInputs) -> float:
         """End-of-step t-1: solve corrected Eq. (2); cache and return the root."""
-        root, degenerate = solve_linear_clearing(inputs)
+        root, degenerate = solve_clearing(inputs)
         if degenerate:
             self.n_degenerate_fallbacks += 1
             logger.warning(

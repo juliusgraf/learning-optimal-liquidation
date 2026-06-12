@@ -103,4 +103,5 @@ benchmark:
   as_n_samples: 10000      # K-hat regression samples; main.py:1935 (paper says 5000)
   as_gamma: 0.0            # AS risk aversion gamma -> 0; main.py:1940
   as_sigma_rule: ""        # "pooled_paths" | "single_path"; set by the setting overlay
+  as_sigma_n_paths: 100    # simulated mid paths pooled for sigma (pooled_paths rule)
   twap_delta_mode: min     # TWAP quotes at delta = min of the grid = 1

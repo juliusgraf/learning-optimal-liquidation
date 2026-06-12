@@ -199,3 +199,22 @@ def test_eq2_cache_counts_and_logs_fallback(synthetic_cfg, caplog):
     assert cache.read() == FALLBACK
     assert cache.n_degenerate_fallbacks == 1
     assert any("D17" in rec.getMessage() for rec in caplog.records)
+
+
+# ---------------------------------------------------------------------------
+# solve_clearing dispatcher (Phase 4: D16 wiring through ClearingInputs.hockey)
+# ---------------------------------------------------------------------------
+
+
+def test_solve_clearing_dispatches_on_hockey_field():
+    from dataclasses import replace
+
+    from lmm.market.clearing import solve_clearing
+
+    rng = np.random.default_rng(42)
+    for _ in range(50):
+        inputs = random_inputs(rng)
+        assert solve_clearing(inputs) == solve_linear_clearing(inputs)
+        z, s = float(rng.uniform(0.5, 20.0)), float(rng.uniform(95.0, 105.0))
+        with_hockey = replace(inputs, hockey=(z, s))
+        assert solve_clearing(with_hockey) == solve_clearing_with_hockey_stick(inputs, z, s)

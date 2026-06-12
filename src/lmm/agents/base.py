@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Union
+from typing import Any, Union
 
 import numpy as np
 
@@ -16,7 +16,7 @@ Action = Union[int, np.ndarray]  # discrete index (DQN) or continuous vector
 
 @dataclass(frozen=True)
 class Transition:
-    """One environment transition as stored in replay.
+    """One environment transition as seen by ``Agent.observe``.
 
     ``next_phase`` marks the cross-phase junction (CLAUDE.md, D9): a CLOB
     transition whose next state is in the auction bootstraps from the AUCTION
@@ -25,6 +25,13 @@ class Transition:
 
     ``action`` is the EXECUTED action (admissibility is enforced by masking
     at selection, never by post-hoc projection — fixes AUDIT N12).
+
+    ``next_mask`` is Adm(x') over the NEXT phase's action grid (None iff
+    ``done``): the Bellman masked max needs it at update time because the
+    auction cancel-admissibility C(x') is not recoverable from the pruned
+    feature vector. ``info`` carries per-step env diagnostics (E_t, S_bullet,
+    ...) for non-learning consumers (benchmark execution-price tracking); it
+    is NEVER stored in replay.
     """
 
     obs: np.ndarray
@@ -34,18 +41,22 @@ class Transition:
     done: bool
     phase: str  # "clob" | "auction"
     next_phase: str  # phase of next_obs ("auction" for the junction)
+    next_mask: np.ndarray | None = None  # Adm(x') on the next grid; None iff done
+    info: dict[str, Any] | None = field(default=None, compare=False)
 
 
 class Agent(ABC):
-    """Minimal agent interface: act / observe / update / save / load."""
+    """Minimal agent interface: act / observe / update / save / load,
+    plus no-op lifecycle hooks (bind / start_episode / set_train)."""
 
     @abstractmethod
-    def act(self, obs: np.ndarray, *, eval_mode: bool = False) -> Action:
-        """Select an action for ``obs``.
+    def act(self, obs: np.ndarray, mask: np.ndarray, phase: str, *, eval_mode: bool = False) -> Action:
+        """Select an action for ``obs`` in the given phase.
 
+        ``mask`` is the env's admissibility mask Adm(x) over the phase grid.
         ``eval_mode=True`` disables exploration (epsilon = 0 / no noise).
         Implementations must restrict BOTH the greedy argmax and any random
-        draw to the admissible set Adm(x) via the env's action mask.
+        draw to the admissible set (masking, never projection — AUDIT N12).
         """
 
     @abstractmethod
@@ -64,3 +75,15 @@ class Agent(ABC):
     @abstractmethod
     def load(self, path: str | Path) -> None:
         """Restore a checkpoint written by :meth:`save`."""
+
+    # -- lifecycle hooks (no-op by default) -----------------------------------
+
+    def bind(self, env) -> None:
+        """Give the agent a handle on its env (EVALUATION-time state access
+        for the benchmarks: inventory, t, phase). RL agents ignore it."""
+
+    def start_episode(self, episode: int) -> None:
+        """Called before each episode (epsilon schedule, per-episode state)."""
+
+    def set_train(self, training: bool) -> None:
+        """Toggle train/eval mode (network .train()/.eval(), exploration)."""

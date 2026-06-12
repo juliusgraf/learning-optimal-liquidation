@@ -276,10 +276,12 @@ class MarketMakingEnv(gymnasium.Env):
         # Reward FIRST, from the end-of-(t-1) cache (D1): nothing sampled or
         # decided at t may enter it.
         h_used = self._h_cache
-        reward = auction_reward(a.K_a, s_a, h_used, self.cfg.reward.q, d_t, a.cancel)
+        reward = auction_reward(
+            a.K_a, s_a, h_used, self.cfg.reward.q, d_t, a.cancel, one_sided=a.one_sided
+        )
 
         events = self.generator.step_auction(self.np_random)
-        self._ledger.submit(t, a.K_a, s_a)
+        self._ledger.submit(t, a.K_a, s_a, one_sided=a.one_sided)
         if a.cancel == 1:
             self._ledger.apply_cancel_all(t)  # theta_{t+1}: kills orders < t
 
@@ -315,8 +317,18 @@ class MarketMakingEnv(gymnasium.Env):
         Eq. (2) recompute; rulings D3, D8, D17)."""
         r = self.cfg.reward
         s_cl = self._h_cache
-        K_live, S_live = self._ledger.live_orders()
-        z = float(np.sum(K_live * (s_cl - S_live)))
+        K_live, S_live, hockey = self._ledger.live_orders_split()
+        one_sided: np.ndarray | None = None
+        if hockey is not None:
+            # Ruling D16: the benchmark's one-sided order clears (S_cl - S~)_+.
+            K_live = np.append(K_live, hockey[0])
+            S_live = np.append(S_live, hockey[1])
+            one_sided = np.zeros(len(K_live), dtype=bool)
+            one_sided[-1] = True
+        gap = s_cl - S_live
+        if one_sided is not None:
+            gap = np.where(one_sided, np.maximum(gap, 0.0), gap)
+        z = float(np.sum(K_live * gap))
         i_final = self._I_tau_op - z
 
         if r.numerical_guard and abs(i_final) > r.numerical_guard_bound:
@@ -328,7 +340,9 @@ class MarketMakingEnv(gymnasium.Env):
             )
             i_final = float(np.clip(i_final, -r.numerical_guard_bound, r.numerical_guard_bound))
 
-        r_term = terminal_reward(K_live, S_live, s_cl, i_final, r.lambda_inv, r.q)
+        r_term = terminal_reward(
+            K_live, S_live, s_cl, i_final, r.lambda_inv, r.q, one_sided=one_sided
+        )
         self._S_cl = s_cl
         self._Z = z
         self._inventory = i_final
@@ -367,7 +381,7 @@ class MarketMakingEnv(gymnasium.Env):
     def _clearing_inputs(self) -> ClearingInputs:
         flow = self.generator.auction_flow
         K_exo, S_exo = flow.supply_curves()
-        K_agent, S_agent = self._ledger.live_orders()
+        K_agent, S_agent, hockey = self._ledger.live_orders_split()
         return ClearingInputs(
             K_exo=K_exo,
             S_exo=S_exo,
@@ -375,6 +389,7 @@ class MarketMakingEnv(gymnasium.Env):
             S_agent=S_agent,
             net_market_volume=flow.net_market_volume(),
             fallback_mid=self._frozen_mid,  # D17: S^mid (frozen at tau_op)
+            hockey=hockey,  # D16: live one-sided benchmark order, if any
         )
 
     def _k_mid(self) -> int:

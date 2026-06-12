@@ -26,7 +26,7 @@ class DDPGAgent(Agent):
         self.cfg = cfg
         self.seeds = seeds
 
-    def act(self, obs: np.ndarray, *, eval_mode: bool = False) -> np.ndarray:
+    def act(self, obs: np.ndarray, mask: np.ndarray, phase: str, *, eval_mode: bool = False) -> np.ndarray:
         raise NotImplementedError("Phase 5")
 
     def observe(self, transition: Transition) -> None:

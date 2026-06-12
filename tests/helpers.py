@@ -33,6 +33,16 @@ def load_synthetic_cfg(*overrides: str):
     )
 
 
+def load_dqn_cfg(*overrides: str):
+    """Synthetic config + the DQN algo overlay (Phase 4 agent tests)."""
+    return load_config(
+        CONFIGS / "base.yaml",
+        CONFIGS / "synthetic_rough_heston.yaml",
+        CONFIGS / "algo" / "dqn.yaml",
+        overrides=list(overrides),
+    )
+
+
 def load_historical_cfg(*overrides: str):
     return load_config(
         CONFIGS / "base.yaml",

@@ -16,7 +16,12 @@ algo:
     hidden_layers: [16, 16]     # per phase network (recorded in rl_design.md)
     target_update_interval: 1000  # hard update every C env steps (Mnih-style)
     target_soft_tau: null       # optional Polyak; null = hard updates
-    updates_per_env_step: 1     # per-environment-step minibatch updates
+    updates_per_env_step: 1     # gradient steps per eligible update
+    update_every: 1             # update every N env steps
+    reward_scale: 1.0           # reward scaling INSIDE replay only
+    activation: relu            # mlp activation (relu | tanh | elu)
+    device: cpu                 # torch device
+    checkpoint_interval_episodes: 100  # periodic resumable checkpoints
     epsilon_start: 1.0          # legacy schedule shape, main.py:1597-1602
     epsilon_end: 0.01
     epsilon_decay_episodes: 300.0
