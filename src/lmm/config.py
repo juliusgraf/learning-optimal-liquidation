@@ -156,6 +156,7 @@ class Algo1Params:
 
     tau: float  # smoothing tau; ruling D15 => 0.95 in BOTH settings
     H0_from_mid: bool  # H_0 = initial mid (= 100); main.py:264
+    H0: Optional[float] = None  # explicit H_0; required iff H0_from_mid is false
 
 
 @dataclass(frozen=True)
@@ -167,6 +168,10 @@ class RewardParams:
     q: float  # wrong-side penalty q in f_a; => 1.0
     d: float  # cancellation cost unit d (cost d_t*c_t, D4); => 0.1
     numerical_guard: bool  # D8: optional far-out float guard, default OFF
+    # |I_tau_cl| threshold when the guard is on — far outside the economic
+    # range (|I| <= I0 + auction exposure ~ O(10^3)); binding is logged
+    # loudly and asserted never to happen on seeded standard runs (D8).
+    numerical_guard_bound: float = 1e9
 
 
 @dataclass(frozen=True)

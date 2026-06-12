@@ -69,6 +69,9 @@ reward:
   d: 0.1             # cancellation cost unit d (cost d_t*c_t, d_t = (t-n-1)d, D4);
                      # main.py:1418
   numerical_guard: false  # D8: optional far-out float guard, default OFF
+  # numerical_guard_bound: 1.0e9  # |I_tau_cl| threshold when the guard is on
+  #                               # (dataclass default; far outside the
+  #                               # economic range, loud log if it binds)
 
 rl:
   chi: 0.99          # discount chi; GAMMA, main.py:1440 / data.py:1355 (D6, D15)

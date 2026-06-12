@@ -7,15 +7,25 @@ Implements:
   for the benchmarks' one-sided hockey-stick order (ruling D16) and a
   bracketed root-finder for general monotone curves (Theorem `th:clearing`).
 
+Sign convention (D3, corrected equations): the excess-supply function is
+
+    Phi(p) = sum_i g_i(p) + sum_s (1 - theta^{(s-n)}) K^a_s (p - S^a_s)
+             - (sum_i nu^{+,i} - sum_i nu^{-,i}),
+
+so ``net_market_volume`` (buys positive) enters the linear numerator with a
+PLUS sign: buy market volume weakly raises p*, sell volume weakly lowers it
+(invariants asserted in tests/test_sign_conventions.py).
+
 Degenerate fallback (ruling D17): H_cl = S^mid in ALL zero-slope cases,
 estimate and terminal alike; logged when it binds.
-
-Phase 3 fills in the bodies.
 """
 
 from __future__ import annotations
 
+import logging
+from collections import defaultdict
 from dataclasses import dataclass
+from typing import Callable
 
 import numpy as np
 
@@ -31,6 +41,10 @@ __all__ = [
     "solve_monotone_clearing",
 ]
 
+logger = logging.getLogger(__name__)
+
+_EPS = 1e-12  # legacy eps (main.py:379)
+
 
 class Algo1Estimator:
     """Algorithm 1: hypothetical clearing price during the CLOB phase.
@@ -43,9 +57,15 @@ class Algo1Estimator:
     S_tilde = sum_k K_hat alpha k / sum_k K_hat;
     H_{t+1} = H_t + tau (S_tilde - H_t), smoothing SKIPPED when
     sum_k K_hat = 0 (counted in ``n_zero_slope_skips``).
-    H_0 = initial mid (= 100; D15: tau = 0.95 in both settings).
+    H_0 = initial mid (= 100); ruling D15: tau = 0.95 in both settings.
     The output is H_{t+1}: input to the agent's time-(t+1) state and reward;
     the reward at t = 0 uses H_0.
+
+    Matches legacy ``_update_hyp_clearing_price_from_book``
+    (main.py:377-427) except the snapshot's mid tick uses the env-wide
+    floor convention (AUDIT N3; legacy rounded here but floored elsewhere).
+    Moments are keyed by ABSOLUTE tick k; levels absent from a snapshot
+    implicitly contribute 0 (the per-snapshot count is global).
     """
 
     def __init__(self, params: Algo1Params, grid: GridParams) -> None:
@@ -53,24 +73,81 @@ class Algo1Estimator:
         self.grid = grid
         self.n_khat_clamped: int = 0
         self.n_zero_slope_skips: int = 0
+        self._mom_sum: defaultdict[int, float] = defaultdict(float)
+        self._mom_sum_sq: defaultdict[int, float] = defaultdict(float)
+        self._mom_count: int = 0
+        self._h: float = grid.S0
 
     def reset(self, h0: float) -> None:
         """New episode: clear moments, set H = h0 (= initial mid)."""
-        raise NotImplementedError("Phase 3")
+        self._mom_sum.clear()
+        self._mom_sum_sq.clear()
+        self._mom_count = 0
+        self._h = float(h0)
+        self.n_khat_clamped = 0
+        self.n_zero_slope_skips = 0
 
     def update(self, snapshot: BookSnapshot) -> float:
         """End-of-step update over ``snapshot``; returns the new H (= H_{t+1})."""
-        raise NotImplementedError("Phase 3")
+        alpha = self.grid.alpha
+        k0 = snapshot.k_mid
+
+        vol_by_k: dict[int, float] = {}
+        for j, v in enumerate(snapshot.ask_volumes):
+            if v > _EPS:
+                k = k0 + j
+                vol_by_k[k] = vol_by_k.get(k, 0.0) + float(v)
+        for j, v in enumerate(snapshot.bid_volumes):
+            if v > _EPS:
+                k = k0 - j
+                vol_by_k[k] = vol_by_k.get(k, 0.0) + float(v)
+        if snapshot.agent_level is not None and snapshot.agent_remaining > _EPS:
+            k = k0 + snapshot.agent_level
+            vol_by_k[k] = vol_by_k.get(k, 0.0) + float(snapshot.agent_remaining)
+
+        self._mom_count += 1
+        for k, v in vol_by_k.items():
+            self._mom_sum[k] += v
+            self._mom_sum_sq[k] += v * v
+
+        num = 0.0
+        den = 0.0
+        count = self._mom_count
+        for k, s in self._mom_sum.items():
+            e_hat = s / count
+            if e_hat <= _EPS:
+                continue
+            sig_hat = self._mom_sum_sq[k] / count
+            raw = (2.0 * e_hat - sig_hat / max(e_hat, _EPS)) / alpha
+            if raw < 0.0:
+                self.n_khat_clamped += 1
+                logger.debug("Algorithm 1: K_hat clamped to 0 at tick %d (raw %.6g)", k, raw)
+            k_hat = max(0.0, raw)
+            if k_hat > 0.0:
+                num += k_hat * (alpha * k)
+                den += k_hat
+
+        if den > 0.0:
+            s_tilde = num / den
+            self._h = self._h + self.params.tau * (s_tilde - self._h)
+        else:
+            self.n_zero_slope_skips += 1
+        return self._h
 
     @property
     def h(self) -> float:
         """Current smoothed hypothetical clearing price H."""
-        raise NotImplementedError("Phase 3")
+        return self._h
 
 
 @dataclass(frozen=True)
 class ClearingInputs:
-    """End-of-step inputs to corrected Eq. (1)/(2) (paper convention, D3)."""
+    """End-of-step inputs to corrected Eq. (1)/(2) (paper convention, D3).
+
+    ``K_agent``/``S_agent`` contain only the LIVE agent orders — the
+    (1 - theta^{(s-n)}) factors are realized by the ledger's live mask
+    before these arrays are built.
+    """
 
     K_exo: np.ndarray  # exogenous MM slopes K^i
     S_exo: np.ndarray  # exogenous MM quotes S^i
@@ -80,34 +157,7 @@ class ClearingInputs:
     fallback_mid: float  # H_cl = S^mid fallback when slope is zero (D17)
 
 
-class Eq2Cache:
-    """Auction-phase H_cl estimate: corrected Eq. (2) with D1 caching.
-
-    The estimate used in the time-t_j state and reward is computed at the END
-    of step t_{j-1}: exogenous orders as of end of t_{j-1}, agent orders
-    s <= j-1, cancellation state theta_{t_j} (embedding c_{t_{j-1}}). Nothing
-    sampled or decided at t_j may enter it. At t_{n+1} the cache holds
-    Algorithm 1's last CLOB output. Setting j = m+1 recovers Eq. (1).
-    """
-
-    def __init__(self, grid: GridParams) -> None:
-        self.grid = grid
-        self.n_degenerate_fallbacks: int = 0
-
-    def reset(self, h_from_algo1: float) -> None:
-        """Auction open: seed the cache with Algorithm 1's last CLOB output."""
-        raise NotImplementedError("Phase 3")
-
-    def recompute(self, inputs: ClearingInputs) -> float:
-        """End-of-step t-1: solve corrected Eq. (2); cache and return the root."""
-        raise NotImplementedError("Phase 3")
-
-    def read(self) -> float:
-        """The cached estimate, valid for the CURRENT decision time (D1)."""
-        raise NotImplementedError("Phase 3")
-
-
-def solve_linear_clearing(inputs: ClearingInputs) -> float:
+def solve_linear_clearing(inputs: ClearingInputs) -> tuple[float, bool]:
     """Corrected Prop. linear closed form (all curves linear):
 
     p* = [sum K_i S_i + sum (1-theta) K^a S^a + (sum nu^+ - sum nu^-)]
@@ -115,31 +165,131 @@ def solve_linear_clearing(inputs: ClearingInputs) -> float:
 
     Invariants (asserted in tests): adding buy market volume weakly RAISES
     p*; sell volume weakly LOWERS it. Zero denominator => ``fallback_mid``
-    (ruling D17), logged by the caller.
+    (ruling D17); the second return value flags the degenerate case so the
+    caller can count and log it.
     """
-    raise NotImplementedError("Phase 3")
+    den = float(np.sum(inputs.K_exo)) + float(np.sum(inputs.K_agent))
+    if den <= 0.0:
+        return inputs.fallback_mid, True
+    num = (
+        float(inputs.K_exo @ inputs.S_exo)
+        + float(inputs.K_agent @ inputs.S_agent)
+        + inputs.net_market_volume
+    )
+    return num / den, False
+
+
+class Eq2Cache:
+    """Auction-phase H_cl estimate: corrected Eq. (2) with D1 caching.
+
+    The estimate used in the time-t_j state and reward is computed at the END
+    of step t_{j-1}: exogenous orders as of end of t_{j-1}, agent orders
+    s <= j-1, cancellation state theta_{t_j} (embedding c_{t_{j-1}}). Nothing
+    sampled or decided at t_j may enter it. At t_{n+1} the cache holds
+    Algorithm 1's last CLOB output. Setting j = m+1 recovers Eq. (1) exactly
+    (theta_{t_{m+1}} embeds c_{t_m}), so the terminal clearing price S_cl is
+    the recompute performed at the end of step t_m.
+    """
+
+    def __init__(self, grid: GridParams) -> None:
+        self.grid = grid
+        self.n_degenerate_fallbacks: int = 0
+        self._h: float = grid.S0
+
+    def reset(self, h_from_algo1: float) -> None:
+        """Auction open: seed the cache with Algorithm 1's last CLOB output."""
+        self._h = float(h_from_algo1)
+        self.n_degenerate_fallbacks = 0
+
+    def recompute(self, inputs: ClearingInputs) -> float:
+        """End-of-step t-1: solve corrected Eq. (2); cache and return the root."""
+        root, degenerate = solve_linear_clearing(inputs)
+        if degenerate:
+            self.n_degenerate_fallbacks += 1
+            logger.warning(
+                "Eq. (2)/(1) degenerate (zero aggregate slope): falling back to "
+                "S^mid = %.6f (ruling D17)",
+                inputs.fallback_mid,
+            )
+        self._h = root
+        return self._h
+
+    def read(self) -> float:
+        """The cached estimate, valid for the CURRENT decision time (D1)."""
+        return self._h
 
 
 def solve_clearing_with_hockey_stick(
     inputs: ClearingInputs,
     z_slope: float,
     s_tilde: float,
-) -> float:
+) -> tuple[float, bool]:
     """Clearing with one one-sided benchmark order z_slope * (p - s_tilde)_+
     on top of the linear aggregate (ruling D16; benchmarks only liquidate).
 
     Two-case solve: root of the linear form excluding the benchmark order; if
-    it is <= s_tilde it stands, otherwise re-solve with the benchmark slope
-    included. The LHS stays continuous and nondecreasing in p.
+    it is <= s_tilde it stands (the benchmark contributes nothing there),
+    otherwise re-solve with the benchmark slope included. The LHS stays
+    continuous and nondecreasing in p, so the two cases are exhaustive and
+    consistent. Returns ``(p*, degenerate)`` like ``solve_linear_clearing``.
     """
-    raise NotImplementedError("Phase 3")
+    if z_slope < 0.0:
+        raise ValueError(f"benchmark slope must be >= 0, got {z_slope}")
+    root, degenerate = solve_linear_clearing(inputs)
+    if not degenerate and root <= s_tilde:
+        return root, False
+    den = float(np.sum(inputs.K_exo)) + float(np.sum(inputs.K_agent)) + z_slope
+    if den <= 0.0:
+        return inputs.fallback_mid, True
+    num = (
+        float(inputs.K_exo @ inputs.S_exo)
+        + float(inputs.K_agent @ inputs.S_agent)
+        + z_slope * s_tilde
+        + inputs.net_market_volume
+    )
+    root_with = num / den
+    if root_with >= s_tilde:
+        return root_with, False
+    # Phi(s_tilde) > 0 >= Phi(linear root): with the linear part degenerate
+    # (den - z_slope == 0) and net demand short of the benchmark's kink, no
+    # root exists above s_tilde and the equation is flat below it (D17).
+    return inputs.fallback_mid, True
 
 
 def solve_monotone_clearing(
-    excess_supply,  # Callable[[float], float], nondecreasing in p
+    excess_supply: Callable[[float], float],
     bracket: tuple[float, float],
     tol: float = 1e-10,
+    max_widen: int = 200,
 ) -> float:
     """Bracketed root-finder for general monotone supply curves
-    (Theorem `th:clearing` existence; bisection on a widening bracket)."""
-    raise NotImplementedError("Phase 3")
+    (Theorem `th:clearing` existence; bisection on a widening bracket).
+
+    ``excess_supply`` must be continuous and nondecreasing in p. The initial
+    ``bracket`` is widened geometrically until it straddles a sign change.
+    """
+    lo, hi = float(bracket[0]), float(bracket[1])
+    if lo >= hi:
+        raise ValueError(f"invalid bracket {bracket!r}")
+    f_lo, f_hi = excess_supply(lo), excess_supply(hi)
+    width = hi - lo
+    n = 0
+    while f_lo > 0.0 and n < max_widen:
+        lo -= width
+        width *= 2.0
+        f_lo = excess_supply(lo)
+        n += 1
+    while f_hi < 0.0 and n < max_widen:
+        hi += width
+        width *= 2.0
+        f_hi = excess_supply(hi)
+        n += 1
+    if f_lo > 0.0 or f_hi < 0.0:
+        raise ValueError("no sign change found; excess supply has no root")
+    while hi - lo > tol:
+        mid = 0.5 * (lo + hi)
+        if excess_supply(mid) < 0.0:
+            lo = mid
+        else:
+            hi = mid
+    return 0.5 * (lo + hi)
