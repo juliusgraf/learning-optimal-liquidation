@@ -473,9 +473,9 @@ disabled the penalties).
 
 ## D. Questions for the author — ALL ANSWERED
 
-Q1–Q3 (Phase 1) are answered by rulings D15–D17 (2026-06-11); Q4–Q5 (Phase 4,
-sub-questions of D16) are answered by rulings D18–D19 (2026-06-12). All are
-binding for Phases 2–6.
+Q1–Q3 (Phase 1) are answered by rulings D15–D17 (2026-06-11); Q4–Q6 (Phase 4:
+D16 sub-questions and the discounting conventions) are answered by rulings
+D18–D20 (2026-06-12). All are binding for Phases 2–6.
 
 **Q1 — Algorithm-1 smoothing constant. ANSWERED (ruling D15).** Context: the
 instantiation sites pass `gamma=0.95` (synthetic, `main.py:1419`) and `gamma=0.99`
@@ -533,6 +533,21 @@ offset = round(S̃/α) − ⌊S^mid_{τop}/α⌋, i.e. the executed quote is α�
 nearest-tick rounding of S̃. (Legacy passed the raw float S̃, off-grid.)
 **Ruling: confirmed — the executed quote is the nearest-tick rounding of S̃.**
 Implemented in `src/lmm/agents/benchmarks.py::_LiquidationBenchmark._auction_action`.
+
+**Q6 — Discounting conventions for real-valued CLOB decision times. ANSWERED
+(ruling D20, 2026-06-12).** The CLOB decision times t̂_i are real-valued with a
+variable count per episode (Assumption assump:presence; ≈ 78 decisions over 120 time
+units at λ₀ = 1), so "χ^t" is ambiguous between the grid TIME and the step INDEX.
+Implemented pair: (i) the REPORTED discounted return (`return_disc`; the V_0
+estimator in regret.py) uses the paper objective exactly — Σ χ^{t} r_t with t the
+decision time, terminal at χ^{τ_cl} — applied identically to all policies under CRN;
+(ii) the DQN Bellman targets use the standard one-step χ per transition (textbook
+DQN, ruling D9). The mismatch affects only the training objective: relative to the
+paper objective it up-weights auction/terminal rewards vs CLOB rewards by at most
+χ^{−(τ_op − n_clob)} ≈ 0.99^{−42} ≈ 1.5, with no effect on any reported metric.
+**Ruling: confirmed — keep both conventions as implemented; a semi-Markov χ^{Δt}
+target would be non-standard complexity for a negligible policy difference.** Both
+conventions are stated in `docs/metrics_schema.md` and `docs/rl_design.md` §5.
 
 ---
 
