@@ -61,6 +61,7 @@ torch.set_num_threads(1)
 pytestmark = pytest.mark.legacy
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+LEGACY_DIR = REPO_ROOT / "legacy"  # main.py/data.py/data.csv moved here in Phase 2
 
 # Episode seeds used for pinning, plus the auction time of the cancel variant.
 SEEDS = (101, 202, 303)
@@ -73,10 +74,10 @@ CANCEL_AT = 135
 
 def _load_legacy_main():
     """Exec main.py truncated before its module-level training script."""
-    src = (REPO_ROOT / "main.py").read_text()
+    src = (LEGACY_DIR / "main.py").read_text()
     cut = src.index("\nSEED = 42")  # everything below is the training script
     mod = types.ModuleType("legacy_main_truncated")
-    mod.__file__ = str(REPO_ROOT / "main.py")
+    mod.__file__ = str(LEGACY_DIR / "main.py")
     # dont_inherit: do not leak this test module's __future__ flags into the
     # legacy source (deferred annotations would break its dataclasses);
     # sys.modules registration lets dataclasses resolve the defining module.
@@ -87,7 +88,7 @@ def _load_legacy_main():
 
 
 def _load_legacy_data():
-    spec = importlib.util.spec_from_file_location("legacy_data", REPO_ROOT / "data.py")
+    spec = importlib.util.spec_from_file_location("legacy_data", LEGACY_DIR / "data.py")
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
@@ -108,7 +109,7 @@ def cat_mid_path():
     """Historical mid path exactly as data.py's __main__ builds it (D13)."""
     pd = pytest.importorskip("pandas")
     df = (
-        pd.read_csv(REPO_ROOT / "data.csv", parse_dates=["Datetime"])
+        pd.read_csv(LEGACY_DIR / "data.csv", parse_dates=["Datetime"])
         .sort_values("Datetime")
         .reset_index(drop=True)
     )

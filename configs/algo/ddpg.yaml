@@ -1,0 +1,17 @@
+# DDPG hyperparameters (Phase 5; continuous-action relaxation, ruling D9).
+# Standard literature defaults (Lillicrap et al. 2016); finalized with
+# docs/continuous_action_extension.md.
+
+algo:
+  name: ddpg
+  hyperparams:
+    buffer_size: 50000
+    min_buffer: 5000
+    batch_size: 128
+    actor_lr: 1.0e-4
+    critic_lr: 1.0e-3
+    hidden_layers: [64, 64]
+    target_soft_tau: 0.005      # Polyak averaging
+    exploration_noise_std: 0.1  # Gaussian action noise (eval: none)
+    grad_clip_norm: 1.0
+    updates_per_env_step: 1

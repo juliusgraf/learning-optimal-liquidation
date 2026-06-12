@@ -12,7 +12,9 @@
       "Bash(python3 -m pytest \"tests/audit/test_legacy_characterization.py::test_historical_fixed_policy[101]\" -q --tb=long)",
       "Bash(python3 -m pytest \"tests/audit/test_legacy_characterization.py::test_historical_fixed_policy[101]\" --tb=long)",
       "Bash(python3 -m pytest tests/audit -q)",
-      "Bash(git -C /Users/juliusgraf/Learning-Market-Making status --short)"
+      "Bash(git -C /Users/juliusgraf/Learning-Market-Making status --short)",
+      "Bash(python3 -c \"import torch, gymnasium, yaml, numpy, pandas; print\\(torch.__version__, gymnasium.__version__, numpy.__version__\\)\")",
+      "Bash(pip --version)"
     ]
   }
 }

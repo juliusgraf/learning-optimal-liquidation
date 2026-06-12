@@ -1,0 +1,19 @@
+# SAC hyperparameters (Phase 5; continuous-action relaxation, ruling D9).
+# Standard literature defaults (Haarnoja et al. 2018, auto temperature);
+# finalized with docs/continuous_action_extension.md.
+
+algo:
+  name: sac
+  hyperparams:
+    buffer_size: 50000
+    min_buffer: 5000
+    batch_size: 128
+    actor_lr: 3.0e-4
+    critic_lr: 3.0e-4
+    alpha_lr: 3.0e-4
+    hidden_layers: [64, 64]
+    target_soft_tau: 0.005
+    auto_alpha: true            # entropy temperature auto-tuned
+    target_entropy: auto        # -dim(A) convention
+    grad_clip_norm: 1.0
+    updates_per_env_step: 1

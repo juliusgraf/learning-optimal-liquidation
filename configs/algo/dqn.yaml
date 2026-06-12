@@ -1,0 +1,26 @@
+# DQN hyperparameters (ruling D9: textbook DQN, Mnih et al. 2015 conventions;
+# neither legacy NFQ nor paper Sec. 4 is authoritative). Legacy values are
+# kept where they are standard (lr, batch, buffer — see PARAMS_FROM_CODE.md
+# section 4); the update SCHEDULE is standard DQN, not legacy's per-episode
+# full-buffer refit. Final values recorded in docs/rl_design.md (Phase 4).
+
+algo:
+  name: dqn
+  hyperparams:
+    buffer_size: 50000          # per phase network; legacy main.py:1487
+    min_buffer: 5000            # learning starts; legacy main.py:1488
+    batch_size: 128             # legacy main.py:1490
+    lr: 3.0e-4                  # Adam; legacy main.py:1439
+    loss: huber                 # SmoothL1
+    grad_clip_norm: 1.0         # legacy convention
+    hidden_layers: [16, 16]     # per phase network (recorded in rl_design.md)
+    target_update_interval: 1000  # hard update every C env steps (Mnih-style)
+    target_soft_tau: null       # optional Polyak; null = hard updates
+    updates_per_env_step: 1     # per-environment-step minibatch updates
+    epsilon_start: 1.0          # legacy schedule shape, main.py:1597-1602
+    epsilon_end: 0.01
+    epsilon_decay_episodes: 300.0
+    epsilon_warmup_episodes: 100
+    eval_interval_episodes: 100 # greedy eval cadence (epsilon = 0)
+    eval_n_seeds: 8
+    final_eval_n_seeds: 100
