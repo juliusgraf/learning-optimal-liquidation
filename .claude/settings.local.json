@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 -c \"import sys; print\\(sys.version\\)\")",
+      "Bash(python3 -c \"import numpy, torch, scipy, pandas, matplotlib, pytest; print\\('numpy', numpy.__version__, '| torch', torch.__version__, '| scipy', scipy.__version__, '| pandas', pandas.__version__, '| pytest', pytest.__version__\\)\")",
+      "Bash(MPLBACKEND=Agg python3 *)",
+      "Bash(python3 -m pytest tests/audit/test_legacy_characterization.py -q)",
+      "Bash(python3 -m pytest tests/audit/test_legacy_characterization.py::test_synthetic_fixed_policy -q)",
+      "Bash(python3 -m pytest \"tests/audit/test_legacy_characterization.py::test_synthetic_fixed_policy[101]\" -q --tb=long)",
+      "Bash(python3 -m pytest tests/audit -m legacy -q)",
+      "Bash(python3 -m pytest tests/audit -m \"not legacy\" -q)",
+      "Bash(python3 -m pytest \"tests/audit/test_legacy_characterization.py::test_historical_fixed_policy[101]\" -q --tb=long)",
+      "Bash(python3 -m pytest \"tests/audit/test_legacy_characterization.py::test_historical_fixed_policy[101]\" --tb=long)",
+      "Bash(python3 -m pytest tests/audit -q)",
+      "Bash(git -C /Users/juliusgraf/Learning-Market-Making status --short)"
+    ]
+  }
+}
