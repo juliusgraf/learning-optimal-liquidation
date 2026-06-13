@@ -140,6 +140,9 @@ class HistoricalParams:
     symbols: tuple[str, ...]  # data.py:1651 => MSFT, JPM, PG, GOOGL, CAT
     normalize_first: float  # --normalize first=100 default (D13)
     n_rows: int  # rows consumed per path; data.py:1654 => 120 (= tau_op)
+    date: str = ""  # session date provenance (Phase 6: never a hard-coded constant)
+    path_policy: str = "fixed"  # "fixed" = same realized path every episode (legacy,
+    # paper "same realized price path"); "bootstrap" is reserved (deferred, Phase 6)
 
 
 @dataclass(frozen=True)

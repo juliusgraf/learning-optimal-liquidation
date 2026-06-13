@@ -199,12 +199,17 @@ class HistoricalMidPrice(MidPriceModel):
     def __init__(self, params: HistoricalParams, grid: GridParams, path: np.ndarray) -> None:
         if len(path) == 0:
             raise ValueError("historical mid path is empty")
+        if params.path_policy != "fixed":
+            raise NotImplementedError(
+                f"path_policy={params.path_policy!r} deferred (Phase 6 decision: "
+                "fixed only); the paper replays a single realized path"
+            )
         self.params = params
         self.grid = grid
         self.path = np.asarray(path, dtype=float)
         self.mid = float(self.path[0])
 
-    def reset(self, rng: np.random.Generator) -> float:  # rng unused (D13)
+    def reset(self, rng: np.random.Generator) -> float:  # rng unused (D13, path_policy=fixed)
         self.mid = float(self.path[0])
         return self.mid
 
