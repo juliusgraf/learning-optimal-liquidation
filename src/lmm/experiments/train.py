@@ -25,14 +25,28 @@ from typing import Optional, Sequence
 import numpy as np
 import torch
 
+from lmm.agents.base import Agent
+from lmm.agents.ddpg import DDPGAgent
 from lmm.agents.dqn import DQNAgent
+from lmm.agents.sac import SACAgent
+from lmm.agents.td3 import TD3Agent
 from lmm.config import ExperimentConfig, add_config_cli, config_from_args
+from lmm.env.action_spaces import ContinuousActionAdapter
 from lmm.env.mdp import make_env
 from lmm.rl.loops import SEED_COMPONENTS, EpisodeResult, run_episode
 from lmm.utils.logging import create_run_dir, get_run_logger, write_run_metadata
 from lmm.utils.seeding import SeedBundle, seed_everything
 
-__all__ = ["build_parser", "main", "METRICS_COLUMNS", "make_agent", "draw_seed"]
+__all__ = [
+    "build_parser",
+    "main",
+    "METRICS_COLUMNS",
+    "make_agent",
+    "draw_seed",
+    "is_continuous",
+    "wrap_env_for_agent",
+    "CONTINUOUS_ALGOS",
+]
 
 METRICS_COLUMNS = [
     "episode",
@@ -68,13 +82,39 @@ METRICS_COLUMNS = [
 ]
 
 
-def make_agent(cfg: ExperimentConfig, seeds: SeedBundle) -> DQNAgent:
-    """Algorithm dispatch (Phase 4: DQN only; DDPG/TD3/SAC are Phase 5)."""
+# Continuous-action relaxation agents (Phase 5; ruling D9). DQN stays the
+# discrete paper setting; these run on the ContinuousActionAdapter.
+CONTINUOUS_ALGOS = {"ddpg": DDPGAgent, "td3": TD3Agent, "sac": SACAgent}
+_AGENTS = {"dqn": DQNAgent, **CONTINUOUS_ALGOS}
+
+
+def make_agent(cfg: ExperimentConfig, seeds: SeedBundle) -> Agent:
+    """Algorithm dispatch: dqn (discrete, Phase 4) or ddpg/td3/sac (continuous
+    relaxation, Phase 5)."""
     if cfg.algo is None:
         raise ValueError("config has no algo section; overlay configs/algo/*.yaml")
-    if cfg.algo.name != "dqn":
-        raise NotImplementedError(f"algo {cfg.algo.name!r}: Phase 5 (continuous relaxation)")
-    return DQNAgent(cfg, seeds)
+    try:
+        agent_cls = _AGENTS[cfg.algo.name]
+    except KeyError:
+        raise ValueError(
+            f"unknown algo {cfg.algo.name!r}; expected one of {sorted(_AGENTS)}"
+        ) from None
+    return agent_cls(cfg, seeds)
+
+
+def is_continuous(cfg: ExperimentConfig) -> bool:
+    """True iff the configured algorithm is a continuous-action variant."""
+    return cfg.algo is not None and cfg.algo.name in CONTINUOUS_ALGOS
+
+
+def wrap_env_for_agent(env, cfg: ExperimentConfig):
+    """Wrap the env in the :class:`ContinuousActionAdapter` for DDPG/TD3/SAC;
+    the discrete DQN uses the raw env unchanged."""
+    if is_continuous(cfg):
+        return ContinuousActionAdapter(
+            env, continuous_cancel=cfg.algo.hyperparams.get("continuous_cancel", "threshold")
+        )
+    return env
 
 
 def draw_seed(rng: np.random.Generator) -> int:
@@ -166,7 +206,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     # D10: one bundle from the master seed; torch determinism flags set.
     seeds = seed_everything(master_seed, SEED_COMPONENTS, seed_torch=True)
-    env = make_env(cfg, symbol=args.symbol)
+    env = wrap_env_for_agent(make_env(cfg, symbol=args.symbol), cfg)
     agent = make_agent(cfg, seeds)
     hp = agent.hp
     chi = cfg.rl.chi

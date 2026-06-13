@@ -27,7 +27,7 @@ import yaml
 from lmm.agents.benchmarks import ASBenchmarkAgent, TWAPBenchmarkAgent
 from lmm.config import load_config, to_dict
 from lmm.env.mdp import make_env
-from lmm.experiments.train import draw_seed, make_agent
+from lmm.experiments.train import draw_seed, make_agent, wrap_env_for_agent
 from lmm.rl.loops import SEED_COMPONENTS, EpisodeResult, run_episode
 from lmm.utils.seeding import seed_everything
 
@@ -110,8 +110,16 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     eval_seeds = [draw_seed(eval_rng) for _ in range(n_episodes)]
 
     # One env per policy, all from the SAME resolved config => identical
-    # RewardParams for all policies (AUDIT C.4; asserted in tests).
-    envs = {p: make_env(cfg, symbol=args.symbol) for p in POLICIES}
+    # RewardParams for all policies (AUDIT C.4; asserted in tests). The
+    # learned-policy envs (dqn/initial) are wrapped in the continuous adapter
+    # for DDPG/TD3/SAC runs; the benchmark envs stay raw (benchmarks submit
+    # ClobAction/AuctionAction objects directly).
+    learned = {"dqn", "initial"}
+    envs = {
+        p: (wrap_env_for_agent(make_env(cfg, symbol=args.symbol), cfg)
+            if p in learned else make_env(cfg, symbol=args.symbol))
+        for p in POLICIES
+    }
 
     dqn = make_agent(cfg, seeds)
     dqn.load(run_dir / "checkpoints" / f"{args.checkpoint}.pt")

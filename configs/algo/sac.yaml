@@ -1,19 +1,31 @@
 # SAC hyperparameters (Phase 5; continuous-action relaxation, ruling D9).
-# Standard literature defaults (Haarnoja et al. 2018, auto temperature);
-# finalized with docs/continuous_action_extension.md.
+# Standard literature defaults (Haarnoja et al. 2018, automatic temperature).
+# Spec + update rules: docs/continuous_action_extension.md. The discrete DQN
+# setting is untouched. chi lives in rl.chi (shared, D15).
 
 algo:
   name: sac
   hyperparams:
+    # -- shared run/eval/replay (mirror configs/algo/dqn.yaml) ---------------
     buffer_size: 50000
     min_buffer: 5000
     batch_size: 128
-    actor_lr: 3.0e-4
-    critic_lr: 3.0e-4
-    alpha_lr: 3.0e-4
     hidden_layers: [64, 64]
-    target_soft_tau: 0.005
-    auto_alpha: true            # entropy temperature auto-tuned
-    target_entropy: auto        # -dim(A) convention
     grad_clip_norm: 1.0
     updates_per_env_step: 1
+    update_every: 1
+    reward_scale: 1.0
+    activation: relu
+    device: cpu
+    continuous_cancel: threshold  # threshold (default) | never
+    eval_interval_episodes: 100
+    eval_n_seeds: 8
+    final_eval_n_seeds: 100
+    checkpoint_interval_episodes: 100
+    # -- SAC-specific ---------------------------------------------------------
+    actor_lr: 3.0e-4
+    critic_lr: 3.0e-4
+    target_soft_tau: 0.005
+    alpha_lr: 3.0e-4            # temperature Adam lr
+    auto_alpha: true           # auto-tune entropy temperature
+    target_entropy: auto       # "auto" => -dim(A) per phase

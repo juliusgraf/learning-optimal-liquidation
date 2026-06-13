@@ -207,6 +207,15 @@ class MarketMakingEnv(gymnasium.Env):
         flow = self.generator.step_clob(self.np_random, t, final=is_final)
         executed = flow.executed_agent
         self._inventory -= executed
+        # Float-safety only: the running inventory is non-negative by
+        # construction (executed <= v <= inventory, admissibility), but a
+        # near-full fractional liquidation can leave a sub-epsilon negative
+        # float residue that would spuriously reject the next no-op (v=0 > -eps)
+        # in the admissibility check. Snap that residue to 0; this is a no-op
+        # for any inventory the discrete DQN actually reaches and is NOT the D8
+        # terminal clip (which stays gated behind numerical_guard).
+        if -1e-9 < self._inventory < 0.0:
+            self._inventory = 0.0
 
         # End-of-step Algorithm-1 update (D2): post-flow book incl. the
         # agent's remainder, BEFORE the refresh. Output = H_{t+1}.

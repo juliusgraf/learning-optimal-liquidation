@@ -1,17 +1,31 @@
 # DDPG hyperparameters (Phase 5; continuous-action relaxation, ruling D9).
-# Standard literature defaults (Lillicrap et al. 2016); finalized with
-# docs/continuous_action_extension.md.
+# Standard literature defaults (Lillicrap et al. 2016). Spec + update rules:
+# docs/continuous_action_extension.md. The discrete DQN setting is untouched;
+# this is the SEPARATE relaxation. chi lives in rl.chi (shared, D15).
 
 algo:
   name: ddpg
   hyperparams:
-    buffer_size: 50000
-    min_buffer: 5000
+    # -- shared run/eval/replay (mirror configs/algo/dqn.yaml so train.py
+    #    drives every algorithm uniformly) --------------------------------
+    buffer_size: 50000          # replay capacity per phase
+    min_buffer: 5000            # learning starts (per phase)
     batch_size: 128
-    actor_lr: 1.0e-4
-    critic_lr: 1.0e-3
-    hidden_layers: [64, 64]
+    hidden_layers: [64, 64]     # actor & critic MLP widths per phase
+    grad_clip_norm: 1.0         # global gradient-norm clip
+    updates_per_env_step: 1     # gradient steps per eligible update
+    update_every: 1             # env steps between updates
+    reward_scale: 1.0           # reward scaling INSIDE replay only
+    activation: relu            # mlp activation (relu | tanh | elu)
+    device: cpu                 # torch device
+    continuous_cancel: threshold  # auction cancel: threshold (default) | never
+    eval_interval_episodes: 100 # greedy eval cadence (deterministic actor)
+    eval_n_seeds: 8
+    final_eval_n_seeds: 100
+    checkpoint_interval_episodes: 100
+    # -- DDPG-specific --------------------------------------------------------
+    actor_lr: 1.0e-4            # Adam, actor
+    critic_lr: 1.0e-3           # Adam, critic
     target_soft_tau: 0.005      # Polyak averaging
-    exploration_noise_std: 0.1  # Gaussian action noise (eval: none)
-    grad_clip_norm: 1.0
-    updates_per_env_step: 1
+    exploration_noise: gaussian # gaussian | ou (eval: none)
+    exploration_noise_std: 0.1  # noise scale (x action half-range)

@@ -45,6 +45,19 @@ is the headline evaluation number (CLAUDE.md).
 | eval_return_mean | mean undiscounted greedy return on the fixed `env_eval` seed list (eval episodes only) |
 | wall_clock_s | episode wall time — LAST column, EXCLUDED from determinism comparisons |
 
+### Continuous agents (DDPG/TD3/SAC) — same schema, remapped columns
+
+The continuous-action variants (Phase 5; `docs/continuous_action_extension.md`)
+use the **same** `metrics.csv` columns. The loss/TD columns hold **critic**
+statistics: `loss_{phase}` is the mean critic loss (mean over the twin critics
+for TD3/SAC), `grad_norm_{phase}` the critic global gradient norm, and
+`td_abs_*_{phase}` the critic TD errors. The `epsilon` column holds the
+exploration-noise scale (`exploration_noise_std`; `0` for SAC, whose policy is
+intrinsically stochastic). Actor loss, the SAC temperature `alpha`, and the
+policy entropy are emitted to the per-update diagnostics and `logs/run.log` but
+are not written to `metrics.csv` (the CSV writer ignores the extra keys, so the
+DQN schema is byte-for-byte unchanged).
+
 ## eval/records.csv (evaluate.py; one row per (policy, episode))
 
 Columns: `policy` (dqn | initial | as | twap), `episode`, `env_seed` (shared

@@ -43,6 +43,28 @@ def load_dqn_cfg(*overrides: str):
     )
 
 
+def load_algo_cfg(algo: str, *overrides: str):
+    """Synthetic config + a continuous algo overlay (Phase 5 agent tests)."""
+    return load_config(
+        CONFIGS / "base.yaml",
+        CONFIGS / "synthetic_rough_heston.yaml",
+        CONFIGS / "algo" / f"{algo}.yaml",
+        overrides=list(overrides),
+    )
+
+
+def load_ddpg_cfg(*overrides: str):
+    return load_algo_cfg("ddpg", *overrides)
+
+
+def load_td3_cfg(*overrides: str):
+    return load_algo_cfg("td3", *overrides)
+
+
+def load_sac_cfg(*overrides: str):
+    return load_algo_cfg("sac", *overrides)
+
+
 def load_historical_cfg(*overrides: str):
     return load_config(
         CONFIGS / "base.yaml",

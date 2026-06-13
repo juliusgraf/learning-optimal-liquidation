@@ -1,20 +1,33 @@
 # TD3 hyperparameters (Phase 5; continuous-action relaxation, ruling D9).
-# Standard literature defaults (Fujimoto et al. 2018); finalized with
-# docs/continuous_action_extension.md.
+# Standard literature defaults (Fujimoto et al. 2018). Spec + update rules:
+# docs/continuous_action_extension.md. The discrete DQN setting is untouched.
+# chi lives in rl.chi (shared, D15).
 
 algo:
   name: td3
   hyperparams:
+    # -- shared run/eval/replay (mirror configs/algo/dqn.yaml) ---------------
     buffer_size: 50000
     min_buffer: 5000
     batch_size: 128
-    actor_lr: 3.0e-4
-    critic_lr: 3.0e-4
     hidden_layers: [64, 64]
-    target_soft_tau: 0.005
-    exploration_noise_std: 0.1
-    target_noise_std: 0.2       # target policy smoothing
-    target_noise_clip: 0.5
-    policy_delay: 2             # delayed actor updates
     grad_clip_norm: 1.0
     updates_per_env_step: 1
+    update_every: 1
+    reward_scale: 1.0
+    activation: relu
+    device: cpu
+    continuous_cancel: threshold  # threshold (default) | never
+    eval_interval_episodes: 100
+    eval_n_seeds: 8
+    final_eval_n_seeds: 100
+    checkpoint_interval_episodes: 100
+    # -- TD3-specific ---------------------------------------------------------
+    actor_lr: 3.0e-4
+    critic_lr: 3.0e-4
+    target_soft_tau: 0.005
+    exploration_noise: gaussian # gaussian | ou
+    exploration_noise_std: 0.1
+    target_noise_std: 0.2       # target-policy smoothing sigma (x half-range)
+    target_noise_clip: 0.5      # smoothing clip (x half-range)
+    policy_delay: 2             # delayed actor / target-sync cadence
