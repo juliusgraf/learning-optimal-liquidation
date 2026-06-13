@@ -1,13 +1,25 @@
 #!/usr/bin/env bash
-# Reproduce every reported result from scratch (Phase 8 fills this in).
+# Reproduce every reported result from scratch: train + evaluate + regret for
+# all algorithms in both settings, then regenerate all figures/tables.
 #
-# Planned shape:
-#   lmm-train    --config configs/base.yaml --config configs/synthetic_rough_heston.yaml \
-#                --config configs/algo/dqn.yaml --run-name dqn_seed42
-#   lmm-evaluate --config ... --run-dir results/synthetic_rough_heston/dqn_seed42
-#   lmm-regret   --run-dir ...
-#   lmm-make-figures --run-dir ...
-#   lmm-make-tables  --run-dir ...
+# Usage:
+#   scripts/reproduce_all.sh            # full paper runs (long!)
+#   scripts/reproduce_all.sh --smoke    # tiny CI smoke of the whole pipeline
+#   scripts/reproduce_all.sh --seed 7   # override the master seed
+#
+# Flags are forwarded to every run_*.sh (see scripts/_common.sh).
 set -euo pipefail
-echo "Phase 8: not yet implemented" >&2
-exit 1
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ARGS=("$@")
+
+RUNNERS=(
+  run_synthetic_dqn run_synthetic_ddpg run_synthetic_td3 run_synthetic_sac
+  run_historical_dqn run_historical_ddpg run_historical_td3 run_historical_sac
+)
+for s in "${RUNNERS[@]}"; do
+  echo "### ${s} ${ARGS[*]}"
+  bash "$HERE/${s}.sh" "${ARGS[@]}"
+done
+
+bash "$HERE/make_all_outputs.sh"
+echo "### reproduce_all complete"

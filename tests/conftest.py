@@ -2,9 +2,28 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
+import matplotlib
 import pytest
 
+matplotlib.use("Agg")  # headless figure tests (Phase 7)
+
 from helpers import load_historical_cfg, load_synthetic_cfg
+
+FIXTURES = Path(__file__).resolve().parent / "fixtures"
+
+
+@pytest.fixture
+def fixture_run_dir() -> Path:
+    """A committed, complete (DQN) run directory for figure/table tests."""
+    return FIXTURES / "run_dir"
+
+
+@pytest.fixture
+def fixture_run_dir_ddpg() -> Path:
+    """A minimal sibling (DDPG) run dir to exercise the multi-run path."""
+    return FIXTURES / "run_dir_ddpg"
 
 
 @pytest.fixture(scope="session")

@@ -1,0 +1,25 @@
+master_seed: 42
+checkpoint: results/synthetic_rough_heston/ddpg_seed42/checkpoints/final.pt
+n_episodes: 3
+policies:
+- dqn
+- initial
+- as
+- twap
+crn: identical env seed per episode across all policies (env_final_eval stream)
+return_convention: return_undisc = undiscounted episode sum (reported); return_disc
+  = sum chi^t r_t with t the decision time, terminal at chi^tau_cl
+reward_params_shared_by_all_policies:
+  k_star: 1000
+  lambda_inv: 0.5
+  q: 1.0
+  d: 0.1
+  numerical_guard: false
+  numerical_guard_bound: 1000000000.0
+as_calibration:
+  A: 0.4
+  k: 128.74210844258175
+  sigma: 5.7760310093468186e-05
+trace_episodes: 1
+setting: synthetic_rough_heston
+symbol: null

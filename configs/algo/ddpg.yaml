@@ -2,6 +2,11 @@
 # Standard literature defaults (Lillicrap et al. 2016). Spec + update rules:
 # docs/continuous_action_extension.md. The discrete DQN setting is untouched;
 # this is the SEPARATE relaxation. chi lives in rl.chi (shared, D15).
+#
+# Phase 7: kept exactly as the Phase 5 tuned defaults. Deviations from
+# configs/algo/dqn.yaml are intentional and standard for continuous control:
+# wider [64,64] nets (DQN uses [16,16]), separate actor/critic lrs, and Polyak
+# (soft) target updates instead of DQN's hard target_update_interval.
 
 algo:
   name: ddpg

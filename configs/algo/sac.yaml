@@ -2,6 +2,11 @@
 # Standard literature defaults (Haarnoja et al. 2018, automatic temperature).
 # Spec + update rules: docs/continuous_action_extension.md. The discrete DQN
 # setting is untouched. chi lives in rl.chi (shared, D15).
+#
+# Phase 7: kept exactly as the Phase 5 tuned defaults. Deviations from
+# configs/algo/dqn.yaml are intentional and standard for continuous control:
+# wider [64,64] nets (DQN uses [16,16]), Polyak target updates, twin critics,
+# and the entropy-temperature schedule (auto_alpha / target_entropy).
 
 algo:
   name: sac

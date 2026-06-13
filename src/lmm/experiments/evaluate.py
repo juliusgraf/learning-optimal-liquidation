@@ -27,6 +27,7 @@ import yaml
 from lmm.agents.benchmarks import ASBenchmarkAgent, TWAPBenchmarkAgent
 from lmm.config import load_config, to_dict
 from lmm.env.mdp import make_env
+from lmm.experiments.tracing import EpisodeTraceRecorder
 from lmm.experiments.train import draw_seed, make_agent, wrap_env_for_agent
 from lmm.rl.loops import SEED_COMPONENTS, EpisodeResult, run_episode
 from lmm.utils.seeding import seed_everything
@@ -89,6 +90,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--n-episodes", type=int, default=None,
                         help="evaluation episodes (default: algo.hyperparams.final_eval_n_seeds)")
     parser.add_argument("--symbol", default=None, help="historical setting: symbol to replay")
+    parser.add_argument(
+        "--trace-episodes", type=int, default=0,
+        help="write per-step anatomy traces for the first N eval episodes "
+        "(eval/traces/<policy>_ep<i>.csv) for make_figures; 0 = none",
+    )
     return parser
 
 
@@ -146,6 +152,24 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 res = run_episode(envs[name], agent, env_seed, chi=cfg.rl.chi, train=False)
                 writer.writerow(_record_row(name, episode, res))
 
+    # Per-step anatomy traces (Phase 7): replay the FIRST n_trace eval seeds
+    # for every policy with a recorder attached. The env resets by seed so this
+    # reproduces the records.csv trajectories exactly (frozen/greedy policies
+    # consume no exploration RNG; benchmarks reset per episode in start_episode).
+    n_trace = min(args.trace_episodes, n_episodes)
+    if n_trace > 0:
+        traces_dir = run_dir / "eval" / "traces"
+        traces_dir.mkdir(parents=True, exist_ok=True)
+        for episode in range(n_trace):
+            env_seed = eval_seeds[episode]
+            for name, agent in agents.items():
+                agent.start_episode(episode)
+                rec = EpisodeTraceRecorder()
+                run_episode(
+                    envs[name], agent, env_seed, chi=cfg.rl.chi, train=False, on_step=rec
+                )
+                rec.write(traces_dir / f"{name}_ep{episode}.csv")
+
     metadata = {
         "master_seed": master_seed,
         "checkpoint": str(run_dir / "checkpoints" / f"{args.checkpoint}.pt"),
@@ -156,6 +180,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "return_disc = sum chi^t r_t with t the decision time, terminal at chi^tau_cl",
         "reward_params_shared_by_all_policies": to_dict(cfg.reward),  # AUDIT C.4
         "as_calibration": {k: float(v) for k, v in calibration.items()},
+        "trace_episodes": n_trace,
+        "setting": cfg.experiment.name,
+        "symbol": args.symbol,  # historical ticker replayed (None for synthetic)
     }
     (run_dir / "eval" / "metadata.yaml").write_text(yaml.safe_dump(metadata, sort_keys=False))
     print(f"wrote {records_path} ({n_episodes} episodes x {len(POLICIES)} policies)")

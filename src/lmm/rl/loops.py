@@ -16,6 +16,7 @@ unless stated otherwise (CLAUDE.md); both are recorded.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from lmm.agents.base import Agent, Transition
@@ -67,11 +68,19 @@ def run_episode(
     *,
     chi: float,
     train: bool,
+    on_step: Callable[..., None] | None = None,
 ) -> EpisodeResult:
     """Play one full episode; in train mode the agent observes every
     transition and update() runs after each env step (the per-env-step
     schedule and gating live inside the agent). Eval mode (train=False) is
-    greedy, stores nothing, and consumes no exploration randomness."""
+    greedy, stores nothing, and consumes no exploration randomness.
+
+    ``on_step`` is an OPTIONAL per-step collector for episode-anatomy traces
+    (Phase 7): when not None it is called once per step AFTER the step's
+    bookkeeping with ``(step_idx, phase, t_decision, reward, cum_reward, info,
+    env)`` — all pure reads (no RNG), so the trajectory is byte-identical to a
+    run with ``on_step=None``. The default None path is the training/eval hot
+    path and is unchanged."""
     agent.set_train(train)
     res = EpisodeResult(env_seed=env_seed)
     diag_lists: dict[str, list[float]] = {}
@@ -124,6 +133,8 @@ def run_episode(
             res.s_cl = info["S_cl"]
             res.z_tau_cl = info["Z"]
             res.i_final = info["I_final"]
+        if on_step is not None:
+            on_step(res.n_steps - 1, phase, t_decision, reward, res.return_undisc, info, env)
         obs = next_obs
 
     res.n_degenerate_fallbacks = env.eq2.n_degenerate_fallbacks

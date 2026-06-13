@@ -1,0 +1,119 @@
+experiment:
+  name: synthetic_rough_heston
+  setting: synthetic_rough_heston
+  episodes: 4
+  master_seed: 42
+  results_root: results
+grid:
+  tau_op: 120
+  tau_cl: 150
+  T_physical: 150.0
+  alpha: 0.01
+  S0: 100.0
+  I0: 100
+  I_max: 100
+clob_flow:
+  lambda0: 1.0
+  v_m: 2.0
+  gamma_m: 2.5
+  V_max: 30
+  V_inf: 15.0
+  beta_a: 2.0
+  beta_b: 5.0
+  depth_decay: 0.5
+  Lc: 12
+auction_flow:
+  p1: 0.3
+  p2: 0.2
+  p3: 0.3
+  p4: 0.05
+  K_min: 0.1
+  K_max: 2.0
+  price_band_ticks: 10
+  La: 12
+  L_max: 100
+midprice:
+  model: rough_heston
+  rough_heston:
+    H: 0.1
+    rho: -0.7
+    v0: 0.02
+    theta: 0.04
+    kappa: 0.3
+    xi: 0.3
+    seconds_per_year: 5896800.0
+  historical: null
+algo1:
+  tau: 0.95
+  H0_from_mid: true
+  H0: null
+reward:
+  k_star: 1000
+  lambda_inv: 0.5
+  q: 1.0
+  d: 0.1
+  numerical_guard: false
+  numerical_guard_bound: 1000000000.0
+rl:
+  chi: 0.99
+actions:
+  clob_volume_max: 30
+  clob_delta_min: 1
+  clob_delta_max: 12
+  auction_K_grid_min: 1.0
+  auction_K_grid_max: 33.333333333333336
+  auction_K_grid_n: 10
+  auction_offset_max: 12
+features:
+  clob:
+  - inv_norm
+  - h_cl
+  - s_mid
+  - depth_ask_norm
+  - depth_bid_norm
+  - top_ask_norm
+  - top_bid_norm
+  - t_norm
+  auction:
+  - inv_norm
+  - h_cl
+  - s_mid
+  - n_mm_norm
+  - n_buy_norm
+  - n_sell_norm
+  - t_norm
+benchmark:
+  z: 10.0
+  dust_threshold: 0.01
+  as_n_samples: 10000
+  as_gamma: 0.0
+  as_sigma_rule: pooled_paths
+  as_sigma_n_paths: 100
+  twap_delta_mode: min
+algo:
+  name: dqn
+  hyperparams:
+    buffer_size: 50000
+    min_buffer: 1
+    batch_size: 128
+    lr: 0.0003
+    loss: huber
+    grad_clip_norm: 1.0
+    hidden_layers:
+    - 16
+    - 16
+    target_update_interval: 1000
+    target_soft_tau: null
+    updates_per_env_step: 1
+    update_every: 1
+    reward_scale: 1.0
+    activation: relu
+    device: cpu
+    checkpoint_interval_episodes: 2
+    epsilon_start: 1.0
+    epsilon_end: 0.01
+    epsilon_decay_episodes: 300.0
+    epsilon_warmup_episodes: 100
+    eval_interval_episodes: 2
+    eval_n_seeds: 8
+    final_eval_n_seeds: 3
