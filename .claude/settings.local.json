@@ -19,7 +19,11 @@
       "Bash(python3 -c \"import torch; print\\(torch.__version__\\)\")",
       "Bash(python3 -c \"import torch, gymnasium, numpy, lmm; print\\('ok', torch.__version__, gymnasium.__version__\\)\")",
       "Bash(python3 -m pytest -m \"not slow\" -q)",
-      "Bash(python -m pytest tests/test_data_loader.py -m \"not network\" -q)"
+      "Bash(python -m pytest tests/test_data_loader.py -m \"not network\" -q)",
+      "Bash(python3 *)",
+      "Bash(echo \"EXIT=$?\")",
+      "Bash(timeout 300 python3 -m lmm.experiments.train --config configs/base.yaml --config configs/synthetic_rough_heston.yaml --config configs/algo/dqn.yaml -o experiment.episodes=300 --run-name _diag_degen --seed 42)",
+      "Read(//tmp/**)"
     ]
   }
 }

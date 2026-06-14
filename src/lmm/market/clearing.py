@@ -219,7 +219,15 @@ class Eq2Cache:
         root, degenerate = solve_clearing(inputs)
         if degenerate:
             self.n_degenerate_fallbacks += 1
-            logger.warning(
+            # DEBUG, not WARNING: this is an EXPECTED, designed fallback (D17)
+            # that fires routinely whenever the auction has no live supply
+            # curve (abstaining policy + no exogenous MM) -- e.g. the greedy
+            # untrained baseline abstains, making ~25% of its auction steps
+            # degenerate. It is already counted in ``n_degenerate_fallbacks``
+            # (surfaced per-episode as metrics.csv ``n_degenerate_fallbacks``),
+            # so a per-occurrence WARNING would only flood the console. Mirrors
+            # the K_hat-clamp counter above, which is logged at DEBUG too.
+            logger.debug(
                 "Eq. (2)/(1) degenerate (zero aggregate slope): falling back to "
                 "S^mid = %.6f (ruling D17)",
                 inputs.fallback_mid,
