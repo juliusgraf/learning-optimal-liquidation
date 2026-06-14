@@ -99,6 +99,24 @@ def _extract_close(data: pd.DataFrame, tickers: Sequence[str]) -> pd.DataFrame:
     return close
 
 
+def _cache_key(
+    start_ts: pd.Timestamp,
+    end_ts: pd.Timestamp,
+    interval: str,
+    tickers: Sequence[str],
+) -> str:
+    """Download-cache filename, keyed by the FULL session window.
+
+    Must include both the start AND end time, not just the date: two intraday
+    windows on the same day (e.g. ``13:30-16:00`` vs ``14:30-17:00``) otherwise
+    collide, so a second run silently reuses the first window's bars and the
+    missing edge is fabricated by the fill step (back-filled leading minutes show
+    up as a flat run — the bug this guards against).
+    """
+    span = f"{start_ts.strftime('%Y%m%dT%H%M%z')}-{end_ts.strftime('%Y%m%dT%H%M%z')}"
+    return f"{span}_{interval}_{'-'.join(tickers)}.parquet"
+
+
 def _download_yf(
     tickers: Sequence[str],
     start_ts: pd.Timestamp,
@@ -116,8 +134,7 @@ def _download_yf(
     tickers = list(tickers)
     cache_path: Optional[Path] = None
     if cache_dir:
-        key = f"{start_ts.date()}_{interval}_{'-'.join(tickers)}.parquet"
-        cache_path = Path(cache_dir) / key
+        cache_path = Path(cache_dir) / _cache_key(start_ts, end_ts, interval, tickers)
         if cache_path.exists():
             try:
                 return pd.read_parquet(cache_path)

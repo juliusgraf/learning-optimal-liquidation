@@ -234,6 +234,26 @@ def test_path_policy_bootstrap_deferred():
 # --------------------------------------------------------------------------- #
 # live download (deselected by default: -m "not network")
 # --------------------------------------------------------------------------- #
+# download cache key (regression: window-aware, not date-only)
+# --------------------------------------------------------------------------- #
+def test_cache_key_is_window_aware():
+    """Two intraday windows on the same date must NOT share a cache key.
+
+    Regression for the date-only key: a ``13:30-16:00`` run silently reused a
+    prior ``14:30-17:00`` download, so ``13:30-14:29`` was absent and got
+    back-filled to a flat value.
+    """
+    s1, e1 = ld.parse_session(DATE, "13:30", "16:00")
+    s2, e2 = ld.parse_session(DATE, "14:30", "17:00")
+    k1 = ld._cache_key(s1, e1, "1m", TICKERS)
+    assert k1 != ld._cache_key(s2, e2, "1m", TICKERS)  # different window
+    assert k1 == ld._cache_key(s1, e1, "1m", TICKERS)  # deterministic / same window
+    assert ld._cache_key(s1, e1, "5m", TICKERS) != k1  # interval participates
+    assert ld._cache_key(s1, e1, "1m", TICKERS[:-1] + ("AAPL",)) != k1  # tickers participate
+    assert k1.endswith(".parquet")
+
+
+# --------------------------------------------------------------------------- #
 @pytest.mark.network
 def test_live_download(tmp_path):
     pytest.importorskip("yfinance")

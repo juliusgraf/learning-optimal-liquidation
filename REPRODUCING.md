@@ -83,19 +83,42 @@ normalized to 100 at session start; ruling D13). It is the default in
 `configs/historical_sp500.yaml` and the source of truth — **no command is
 needed** to reproduce the paper.
 
-Regenerating an *equivalent* dataset for a **new** date (yfinance only serves
-1-minute bars for a ~30-day lookback, so the paper's Dec-2025 session cannot be
-re-fetched byte-for-byte — see `data/README.md`):
+> **Do not run the loader to reproduce the paper.** yfinance only serves
+> 1-minute bars for a **~30-day lookback**, so the paper's `2025-12-31` session
+> can no longer be fetched — `--date 2025-12-31` now fails loudly with
+> `yfinance returned no 1m bars ... must be within the last 30 days` (by design;
+> see `data/README.md`). The frozen `legacy/data.csv` above is the paper's data
+> and is used automatically.
+
+The loader is **only** for building a *new* (different) dataset on a **recent**
+date. Two real-world constraints shape the command (both enforced by the loader,
+which fails loudly otherwise):
+
+- **Date:** within yfinance's ~30-day 1m lookback (older dates → no bars).
+- **Session window inside regular trading hours (09:30–16:00 ET).** The paper's
+  14:30–17:00 window has a post-close tail (the auction is a *modeling*
+  construct, backed by the frozen CSV) — real intraday bars stop at the 16:00
+  close, so that window is always missing its last hour. Use a window that fits
+  in RTH and still spans exactly `clob_minutes + auction_minutes + 1 = 151`
+  one-minute bars. The example below uses **13:30–16:00** (CLOB 13:30–15:30,
+  auction 15:30–16:00, ending at the real close). `--fill ffill` patches the
+  single 16:00-labelled bar (yfinance labels the last RTH minute `15:59`).
+
+The exact command below is verified end-to-end (writes 151 rows + a metadata
+sidecar; one forward-filled minute, the close):
 
 ```bash
+# OPTIONAL — produces a NEW dataset, NOT the paper's.
+# Edit RECENT to a recent trading day within yfinance's ~30-day 1m lookback.
+RECENT=2026-06-12
 python3 -m lmm.data.load_yfinance_data \
     --tickers CAT PG GOOGL JPM MSFT \
-    --date 2025-12-31 --interval 1m \
-    --session-start 14:30 --session-end 17:00 \
+    --date "$RECENT" --interval 1m \
+    --session-start 13:30 --session-end 16:00 \
     --clob-minutes 120 --auction-minutes 30 \
-    --normalize first=100 \
-    --out data/mid_prices_2025-12-31.csv
-# then point configs/historical_sp500.yaml:midprice.historical.csv_path/date/symbols at it
+    --normalize first=100 --fill ffill \
+    --out "data/mid_prices_$RECENT.csv"
+# then set configs/historical_sp500.yaml: midprice.historical.{csv_path,date,symbols}
 ```
 
 ### Step 1 — One-shot full reproduction
