@@ -192,6 +192,39 @@ to normalized features.
 Each item: code location, confirmed/corrected diagnosis, resolution to implement in
 Phases 3–5.
 
+### Implementation status (added Phase 8)
+
+Every ruling D1–D20 is implemented and verified. Phase 8 re-ran the full suite
+in a fresh venv (**278 not-slow + 22 slow tests passing**, plus the 10 legacy
+characterization tests), exercised the whole train→evaluate→regret→figures→tables
+pipeline end-to-end with `--smoke`, and confirmed a same-seed double run produces
+a **bit-identical `metrics.csv`** (modulo the `wall_clock_s` timing column).
+"Phase" below is the phase that landed the implementation; the per-ruling
+diagnosis and binding resolution follow in the entries beneath this table.
+
+| Ruling | Phase | Implemented in (`src/lmm/…`) | Enforced by (`tests/…`, `docs/…`) |
+|---|---|---|---|
+| D1 — auction H_cl cache (Eq. 2) | 3 | `market/clearing.py` (Eq2Cache), `env/mdp.py` | `test_timing_conventions`, `test_rewards` |
+| D2 — CLOB H_cl one-step lag | 3 | `market/clob.py` (Algorithm 1), `env/mdp.py` | `test_timing_conventions`, `test_algorithm1` |
+| D3 — corrected Eq. signs / N⁺ naming | 3 | `market/clearing.py`, `env/{mdp,features,rewards}.py` | `test_clearing`, `test_sign_conventions` |
+| D4 — cancel semantics, cost, C(x) | 3 | `env/{rewards,action_spaces,mdp}.py` | `test_admissibility`, `test_rewards` |
+| D5 — CLOB reward clamp removed | 3 | `env/rewards.py` | `test_rewards` |
+| D6 — parameter source of truth | 1–2 | `configs/` ← `audit/PARAMS_FROM_CODE.md` | `test_skeleton` (config load) |
+| D7 — taker cancel p4 = 0.05 | 3 | `market/auction.py` | `test_algorithm2` |
+| D8 — no terminal inventory clip | 3 | `env/{rewards,mdp}.py` | `test_rewards`, `test_agent_env_contract` |
+| D9 — textbook DQN (+ DDPG/TD3/SAC) | 4 (5: cont.) | `agents/*`, `rl/*` | `test_dqn`, `test_continuous_agents`; `docs/rl_design.md`, `docs/continuous_action_extension.md` |
+| D10 — fresh per-component seeding | 2 | `utils/seeding.py` | `test_determinism` |
+| D11 — internal state + `paper_state()` | 3 | `env/{mdp,features}.py` | `test_admissibility`, `test_agent_env_contract` |
+| D12 — one library (no main/data dup) | 3 | `src/lmm` (whole package) | full suite |
+| D13 — historical data loader | 6 | `data/load_yfinance_data.py`, `configs/historical_sp500.yaml` | `test_data_loader` |
+| D14 — vectorized rough Heston/book | 3 | `market/{midprice,clob}.py` | `test_rough_heston` (allclose vs naive) |
+| D15 — τ = 0.95, χ = 0.99 both settings | 2 | `configs/base.yaml`, `market/clearing.py` | `test_algorithm1` + config (cite D15) |
+| D16 — one-sided benchmark curve | 3–4 | `market/clearing.py`, `agents/benchmarks.py` | `test_clearing`, `test_agent_env_contract` |
+| D17 — degenerate fallback H_cl = S^mid | 3 | `market/clearing.py`, `env/mdp.py` | `test_clearing` |
+| D18 — benchmark one-sided reward | 4 | `env/rewards.py`, `env/mdp.py` | `test_rewards` |
+| D19 — S̃ nearest-tick snapping | 4 | `agents/benchmarks.py` | benchmark eval traces (`test_agent_env_contract`, smoke) |
+| D20 — discounting conventions | 4 | `experiments/regret.py`, `agents/dqn.py` | `docs/metrics_schema.md`, `docs/rl_design.md` §5 |
+
 ### D1 (RULED) — Auction H_cl look-ahead. **Confirmed.**
 `main.py:639-658` (d:522-540). The time-t estimate is computed after sampling time-t
 exogenous events (`main.py:591-625`), after recording the agent's time-t order (the sum
