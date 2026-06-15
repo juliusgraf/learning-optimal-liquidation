@@ -55,15 +55,17 @@ reproducibility across machines:
 
 | Experiment (one `run_*.sh`)                      | Episodes        | Approx. wall-clock |
 |--------------------------------------------------|-----------------|--------------------|
-| synthetic_rough_heston, DQN                      | 2000            | ~6–8 min           |
-| synthetic_rough_heston, DDPG / TD3 / SAC (each)  | 2000            | ~12–15 min         |
-| historical_sp500, DQN (5 tickers, serial)        | 1000 × 5        | ~20–25 min         |
-| historical_sp500, DDPG / TD3 / SAC (5 tickers)   | 1000 × 5        | ~35–45 min each    |
+| synthetic_rough_heston, DQN                      | 1000            | ~3–4 min           |
+| synthetic_rough_heston, DDPG / TD3 / SAC (each)  | 1000            | ~6–8 min           |
+| historical_sp500, DQN (5 tickers, serial)        | 500 × 5         | ~10–13 min         |
+| historical_sp500, DDPG / TD3 / SAC (5 tickers)   | 500 × 5         | ~18–23 min each    |
 
-> **Full reproduction ≈ 4–6 CPU-hours single-threaded** (4 synthetic + 20
+> Episode budgets were tuned 2026-06-15 (synthetic 2000→1000, historical
+> 1000→500; all four algos plateau well before, AUDIT §F.3).
+> **Full reproduction ≈ 2–3 CPU-hours single-threaded** (4 synthetic + 20
 > historical training runs, plus final evaluation at 100 seeds each and the two
 > regret passes). Launching the eight `run_*.sh` in parallel brings wall-clock
-> down to roughly the slowest single launcher (~45 min, a historical continuous
+> down to roughly the slowest single launcher (~23 min, a historical continuous
 > run). The `--smoke` pipeline (below) completes in ~2 min and exercises every
 > code path end-to-end.
 
@@ -139,13 +141,13 @@ run is **4 synthetic + 20 historical = 24 training runs**.
 train → evaluate → regret(as) → regret(twap) internally):
 
 ```bash
-# Synthetic rough-Heston (rough_heston mid; 2000 episodes)
+# Synthetic rough-Heston (rough_heston mid; 1000 episodes)
 scripts/run_synthetic_dqn.sh   --seed 42
 scripts/run_synthetic_ddpg.sh  --seed 42
 scripts/run_synthetic_td3.sh   --seed 42
 scripts/run_synthetic_sac.sh   --seed 42
 
-# Historical S&P 500 (frozen legacy/data.csv; 1000 episodes; 5 tickers each)
+# Historical S&P 500 (frozen legacy/data.csv; 500 episodes; 5 tickers each)
 scripts/run_historical_dqn.sh  --seed 42        # add --symbol MSFT to restrict
 scripts/run_historical_ddpg.sh --seed 42
 scripts/run_historical_td3.sh  --seed 42

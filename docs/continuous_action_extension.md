@@ -288,9 +288,9 @@ drives every algorithm uniformly (`device`, `activation`, `reward_scale`,
 | field | DDPG | TD3 | SAC | meaning |
 |---|---|---|---|---|
 | actor_lr | 1e-4 | 3e-4 | 3e-4 | Adam lr, actor |
-| critic_lr | 1e-3 | 3e-4 | 3e-4 | Adam lr, critic(s) |
+| critic_lr | 3e-4 | 3e-4 | 3e-4 | Adam lr, critic(s). DDPG lowered 1e-3→3e-4 (2026-06-15) to fix the overestimation collapse — see AUDIT §F.3 |
 | hidden_layers | [64,64] | [64,64] | [64,64] | MLP widths (actor & critic) |
-| target_soft_tau | 0.005 | 0.005 | 0.005 | Polyak coefficient τ |
+| target_soft_tau | 0.0025 | 0.005 | 0.005 | Polyak coefficient τ (DDPG tightened 0.005→0.0025 with the retune, 2026-06-15) |
 | exploration_noise | gaussian | gaussian | — | `gaussian`/`ou` (SAC: intrinsic) |
 | exploration_noise_std | 0.1 | 0.1 | — | noise scale (× half-range) |
 | target_noise_std | — | 0.2 | — | target-policy smoothing σ (× half-range) |
@@ -310,7 +310,11 @@ not dominate the O(1) features and a spiking per-step `H_cl` cannot blow up the
 network input; the discrete DQN keeps the legacy raw `h_cl`/`s_mid`. This is
 observation-only — transitions, rewards, and reported metrics are unchanged.
 
-These are standard literature defaults (DDPG: Lillicrap et al. 2016; TD3:
+These start from standard literature defaults (DDPG: Lillicrap et al. 2016; TD3:
 Fujimoto et al. 2018; SAC: Haarnoja et al. 2018 with automatic temperature) and
-are the single source of truth (configs/, ruling D6 convention); they are tuned
-empirically when the Phase-6 numerical results are regenerated.
+are the single source of truth (configs/, ruling D6 convention). DDPG was
+retuned (2026-06-15): `critic_lr` 1e-3→3e-4 and `target_soft_tau` 0.005→0.0025
+to remove the deterministic-policy overestimation collapse (final-policy eval
+0.6k→15.8k, stable), and `eval_n_seeds` 8→24 for a less noisy best.pt selection
+— the structural cure is clipped double-Q (= TD3), this is the within-DDPG fix
+(AUDIT §F.3). TD3/SAC are unchanged (already stable).

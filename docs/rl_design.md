@@ -169,7 +169,7 @@ save final checkpoint
 | epsilon_warmup_episodes | 100 | episodes at ε_start |
 | epsilon_decay_episodes | 600 | episodes from start to end (≈0.6×episodes; synthetic 1000-ep budget). Historical (500 ep) overrides to 300 via scripts/run_historical_dqn.sh |
 | eval_interval_episodes | 100 | greedy-eval cadence |
-| eval_n_seeds | 8 | seeds per periodic eval (best.pt selection; disjoint from the final-eval test seeds) |
+| eval_n_seeds | 24 | seeds per periodic eval (best.pt selection; disjoint from the final-eval test seeds) |
 | final_eval_n_seeds | 100 | seeds for evaluate.py |
 | checkpoint_interval_episodes | 100 | resumable-checkpoint cadence |
 | activation | relu | MLP activation |
