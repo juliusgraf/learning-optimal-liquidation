@@ -39,8 +39,17 @@ clob_flow:
   Lc: 12             # CLOB book levels per side; main.py:1417
 
 auction_flow:
-  p1: 0.3            # new exogenous MM arrival prob; main.py:592 / data.py:475
-  p2: 0.2            # exogenous MM cancellation prob; main.py:597 / data.py:480
+  p1: 1.0            # new exogenous MM arrival prob. LEGACY/D6 value: 0.3
+                     # (main.py:592). DELIBERATE OVERRIDE (2026-06-15): with p2=0
+                     # this guarantees >=1 exogenous MM at every fresh auction solve
+                     # (from t_{n+2} on), bounding the clearing denominator
+                     # (sum K_i + sum K^a) away from 0 and removing the D->0 clearing
+                     # singularity. TRADE-OFF: densifies auction liquidity relative to
+                     # the thin-book closing regime of the paper's calibration (see the
+                     # singularity discussion / pending AUDIT note).
+  p2: 0.0            # exogenous MM cancellation prob. LEGACY/D6 value: 0.2
+                     # (main.py:597). Set to 0 so arrived MMs persist (with p1=1
+                     # this makes >=1 MM present at every fresh solve; see p1).
   p3: 0.3            # new taker arrival prob per side (independent); main.py:601,609
   p4: 0.05           # taker cancellation prob per side. RULING D7: the legacy
                      # Bernoulli(0.1) x fair-coin construction (main.py:616-625)
