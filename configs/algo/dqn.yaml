@@ -13,12 +13,24 @@ algo:
     lr: 3.0e-4                  # Adam; legacy main.py:1439
     loss: huber                 # SmoothL1
     grad_clip_norm: 1.0         # legacy convention
-    hidden_layers: [16, 16]     # per phase network (recorded in rl_design.md)
-    target_update_interval: 1000  # hard update every C env steps (Mnih-style)
-    target_soft_tau: null       # optional Polyak; null = hard updates
+    hidden_layers: [64, 64]     # per phase network (recorded in rl_design.md).
+                                # WIDENED from legacy [16,16] (2026-06-15): the
+                                # 16-wide net under-fit (flat/noisy eval, no
+                                # convergence in the 2000-ep diagnostic); [64,64]
+                                # matches the continuous agents' width.
+    target_update_interval: 1000  # hard-update cadence (ignored when soft_tau set)
+    target_soft_tau: 0.005      # Polyak soft updates (2026-06-15): smoother
+                                # targets, fixes the hard-update eval collapse
+                                # (ep1299->223) + grad-norm drift seen with hard
+                                # every-1000 updates. Soft-tau is sanctioned (D9).
     updates_per_env_step: 1     # gradient steps per eligible update
     update_every: 1             # update every N env steps
-    reward_scale: 1.0           # reward scaling INSIDE replay only
+    reward_scale: 1.0e-3        # reward scaling INSIDE replay only (reported
+                                # metrics stay in paper units). The paper's
+                                # rewards are O(1e3-1e6) (auction/terminal terms
+                                # ~K^a*H*(H-S^a) with H~100); 1e-3 keeps Bellman
+                                # targets O(1-100) so the clipped gradients are
+                                # not swamped. Was 1.0 -> value-target blow-up.
     activation: relu            # mlp activation (relu | tanh | elu)
     device: cpu                 # torch device
     checkpoint_interval_episodes: 100  # periodic resumable checkpoints

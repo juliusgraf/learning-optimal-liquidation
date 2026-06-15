@@ -55,10 +55,22 @@ class FeatureExtractor:
         I_max, Lc, V_max = grid.I_max, clob_flow.Lc, clob_flow.V_max
         La, L_max = auction_flow.La, auction_flow.L_max
 
+        # Affine price normalization for h_cl_norm / s_mid_norm (continuous
+        # agents): centered at the initial mid S0, scaled, then clipped. The
+        # legacy raw h_cl / s_mid getters are untouched.
+        S0 = grid.S0
+        p_scale = max(float(params.price_norm_scale), 1e-12)
+        p_clip = float(params.price_norm_clip)
+
+        def price_norm(getter: Callable) -> Callable:
+            return lambda env: float(np.clip((getter(env) - S0) / p_scale, -p_clip, p_clip))
+
         registry: dict[str, Callable] = {
             "inv_norm": lambda env: env.inventory / max(1.0, I_max),
             "h_cl": lambda env: env.h_cl,  # raw (~100), as legacy
             "s_mid": lambda env: env.s_mid,  # raw (~100), as legacy
+            "h_cl_norm": price_norm(lambda env: env.h_cl),  # centered at S0, clipped
+            "s_mid_norm": price_norm(lambda env: env.s_mid),
             "depth_ask_norm": lambda env: env.depth_ask / max(1, Lc),
             "depth_bid_norm": lambda env: env.depth_bid / max(1, Lc),
             "top_ask_norm": lambda env: env.top_ask / V_max,

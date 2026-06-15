@@ -21,8 +21,9 @@ Design mirrors the DQN (docs/rl_design.md):
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Optional
 
 import numpy as np
 import torch
@@ -64,6 +65,15 @@ class ContinuousHyperparams:
     eval_n_seeds: int
     final_eval_n_seeds: int
     checkpoint_interval_episodes: int
+    # Optional symmetric clip on the SCALED reward stored in replay (None =
+    # off). The paper's per-step fictive auction reward is unbounded; the
+    # deterministic/gradient actors exploit it, so the MSE critic targets blow
+    # up even after reward_scale. Clipping bounds the regression target
+    # (replay-only; reported metrics stay in paper units). kw_only so the
+    # default does not collide with subclasses' required positional fields
+    # (DDPG/TD3/SAC add their own); the default keeps frozen fixture configs
+    # (which predate this knob) loading.
+    reward_clip: Optional[float] = field(default=None, kw_only=True)
 
 
 class ContinuousActorCriticAgent(Agent):
@@ -216,10 +226,13 @@ class ContinuousActorCriticAgent(Agent):
         next_cancel_adm = False
         if not tr.done and tr.next_phase == "auction" and tr.next_mask is not None:
             next_cancel_adm = bool(np.asarray(tr.next_mask).all())
+        reward = float(tr.reward) * self.hp.reward_scale
+        if self.hp.reward_clip is not None:
+            reward = float(np.clip(reward, -self.hp.reward_clip, self.hp.reward_clip))
         self.replay[tr.phase].add(
             obs=np.asarray(tr.obs, dtype=np.float32),
             action=action_vec,
-            reward=float(tr.reward) * self.hp.reward_scale,
+            reward=reward,
             next_obs=None if tr.done else np.asarray(tr.next_obs, dtype=np.float32),
             done=tr.done,
             junction=junction,

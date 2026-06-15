@@ -540,6 +540,22 @@ the estimate (`main.py:657-658`) but the *previous H_cl* at the terminal
 cases** (estimate and terminal alike; S^mid is frozen at τ_op during the auction).
 Log when the fallback binds.
 
+**D17 refinement — float-safety slope guard (author, 2026-06-14).** The
+exactly-zero test `ΣK <= 0` is replaced by a machine-scale guard
+`ΣK <= _SLOPE_EPS` (`_SLOPE_EPS = 1e-8`, `src/lmm/market/clearing.py`) in the
+linear solve, the hockey-stick solve, and Algorithm 1's `S_tilde` denominator:
+an aggregate slope that should be exactly zero but carries floating-point
+residue now reliably takes the S^mid fallback instead of producing a spurious
+huge price. This is a NUMERICAL guard ONLY — economically small-but-real slopes
+(`ΣK ~ 1e-2`, which legitimately yield large clearing prices) are NOT
+regularized; that is faithful model behavior, and the RL-side instability from
+chasing it is handled by the continuous agents' replay reward clipping
+(`reward_clip`), not by altering the clearing. Pinned by
+`tests/test_clearing.py::test_float_safety_guard_treats_sub_eps_slope_as_zero`
+and `::test_economically_small_slope_is_not_regularized`. Normal seeded runs are
+unaffected (the guard fires only below 1e-8, far below any realized slope), so
+determinism goldens are unchanged.
+
 ### Phase-4 items — ANSWERED (rulings D18–D19, 2026-06-12)
 
 New ambiguities that arose while implementing ruling D16 (benchmarks' one-sided
@@ -638,3 +654,80 @@ Regeneration instructions are in the test file's docstring.
     τ = 0.95 / χ = 0.99 in both settings; benchmarks use the one-sided
     z·q(p−S̃)₊ curve; degenerate-clearing fallback is H_cl = S^mid in all cases.
     No open questions remain — everything else is covered by rulings D1–D17.
+
+---
+
+## F. Maintenance-phase parameter changes (post-Phase-8; FOR AUTHOR RATIFICATION)
+
+These are maintenance/extension-mode changes made while stabilising the
+continuous-action agents (DDPG/TD3/SAC) on the seeded `reproduce_all` run. They
+do **not** touch the clearing math, the reward forms, the timing conventions, or
+Algorithm 2's *structure*; one is a learner-side knob and one is a generative
+*parameter* value (config is the source of truth per D6). The second changes the
+auction's economic regime and is flagged here for the author to **ratify or
+revise** when regenerating `tab:params_generative`.
+
+### F.0 The auction clearing singularity (diagnosis)
+
+The continuous agents' returns blew up to 1e9–1e11 (regret ≈ −1e11) on the
+seeded run. Root cause is **not** a bug: the clearing price (corrected Prop.
+linear) is `p* = N / D` with aggregate auction supply slope
+`D = Σ_i K_i + Σ_s (1−θ) K^a` and `N = Σ K_i S_i + Σ(1−θ)K^a S^a + (Σν⁺−Σν⁻)`.
+As `D → 0` the slope-weighted price terms vanish with it, but the **net taker
+imbalance** `(Σν⁺−Σν⁻)` does not — so `p* → ∞`. `D → 0` requires **no exogenous
+MM present (M=0) AND the agent's live slope ≈ 0** (all slopes are ≥ 0). The
+continuous actor learns to set `K^a → 0` exactly in the `M=0` states, where the
+fictive per-step auction reward `K^a·H_cl·(H_cl−S^a)` diverges. This is faithful
+model behaviour (Prop. linear + ruling D17: economically-small slopes are NOT
+regularised), so it is handled at the learner/parameter level, never at the
+clearing.
+
+### F.1 `reward_clip` 25 → 8 (continuous configs; learner-side, no model change)
+
+`configs/algo/{ddpg,td3,sac}.yaml`. The replay-only reward clip (applied in
+`continuous_base.py` AFTER `reward_scale`, to the value the critic regresses on;
+reported returns use the raw env reward) was recalibrated to the honest reward
+envelope. The largest *legitimate* per-transition reward is the terminal reward,
+dominated by `λ·I_max² = 0.5·100² = 5000` plus bounded PnL (AS/TWAP reach ~5500
+paper ≈ 5.5 scaled). clip=8 sits just above this — it never truncates the real
+objective signal, yet bounds the critic target to the honest scale, killing the
+1e9–1e11 target divergence. The old 25 left the target ~4.5× a legit terminal.
+Pinned by `tests/test_reward_scaling.py::test_reward_clip_calibrated_to_honest_envelope`.
+This is purely learner-side and does not affect the benchmarks or any reported
+metric definition.
+
+### F.2 `p1` 0.3 → 1.0, `p2` 0.2 → 0.0 (base.yaml; GENERATIVE PARAMETER — RATIFY)
+
+`configs/base.yaml`. `p1` (new exogenous MM arrival prob) and `p2` (MM
+cancellation prob). With `p1=1, p2=0` at least one exogenous MM is present at
+every fresh auction solve (from `t_{n+2}`; the open `t_{n+1}` reads the cached
+CLOB `H`), so `D ≥ Σ_i K_i > 0` always and the `D → 0` singularity cannot occur —
+including when the agent zeroes its own `K^a` (it cannot remove the exogenous
+MMs). Verified (learner-independent, abstain policy, 30 episodes):
+degenerate-clearing fallbacks **313 → 0**, mean MMs/auction-step **1.84 → 9.48**,
+`frac(M=0)` 36.9% → 3.2% (the residual is exactly the safe cached-`H` open step).
+End-to-end (TD3 500-ep synthetic smoke, with F.1): singular episodes
+(`|ret|>1e5`) **15.8% → 0%**, eval returns bounded O(1e4) vs spikes to 1.38e10,
+median ≈ 10.6k ≈ AS.
+
+**TRADE-OFF the author must weigh.** `p1`/`p2` are D6-pinned to the legacy
+instantiation (0.3 / 0.2). Setting `p1=1, p2=0` is a deliberate config choice
+(D6: config is source of truth; `tab:params_generative` regenerated from it),
+NOT an author ruling. It **densifies auction liquidity** (≈9.5 MMs/step vs ≈1.8),
+making the closing auction a thicker-book regime than the paper's thin-liquidity
+calibration — which softens the very thin-liquidity phenomenon a closing-auction
+model studies. Note also `K_min` (`U₁`) is still 0.1, so a lone early MM gives
+only `D ≥ 0.1` (a weak floor); `|H_cl|` can still reach ~120 at the first fresh
+solve (bounded, no catastrophe). Options for the author:
+  (i) **Ratify** `p1=1, p2=0` (accept the denser-liquidity auction);
+  (ii) **Revise** to a milder `p1`/`p2`/`U₁` that lowers — but does not
+       eliminate — the singularity's frequency (it stays reachable for any
+       `p1<1`), relying more on F.1 + robust reporting;
+  (iii) Express guaranteed baseline liquidity **structurally** instead — a
+        persistent reserve MM with fixed slope `K_reserve` (always present, never
+        cancels) added to Algorithm 2 — which removes the singularity by
+        construction and is economically explicit, but is a model-structure
+        change (would be a new ruling, not a parameter).
+The singularity is `imbalance / slope`: `p1`/`p2`/`U₁` change its **rate**, only
+a structural floor (option iii, or a minimum agent slope `K^a ≥ 1` that removes
+the `K^a=0 ≡ abstain` action) changes its **existence**.

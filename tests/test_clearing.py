@@ -17,6 +17,7 @@ import pytest
 
 from lmm.config import GridParams
 from lmm.market.clearing import (
+    _SLOPE_EPS,
     ClearingInputs,
     Eq2Cache,
     solve_clearing_with_hockey_stick,
@@ -188,6 +189,45 @@ def degenerate_inputs() -> ClearingInputs:
 def test_linear_degenerate_falls_back_to_mid():
     p, degenerate = solve_linear_clearing(degenerate_inputs())
     assert degenerate and p == FALLBACK
+
+
+# Float-safety slope guard (author refinement of D17, 2026-06-14): a slope that
+# is zero up to floating-point residue is treated as zero; an economically
+# small but real slope is NOT regularized (faithful model behavior).
+
+
+def test_float_safety_guard_treats_sub_eps_slope_as_zero():
+    """ΣK in (0, _SLOPE_EPS] -> S^mid fallback (spurious price avoided)."""
+    inputs = ClearingInputs(
+        K_exo=np.array([_SLOPE_EPS / 2.0]),
+        S_exo=np.array([100.0]),
+        K_agent=np.array([]),
+        S_agent=np.array([]),
+        net_market_volume=5.0,  # would give a huge spurious p* if divided through
+        fallback_mid=FALLBACK,
+    )
+    p, degenerate = solve_linear_clearing(inputs)
+    assert degenerate and p == FALLBACK
+
+
+def test_economically_small_slope_is_not_regularized():
+    """ΣK just ABOVE _SLOPE_EPS clears normally and CAN produce a large price
+    (model fidelity: thin books genuinely move the clearing price; the guard is
+    machine-scale only). This pins the chosen float-safety-only semantics."""
+    den = _SLOPE_EPS * 100.0  # = 1e-6, far above machine residue, still tiny
+    inputs = ClearingInputs(
+        K_exo=np.array([den]),
+        S_exo=np.array([100.0]),
+        K_agent=np.array([]),
+        S_agent=np.array([]),
+        net_market_volume=10.0,
+        fallback_mid=FALLBACK,
+    )
+    p, degenerate = solve_linear_clearing(inputs)
+    assert not degenerate
+    # p* = (den*100 + 10)/den ~ 1e7  -- intentionally NOT clamped (the model).
+    assert p == pytest.approx((den * 100.0 + 10.0) / den)
+    assert p > 1e6
 
 
 def test_eq2_cache_counts_and_logs_fallback(synthetic_cfg, caplog):

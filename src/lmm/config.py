@@ -212,6 +212,15 @@ class FeatureParams:
 
     clob: tuple[str, ...]  # 8 dims; feat_clob main.py:1443-1450
     auction: tuple[str, ...]  # 7 dims; feat_auction main.py:1452-1457
+    # Affine normalization for the OPTIONAL price features ``h_cl_norm`` /
+    # ``s_mid_norm`` only (the legacy raw ``h_cl`` / ``s_mid`` ignore these):
+    # x_norm = clip((x - S0) / price_norm_scale, -clip, +clip), centered at the
+    # initial mid S0. Used by the continuous agents (the raw ~100-valued price
+    # features sit next to O(1) features and, before the small-slope clearing
+    # guard, can spike); the discrete DQN keeps the legacy raw features.
+    # Defaults are inert (no config that uses the raw names is affected).
+    price_norm_scale: float = 1.0
+    price_norm_clip: float = 20.0
 
 
 @dataclass(frozen=True)

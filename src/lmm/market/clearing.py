@@ -17,7 +17,10 @@ PLUS sign: buy market volume weakly raises p*, sell volume weakly lowers it
 (invariants asserted in tests/test_sign_conventions.py).
 
 Degenerate fallback (ruling D17): H_cl = S^mid in ALL zero-slope cases,
-estimate and terminal alike; logged when it binds.
+estimate and terminal alike; logged when it binds. A machine-scale
+``_SLOPE_EPS`` float-safety guard treats an aggregate slope that should be
+exactly zero (but for floating-point residue) as zero (author refinement,
+2026-06-14); it does NOT regularize economically small slopes.
 """
 
 from __future__ import annotations
@@ -46,6 +49,17 @@ logger = logging.getLogger(__name__)
 
 _EPS = 1e-12  # legacy eps (main.py:379)
 
+# Float-safety slope guard (ruling D17, author refinement 2026-06-14): an
+# aggregate clearing slope ΣK that should be exactly zero can leave a tiny
+# non-zero residue from floating-point cancellation; dividing by it would
+# produce a spurious clearing price. We treat ΣK <= _SLOPE_EPS as zero and take
+# the S^mid fallback. This is a NUMERICAL guard ONLY (cf. the legacy _EPS
+# above), deliberately at machine scale: economically small-but-real slopes
+# (ΣK ~ 1e-2, which legitimately produce large clearing prices) are NOT
+# regularized — that is faithful model behavior, and RL-side instability from
+# chasing it is handled by the agents' reward clipping, not here.
+_SLOPE_EPS = 1e-8
+
 
 class Algo1Estimator:
     """Algorithm 1: hypothetical clearing price during the CLOB phase.
@@ -57,7 +71,8 @@ class Algo1Estimator:
     (legacy choice, counted in ``n_khat_clamped``);
     S_tilde = sum_k K_hat alpha k / sum_k K_hat;
     H_{t+1} = H_t + tau (S_tilde - H_t), smoothing SKIPPED when
-    sum_k K_hat = 0 (counted in ``n_zero_slope_skips``).
+    sum_k K_hat <= _SLOPE_EPS (counted in ``n_zero_slope_skips``;
+    float-safety guard, was == 0).
     H_0 = initial mid (= 100); ruling D15: tau = 0.95 in both settings.
     The output is H_{t+1}: input to the agent's time-(t+1) state and reward;
     the reward at t = 0 uses H_0.
@@ -128,10 +143,12 @@ class Algo1Estimator:
                 num += k_hat * (alpha * k)
                 den += k_hat
 
-        if den > 0.0:
+        if den > _SLOPE_EPS:
             s_tilde = num / den
             self._h = self._h + self.params.tau * (s_tilde - self._h)
         else:
+            # (Near-)zero aggregate K_hat: skip smoothing, keep H (same
+            # float-safety guard as the clearing solves; was den > 0.0).
             self.n_zero_slope_skips += 1
         return self._h
 
@@ -177,12 +194,12 @@ def solve_linear_clearing(inputs: ClearingInputs) -> tuple[float, bool]:
          / [sum K_i + sum (1-theta) K^a].
 
     Invariants (asserted in tests): adding buy market volume weakly RAISES
-    p*; sell volume weakly LOWERS it. Zero denominator => ``fallback_mid``
-    (ruling D17); the second return value flags the degenerate case so the
-    caller can count and log it.
+    p*; sell volume weakly LOWERS it. (Near-)zero denominator => ``fallback_mid``
+    (ruling D17 + the ``_SLOPE_EPS`` float-safety guard); the second return
+    value flags the degenerate case so the caller can count and log it.
     """
     den = float(np.sum(inputs.K_exo)) + float(np.sum(inputs.K_agent))
-    if den <= 0.0:
+    if den <= _SLOPE_EPS:
         return inputs.fallback_mid, True
     num = (
         float(inputs.K_exo @ inputs.S_exo)
@@ -260,7 +277,7 @@ def solve_clearing_with_hockey_stick(
     if not degenerate and root <= s_tilde:
         return root, False
     den = float(np.sum(inputs.K_exo)) + float(np.sum(inputs.K_agent)) + z_slope
-    if den <= 0.0:
+    if den <= _SLOPE_EPS:
         return inputs.fallback_mid, True
     num = (
         float(inputs.K_exo @ inputs.S_exo)

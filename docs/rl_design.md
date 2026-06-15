@@ -163,7 +163,7 @@ save final checkpoint
 | target_soft_tau | null | optional Polyak coefficient |
 | updates_per_env_step | 1 | gradient steps per eligible update |
 | update_every | 1 | env steps between updates |
-| reward_scale | 1.0 | replay-only reward scaling |
+| reward_scale | 1e-3 | replay-only reward scaling (paper rewards are O(1e3-1e6); 1e-3 keeps Bellman targets O(1-100). Reported metrics stay in paper units) |
 | epsilon_start / end | 1.0 / 0.01 | ε-schedule endpoints |
 | epsilon_warmup_episodes | 100 | episodes at ε_start |
 | epsilon_decay_episodes | 300 | episodes from start to end |

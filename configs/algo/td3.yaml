@@ -19,7 +19,15 @@ algo:
     grad_clip_norm: 1.0
     updates_per_env_step: 1
     update_every: 1
-    reward_scale: 1.0
+    reward_scale: 1.0e-3        # see configs/algo/ddpg.yaml: paper rewards
+                                # O(1e3-1e6); 1.0 diverged the MSE critic. 1e-3
+                                # keeps Bellman targets O(1-100).
+    reward_clip: 8.0            # symmetric clip on the SCALED replay reward,
+                                # calibrated to the honest terminal envelope (~5.5
+                                # scaled); see configs/algo/ddpg.yaml. Sits just above
+                                # legitimate rewards, bounds the critic target to the
+                                # honest scale (kills the 1e9-1e11 divergence); the old
+                                # 25.0 was ~4.5x a legit terminal (too loose).
     activation: relu
     device: cpu
     continuous_cancel: threshold  # threshold (default) | never
@@ -36,3 +44,13 @@ algo:
     target_noise_std: 0.2       # target-policy smoothing sigma (x half-range)
     target_noise_clip: 0.5      # smoothing clip (x half-range)
     policy_delay: 2             # delayed actor / target-sync cadence
+
+# Continuous agents normalize the raw price features (see configs/algo/ddpg.yaml);
+# the discrete DQN keeps the legacy raw h_cl/s_mid. Mirrors base.yaml exactly
+# (only h_cl->h_cl_norm, s_mid->s_mid_norm).
+features:
+  clob:
+    [inv_norm, h_cl_norm, s_mid_norm, depth_ask_norm, depth_bid_norm,
+     top_ask_norm, top_bid_norm, t_norm]
+  auction:
+    [inv_norm, h_cl_norm, s_mid_norm, n_mm_norm, n_buy_norm, n_sell_norm, t_norm]

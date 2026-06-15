@@ -157,8 +157,15 @@ next_cancel_admissible)` where:
   This is the standard "store the committed (squashed, projected) action" choice
   in continuous control. (The env still *executes* `Π(a)`; the discrepancy is
   the deliberate, documented snapping discretization.)
-- `r̃ = reward_scale · r` (scaling inside replay only; reported metrics stay in
-  paper units).
+- `r̃ = clip(reward_scale · r, ±reward_clip)` (scaling AND optional symmetric
+  clipping inside replay only; reported metrics stay in paper units). The
+  paper's per-step fictive auction reward is unbounded and the
+  deterministic/stochastic actors exploit it, so even after `reward_scale` the
+  MSE critic targets diverged (DDPG `loss_auction`→1e18, SAC→1e26/`inf`);
+  `reward_clip` bounds the regression target. Defaults `reward_scale = 1e-3`,
+  `reward_clip = 8.0` (calibrated to the honest terminal-reward envelope ~5.5
+  scaled; see `configs/algo/ddpg.yaml` and AUDIT §F.1; the discrete DQN keeps
+  `reward_clip` off — it uses robust Huber and was not part of this instability).
 - `junction` flags a CLOB transition whose next state is the auction open.
 - `next_cancel_admissible` is the auction cancel-admissibility `C(x') > 0` of the
   next state (analogue of DQN's stored `next_mask`; needed because the pruned
@@ -293,6 +300,15 @@ drives every algorithm uniformly (`device`, `activation`, `reward_scale`,
 | auto_alpha | — | — | true | auto-tune α to target entropy |
 | target_entropy | — | — | auto | `−dim(𝒜_phase)` per phase |
 | continuous_cancel | threshold | threshold | threshold | `threshold`/`never` (§1.4) |
+| reward_scale | 1e-3 | 1e-3 | 1e-3 | replay-only reward scaling (paper rewards O(1e3–1e6)) |
+| reward_clip | 8.0 | 8.0 | 8.0 | replay-only symmetric reward clip (bounds the fictive-auction-reward exploit; calibrated to the honest envelope, AUDIT §F.1) |
+
+The continuous configs also normalize the raw ~100-valued price features
+(`h_cl_norm`, `s_mid_norm`: centered at the initial mid `S0`, divided by
+`features.price_norm_scale`, clipped to `±features.price_norm_clip`) so they do
+not dominate the O(1) features and a spiking per-step `H_cl` cannot blow up the
+network input; the discrete DQN keeps the legacy raw `h_cl`/`s_mid`. This is
+observation-only — transitions, rewards, and reported metrics are unchanged.
 
 These are standard literature defaults (DDPG: Lillicrap et al. 2016; TD3:
 Fujimoto et al. 2018; SAC: Haarnoja et al. 2018 with automatic temperature) and

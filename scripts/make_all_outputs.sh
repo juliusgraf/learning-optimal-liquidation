@@ -4,15 +4,38 @@
 # per-run figures/tables, then the cross-algorithm combined figures/tables per
 # setting under results/<setting>/_combined/. Does NOT train.
 #
-# Usage: scripts/make_all_outputs.sh
+# The combined (cross-algorithm) outputs require COMMON RANDOM NUMBERS across
+# the algorithms being compared: every run in a combined group must share one
+# master seed, or the eval-summary / historical tables abort with a CRN
+# violation (tables.py: "env seeds differ between policies"). results/ often
+# accumulates runs from several seeds (e.g. dqn_seed42, dqn_seed97, sweeps,
+# acceptance runs); mixing them is exactly what breaks the combined tables.
+# Therefore the COMBINED step is scoped to a single master seed (read from each
+# run's seed.txt). Per-run outputs are still produced for every finished run.
+#
+# Usage: scripts/make_all_outputs.sh [--seed N]
+#   --seed N : master seed for the combined groups. Default: 42 if present,
+#              else the only seed present, else the smallest (with a warning).
 set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
+
+COMBINED_SEED=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --seed) COMBINED_SEED="${2:-}"; shift 2 ;;
+    --seed=*) COMBINED_SEED="${1#*=}"; shift ;;
+    *) echo "unknown argument: $1" >&2; exit 2 ;;
+  esac
+done
 
 if [[ ! -d results ]]; then
   echo "no results/ directory; run a run_*.sh script first" >&2
   exit 1
 fi
+
+# Read a run's master seed from seed.txt (the authoritative provenance file).
+run_seed() { tr -dc '0-9' < "$1/seed.txt" 2>/dev/null || true; }
 
 echo "== discovering finished runs (checkpoints/final.pt) =="
 finished=()
@@ -26,6 +49,7 @@ if [[ ${#finished[@]} -eq 0 ]]; then
 fi
 printf '  %s\n' "${finished[@]}"
 
+# -- per-run outputs (every finished run; no cross-run mixing here) -----------
 for rd in "${finished[@]}"; do
   echo "== per-run outputs: $rd =="
   if [[ -f "$rd/eval/records.csv" ]]; then
@@ -38,17 +62,56 @@ for rd in "${finished[@]}"; do
   python3 -m lmm.experiments.make_tables  --run-dir "$rd"
 done
 
+# -- combined cross-algorithm outputs per setting (single seed, CRN-safe) -----
 echo "== combined cross-algorithm outputs per setting =="
 for setting_dir in results/*/; do
   setting="$(basename "$setting_dir")"
-  # Only runs WITH eval records feed the combined outputs (figures a-e read the
-  # first run dir, figure f / multi-algo tables read all of them).
-  group=()
+  [[ "$setting" == "_combined" ]] && continue
+
+  # Candidate runs: finished, in this setting, WITH eval records.
+  candidates=()
+  seeds_present=""
   for rd in "${finished[@]}"; do
-    [[ "$(basename "$(dirname "$rd")")" == "$setting" && -f "$rd/eval/records.csv" ]] && group+=("$rd")
+    [[ "$(basename "$(dirname "$rd")")" == "$setting" ]] || continue
+    [[ -f "$rd/eval/records.csv" ]] || continue
+    candidates+=("$rd")
+    s="$(run_seed "$rd")"
+    [[ -n "$s" ]] && seeds_present="$seeds_present $s"
   done
-  [[ ${#group[@]} -eq 0 ]] && continue
-  echo "  setting=$setting (${#group[@]} runs)"
+  [[ ${#candidates[@]} -eq 0 ]] && continue
+
+  uniq_seeds=$(echo "$seeds_present" | tr ' ' '\n' | grep -v '^$' | sort -un)
+
+  # Pick the combined seed: explicit --seed, else single present, else 42, else smallest.
+  target="$COMBINED_SEED"
+  if [[ -z "$target" ]]; then
+    n_seeds=$(echo "$uniq_seeds" | grep -c .)
+    if [[ "$n_seeds" -eq 1 ]]; then
+      target="$uniq_seeds"
+    elif echo "$uniq_seeds" | grep -qx 42; then
+      target=42
+    else
+      target=$(echo "$uniq_seeds" | head -n1)
+    fi
+  fi
+
+  # Filter candidates to the target seed (CRN: combined group shares one seed).
+  group=()
+  skipped=""
+  for rd in "${candidates[@]}"; do
+    if [[ "$(run_seed "$rd")" == "$target" ]]; then
+      group+=("$rd")
+    else
+      skipped="$skipped $(basename "$rd")(seed=$(run_seed "$rd"))"
+    fi
+  done
+
+  if [[ ${#group[@]} -eq 0 ]]; then
+    echo "  setting=$setting: no runs at seed=$target (present:$(echo $uniq_seeds | tr '\n' ' ')); skipping combined" >&2
+    continue
+  fi
+  echo "  setting=$setting seed=$target (${#group[@]} runs)"
+  [[ -n "$skipped" ]] && echo "    excluded from combined (other seeds):$skipped (pass --seed to choose)"
   python3 -m lmm.experiments.make_figures --run-dir "${group[@]}" --out "results/${setting}/_combined/figures"
   python3 -m lmm.experiments.make_tables  --run-dir "${group[@]}" --out "results/${setting}/_combined/tables"
 done
