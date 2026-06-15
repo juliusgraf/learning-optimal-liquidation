@@ -81,7 +81,7 @@ def test_config_binding_values_synthetic() -> None:
     assert cfg.reward.d == 0.1 and cfg.reward.lambda_inv == 0.5 and cfg.reward.q == 1.0
     assert cfg.reward.k_star == 1000 and cfg.grid.alpha == 0.01  # kappa=0.1 <=> k*alpha=10
     assert cfg.reward.numerical_guard is False  # D8: default OFF
-    assert cfg.clob_flow.lambda0 == 1.0 and cfg.experiment.episodes == 2000
+    assert cfg.clob_flow.lambda0 == 1.0 and cfg.experiment.episodes == 1000  # tuned 2026-06-15 (was 2000)
     assert cfg.midprice.model == "rough_heston"
     rh = cfg.midprice.rough_heston
     assert rh is not None and (rh.H, rh.rho, rh.v0, rh.theta) == (0.1, -0.7, 0.02, 0.04)
@@ -92,7 +92,7 @@ def test_config_binding_values_synthetic() -> None:
 
 def test_config_binding_values_historical() -> None:
     cfg = load_config(CONFIGS / "base.yaml", CONFIGS / "historical_sp500.yaml")
-    assert cfg.clob_flow.lambda0 == 60.0 and cfg.experiment.episodes == 1000
+    assert cfg.clob_flow.lambda0 == 60.0 and cfg.experiment.episodes == 500  # tuned 2026-06-15 (was 1000)
     assert cfg.algo1.tau == 0.95  # D15: legacy historical 0.99 NOT reproduced
     assert cfg.midprice.model == "historical"
     hist = cfg.midprice.historical

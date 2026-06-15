@@ -5,7 +5,9 @@
 experiment:
   name: synthetic_rough_heston
   setting: synthetic_rough_heston
-  episodes: 2000          # main.py:1438
+  episodes: 1000          # 2026-06-15: all four algos plateau well before 1000
+                          # (TD3/SAC by ~ep400, DQN/DDPG best policy by ~ep500);
+                          # 2000 (legacy main.py:1438) added only wall-clock.
 
 clob_flow:
   lambda0: 1.0            # main.py:1419 — event-driven hat-grid genuinely skips

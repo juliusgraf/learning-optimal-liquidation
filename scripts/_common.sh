@@ -18,6 +18,7 @@ cd "$REPO_ROOT"
 SEED=""
 SMOKE=0
 SYMBOL=""
+EXTRA_OVERRIDES=()   # optional per-runner `-o key=value` train overrides
 
 parse_common_args() {
   while [[ $# -gt 0 ]]; do
@@ -59,6 +60,11 @@ run_experiment() {
   else
     eval_args=(--trace-episodes 1)
   fi
+
+  # Per-runner extra train overrides (e.g. the historical DQN epsilon schedule,
+  # which must track the shorter episode budget). Set by the caller before
+  # run_experiment/run_historical; appended AFTER any smoke overrides.
+  train_over+=( ${EXTRA_OVERRIDES[@]+"${EXTRA_OVERRIDES[@]}"} )
 
   # Guard empty-array expansion for bash 3.2 (macOS) under `set -u`.
   echo ">>> train ${run_dir}"

@@ -50,13 +50,23 @@ algo:
     device: cpu                 # torch device
     continuous_cancel: threshold  # auction cancel: threshold (default) | never
     eval_interval_episodes: 100 # greedy eval cadence (deterministic actor)
-    eval_n_seeds: 8
+    eval_n_seeds: 24            # RETUNE 2026-06-15: 8 was too noisy for best.pt
+                                # selection / the eval curve; 24 (matches DQN).
     final_eval_n_seeds: 100
     checkpoint_interval_episodes: 100
     # -- DDPG-specific --------------------------------------------------------
     actor_lr: 1.0e-4            # Adam, actor
-    critic_lr: 1.0e-3           # Adam, critic
-    target_soft_tau: 0.005      # Polyak averaging
+    critic_lr: 3.0e-4           # Adam, critic. RETUNE 2026-06-15: LOWERED from
+                                # 1.0e-3. The aggressive 1e-3 critic drove the
+                                # deterministic-policy overestimation runaway:
+                                # eval found a good policy (~20k) by ~ep200 then
+                                # COLLAPSED (final.pt ~0). At 3e-4 the collapse is
+                                # gone (final.pt 15.8k > AS+TWAP, stable rising
+                                # curve), synthetic AND historical. The structural
+                                # cure is clipped double-Q (= TD3); this calmer
+                                # critic is the within-DDPG fix. AUDIT sec F.3.
+    target_soft_tau: 0.0025     # RETUNE 2026-06-15: 0.005 -> 0.0025, slower
+                                # target tracking (less overestimation feedback).
     exploration_noise: gaussian # gaussian | ou (eval: none)
     exploration_noise_std: 0.1  # noise scale (x action half-range)
 

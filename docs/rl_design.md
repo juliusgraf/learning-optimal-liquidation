@@ -155,20 +155,21 @@ save final checkpoint
 | buffer_size | 50000 | replay capacity per phase |
 | min_buffer | 5000 | learning starts (per phase) |
 | batch_size | 128 | minibatch size |
-| lr | 3e-4 | Adam learning rate |
+| lr | 1.5e-4 | Adam learning rate (lowered from 3e-4, 2026-06-15: calmer updates curb the overestimation-driven late-eval decay) |
 | loss | huber | TD loss |
 | grad_clip_norm | 1.0 | global gradient-norm clip |
-| hidden_layers | [16, 16] | MLP widths per phase network |
-| target_update_interval | 1000 | hard target sync (env steps) |
-| target_soft_tau | null | optional Polyak coefficient |
+| hidden_layers | [64, 64] | MLP widths per phase network (widened from [16,16]) |
+| double_q | true | Double-DQN target (van Hasselt et al. 2016): online-net argmax, target-net eval; reduces overestimation. Code default False (vanilla Mnih-2015) |
+| target_update_interval | 1000 | hard target sync (env steps; ignored when soft_tau set) |
+| target_soft_tau | 0.0025 | Polyak coefficient (soft target updates) |
 | updates_per_env_step | 1 | gradient steps per eligible update |
 | update_every | 1 | env steps between updates |
 | reward_scale | 1e-3 | replay-only reward scaling (paper rewards are O(1e3-1e6); 1e-3 keeps Bellman targets O(1-100). Reported metrics stay in paper units) |
 | epsilon_start / end | 1.0 / 0.01 | ε-schedule endpoints |
 | epsilon_warmup_episodes | 100 | episodes at ε_start |
-| epsilon_decay_episodes | 300 | episodes from start to end |
+| epsilon_decay_episodes | 600 | episodes from start to end (≈0.6×episodes; synthetic 1000-ep budget). Historical (500 ep) overrides to 300 via scripts/run_historical_dqn.sh |
 | eval_interval_episodes | 100 | greedy-eval cadence |
-| eval_n_seeds | 8 | seeds per periodic eval |
+| eval_n_seeds | 8 | seeds per periodic eval (best.pt selection; disjoint from the final-eval test seeds) |
 | final_eval_n_seeds | 100 | seeds for evaluate.py |
 | checkpoint_interval_episodes | 100 | resumable-checkpoint cadence |
 | activation | relu | MLP activation |

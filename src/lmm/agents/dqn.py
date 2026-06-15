@@ -72,6 +72,12 @@ class DQNHyperparams:
     checkpoint_interval_episodes: int
     activation: str
     device: str
+    # Double-DQN (van Hasselt et al. 2016): select a' with the ONLINE net,
+    # evaluate it with the TARGET net, decoupling action selection from
+    # evaluation to curb the max-bootstrap overestimation that destabilises
+    # vanilla DQN here (oscillating eval, auction-head TD blow-up). Defaulted
+    # (False = vanilla Mnih-2015) so configs predating this knob still load.
+    double_q: bool = False
 
 
 class DQNAgent(Agent):
@@ -254,8 +260,16 @@ class DQNAgent(Agent):
                     dtype=torch.bool,
                     device=self.device,
                 )
-                qt = self.q_target[next_phase](nobs).masked_fill(~nmask, -torch.inf)
-                y[idx] = y[idx] + self.chi * qt.max(dim=1).values
+                if self.hp.double_q:
+                    # Double-DQN: argmax over Adm(x') with the ONLINE net,
+                    # value from the TARGET net (van Hasselt et al. 2016).
+                    q_sel = self.q[next_phase](nobs).masked_fill(~nmask, -torch.inf)
+                    a_star = q_sel.argmax(dim=1, keepdim=True)
+                    q_eval = self.q_target[next_phase](nobs)
+                    y[idx] = y[idx] + self.chi * q_eval.gather(1, a_star).squeeze(1)
+                else:
+                    qt = self.q_target[next_phase](nobs).masked_fill(~nmask, -torch.inf)
+                    y[idx] = y[idx] + self.chi * qt.max(dim=1).values
         return y
 
     def _gradient_step(self, phase: str, batch: ReplayBatch) -> dict[str, float]:

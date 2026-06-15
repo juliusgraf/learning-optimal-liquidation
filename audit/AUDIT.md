@@ -731,3 +731,35 @@ solve (bounded, no catastrophe). Options for the author:
 The singularity is `imbalance / slope`: `p1`/`p2`/`U₁` change its **rate**, only
 a structural floor (option iii, or a minimum agent slope `K^a ≥ 1` that removes
 the `K^a=0 ≡ abstain` action) changes its **existence**.
+
+### F.3 RL learning tuning (2026-06-15; learner-side only, no model change)
+
+Diagnostic seed-42 runs showed all four algos *learn* a policy that beats
+AS/TWAP, but vanilla DQN and DDPG **peak then decay/collapse** (overestimation),
+so the reported `final.pt` was unreliable. All fixes below are learner-side and
+do NOT touch the clearing math, reward forms, timing (D1/D2), θ, admissibility,
+or the rough-Heston scheme. Validated single-seed (synthetic seed 42; historical
+MSFT seed 42) — NOT multi-seed; the full reproduction (seed 42 × 5 tickers) is
+the confirming run. None of these is an author ruling; they are D9 RL-design /
+hyperparameter choices, recorded here and in `docs/rl_design.md` for the
+Section-4 rewrite.
+
+- **DQN Double-DQN** (`configs/algo/dqn.yaml` `double_q: true`; code default
+  `False` = vanilla Mnih-2015): online-net action selection, target-net
+  evaluation (van Hasselt et al. 2016). Reduces the max-bootstrap overestimation;
+  `final.pt` ~doubled (4.8k→9.8k @600 ep) and the eval curve stabilised.
+  Pinned by `tests/test_dqn.py::test_double_q_bellman_targets`.
+- **DQN other knobs**: `lr` 3e-4→1.5e-4, `target_soft_tau` 0.005→0.0025,
+  `hidden_layers` [16,16]→[64,64], `epsilon_decay_episodes` 600 (synthetic
+  1000-ep; historical 500-ep overrides to 300 via `scripts/run_historical_dqn.sh`
+  `-o`, the rule decay≈0.6×episodes), `eval_n_seeds` 8→24.
+- **DDPG retune** (`configs/algo/ddpg.yaml`): `critic_lr` 1e-3→3e-4 (the
+  aggressive 1e-3 critic drove the overestimation collapse; lowering it removed
+  the collapse — `final.pt` 0.6k→15.8k, stable rising curve, synthetic AND
+  historical), `target_soft_tau` 0.005→0.0025, `eval_n_seeds` 8→24. The
+  structural cure is clipped double-Q (= TD3, already provided); this is the
+  within-DDPG fix so DDPG stands as a non-collapsing baseline.
+- **Episode counts**: synthetic 2000→1000, historical 1000→500
+  (`configs/{synthetic_rough_heston,historical_sp500}.yaml`). All four plateau
+  well before these budgets; historical needs fewer (lambda0=60 ⇒ ~2× decisions
+  /ep and a fixed mid path ⇒ lower variance). TD3/SAC unchanged (already stable).

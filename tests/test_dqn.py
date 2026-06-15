@@ -165,7 +165,11 @@ def _hand_batch(obs_dim, next_obs_dim, mask_dim, rows):
     return ReplayBatch(obs, action, reward, next_obs, done, junction, next_mask)
 
 
-def test_bellman_targets_hand_computed(dqn_cfg):
+def test_bellman_targets_hand_computed():
+    # Vanilla max-bootstrap target (double_q OFF): only the target net is set,
+    # so y pins the max_a' Q_target formula. The Double-DQN path (online-argmax,
+    # target-eval) is covered by test_double_q_bellman_targets.
+    dqn_cfg = load_dqn_cfg("algo.hyperparams.double_q=false")
     agent = make_agent(dqn_cfg)
     chi = dqn_cfg.rl.chi
     n_clob, n_auc = len(agent.clob_grid), len(agent.auction_grid)
@@ -201,7 +205,8 @@ def test_bellman_targets_hand_computed(dqn_cfg):
     assert y[3] == pytest.approx(-3.0)
 
 
-def test_bellman_targets_auction_phase(dqn_cfg):
+def test_bellman_targets_auction_phase():
+    dqn_cfg = load_dqn_cfg("algo.hyperparams.double_q=false")  # vanilla target path
     agent = make_agent(dqn_cfg)
     chi = dqn_cfg.rl.chi
     n_auc = len(agent.auction_grid)
@@ -222,6 +227,33 @@ def test_bellman_targets_auction_phase(dqn_cfg):
     y = agent.compute_targets("auction", batch).cpu().numpy()
     assert y[0] == pytest.approx(2.0 + chi * bias_auc[20], abs=1e-6)
     assert y[1] == pytest.approx(5.0)
+
+
+def test_double_q_bellman_targets():
+    """Double-DQN (van Hasselt et al. 2016): the ONLINE net selects a' (here
+    index A), the TARGET net evaluates it -> bootstrap = Q_target[A], NOT the
+    vanilla max_a' Q_target (index B). Pins the overestimation reduction
+    Q_target[A] <= max_a' Q_target."""
+    dqn_cfg = load_dqn_cfg("algo.hyperparams.double_q=true")
+    agent = make_agent(dqn_cfg)
+    chi = dqn_cfg.rl.chi
+    n_clob = len(agent.clob_grid)
+    A, B = 3, 7  # online's argmax is A; target's own argmax is B != A
+    online_bias = np.full(n_clob, -1.0)
+    online_bias[A] = 5.0  # argmax_a' Q_online = A
+    target_bias = np.zeros(n_clob)
+    target_bias[A] = 1.0
+    target_bias[B] = 9.0  # max_a' Q_target = B (the vanilla bootstrap)
+    set_constant_net(agent.q["clob"], online_bias)
+    set_constant_net(agent.q_target["clob"], target_bias)
+    clob_dim = len(dqn_cfg.features.clob)
+    batch = _hand_batch(
+        clob_dim, clob_dim, n_clob,
+        [(1.0, False, False, np.ones(clob_dim), np.ones(n_clob, dtype=bool))],
+    )
+    y = agent.compute_targets("clob", batch).cpu().numpy()
+    assert y[0] == pytest.approx(1.0 + chi * target_bias[A], abs=1e-6)
+    assert y[0] < 1.0 + chi * target_bias.max()  # strictly below the vanilla max
 
 
 # -- masked exploration / greedy (property test on the real env) ------------------

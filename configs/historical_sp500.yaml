@@ -9,7 +9,10 @@
 experiment:
   name: historical_sp500
   setting: historical_sp500
-  episodes: 1000          # data.py:1677
+  episodes: 500           # 2026-06-15: denser flow (lambda0=60 => ~149 decisions
+                          # /ep, ~2x synthetic) + fixed mid path => fewer episodes
+                          # suffice; all four beat AS/TWAP by 500 ep on MSFT.
+                          # (legacy data.py:1677 used 1000.)
 
 clob_flow:
   lambda0: 60.0           # data.py:1392 — 1-minute bars => ~1 arrival/s/side;
