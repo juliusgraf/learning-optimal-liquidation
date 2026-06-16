@@ -763,3 +763,33 @@ Section-4 rewrite.
   (`configs/{synthetic_rough_heston,historical_sp500}.yaml`). All four plateau
   well before these budgets; historical needs fewer (lambda0=60 ⇒ ~2× decisions
   /ep and a fixed mid path ⇒ lower variance). TD3/SAC unchanged (already stable).
+
+### F.4 Reporting: early stopping + multi-seed aggregation (2026-06-15)
+
+Pure reporting/evaluation changes (no MDP/clearing/reward/timing change), for
+honest RL evaluation. Single-seed `final.pt` under-reported unstable algos and
+ignored the init/training lottery.
+
+- **Early stopping (best.pt default).** `evaluate.py` now reports the
+  best-VALIDATION checkpoint (`best.pt`, selected by `train.py` on the
+  `env_eval` stream, **disjoint** from the `env_final_eval` test seeds) by
+  default; `--checkpoint final` available. Fixes e.g. TD3's late collapse
+  (GOOGL `final.pt` 9 989 → `best.pt` 26 376) without per-algo episode tuning,
+  and is robust across tickers/seeds. `eval_n_seeds` 8→24 for TD3/SAC so the
+  selection set matches DQN/DDPG. `metadata.yaml` gains `early_stopping`.
+  Pinned by `tests/test_agent_env_contract.py::test_evaluate_defaults_to_best_checkpoint`.
+- **Multi-seed IQM/CI aggregation.** `scripts/run_multiseed.sh` runs the
+  pipeline under several master seeds (3 by default: 42, 7, 99) **disk-safe**
+  (`--no-resume-ckpt`); `scripts/make_multiseed_outputs.sh` writes
+  `results/<setting>/_multiseed/{tables,figures}/` — per-algo **IQM** of the
+  per-seed mean returns with **bootstrap 95% CIs** over seeds (Agarwal et al.
+  2021). New: `stats.iqm`/`iqm_ci`, `tables.build_*_multiseed`,
+  `make_figures.fig_algorithm_comparison_multiseed`, `RunInfo.seed`. Pinned by
+  `tests/test_multiseed.py`, `tests/test_stats.py`. Caveat: 3 seeds ⇒ wide CIs,
+  IQM ≈ mean (no trimming below n=4); recorded as a limitation, not a defect.
+
+Good-practice caveat (for the author): report `best.pt` AND show the full eval
+curves (so instability stays visible), and treat the multi-seed IQM/CI as the
+headline rather than any single-seed point estimate. The remaining open
+reporting item is the return decomposition (clob / auction-fictive / terminal)
+exposing that the edge over AS is ~99% the auction shaping reward (future §F.5).

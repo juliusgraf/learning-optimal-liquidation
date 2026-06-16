@@ -32,7 +32,10 @@ algo:
     device: cpu
     continuous_cancel: threshold  # threshold (default) | never
     eval_interval_episodes: 100
-    eval_n_seeds: 8
+    eval_n_seeds: 24           # WIDENED from 8 (2026-06-15): best.pt early-stopping
+                               # selection (env_eval, disjoint from the test seeds);
+                               # 8 was too noisy. TD3 collapses late on some tickers,
+                               # so robust best-checkpoint selection matters most here.
     final_eval_n_seeds: 100
     checkpoint_interval_episodes: 100
     # -- TD3-specific ---------------------------------------------------------

@@ -18,6 +18,7 @@ cd "$REPO_ROOT"
 SEED=""
 SMOKE=0
 SYMBOL=""
+NO_RESUME_CKPT=0     # 1 => disable periodic resume checkpoints (disk-safe)
 EXTRA_OVERRIDES=()   # optional per-runner `-o key=value` train overrides
 
 parse_common_args() {
@@ -28,7 +29,8 @@ parse_common_args() {
       --smoke) SMOKE=1; shift ;;
       --symbol) SYMBOL="$2"; shift 2 ;;
       --symbol=*) SYMBOL="${1#*=}"; shift ;;
-      -h|--help) echo "usage: $0 [--seed N] [--smoke] [--symbol TICKER]"; exit 0 ;;
+      --no-resume-ckpt) NO_RESUME_CKPT=1; shift ;;
+      -h|--help) echo "usage: $0 [--seed N] [--smoke] [--symbol TICKER] [--no-resume-ckpt]"; exit 0 ;;
       *) echo "unknown argument: $1" >&2; exit 2 ;;
     esac
   done
@@ -65,6 +67,13 @@ run_experiment() {
   # which must track the shorter episode budget). Set by the caller before
   # run_experiment/run_historical; appended AFTER any smoke overrides.
   train_over+=( ${EXTRA_OVERRIDES[@]+"${EXTRA_OVERRIDES[@]}"} )
+
+  # Disk-safe: drop periodic resume checkpoints (replay-heavy ckpt_ep*.pt). The
+  # best/final/initial.pt snapshots are still written, so early stopping and the
+  # evaluation pipeline are unaffected. Applied LAST so it overrides the smoke
+  # checkpoint cadence. Used by the multi-seed launcher (N x reproduction).
+  [[ "$NO_RESUME_CKPT" -eq 1 ]] && \
+    train_over+=( -o algo.hyperparams.checkpoint_interval_episodes=10000000 )
 
   # Guard empty-array expansion for bash 3.2 (macOS) under `set -u`.
   echo ">>> train ${run_dir}"

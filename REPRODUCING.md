@@ -179,11 +179,14 @@ python3 -m lmm.experiments.make_figures --run-dir "$RUN"
 python3 -m lmm.experiments.make_tables  --run-dir "$RUN"
 ```
 
-Historical runs add `--symbol <TICKER>` to both `train` and `evaluate`, and the
-run name carries the ticker (e.g. `dqn_MSFT_seed42`). Cross-algorithm combined
-figures/tables are produced by passing all sibling run dirs to one
-`make_figures`/`make_tables --out results/<setting>/_combined/...` call (this is
-what `make_all_outputs.sh` does automatically).
+`evaluate` reports the **best-validation checkpoint** (`best.pt`, early stopping)
+by default; pass `--checkpoint final` for the last-episode model
+(`docs/metrics_schema.md` → "Reported checkpoint"). Historical runs add
+`--symbol <TICKER>` to both `train` and `evaluate`, and the run name carries the
+ticker (e.g. `dqn_MSFT_seed42`). Cross-algorithm combined figures/tables are
+produced by passing all sibling run dirs to one `make_figures`/`make_tables
+--out results/<setting>/_combined/...` call (this is what `make_all_outputs.sh`
+does automatically).
 
 ### Step 4 — Fast end-to-end smoke (CI / sanity)
 
@@ -193,6 +196,26 @@ scripts/reproduce_all.sh --smoke --symbol MSFT --seed 42
 
 Tiny episode counts (4 train / 3 eval), historical restricted to one ticker;
 exercises the whole train→eval→regret→figures→tables pipeline in a few minutes.
+
+### Step 5 — Multi-seed (paper) run with IQM / bootstrap-CI aggregates
+
+Single-seed numbers are sensitive to the RNG/initialization lottery; for
+credible reporting, aggregate across several master seeds (Henderson et al.
+2018; Agarwal et al. 2021, `rliable`).
+
+```bash
+scripts/run_multiseed.sh --seeds "42 7 99"      # full; ~6-9 CPU-hours for 3 seeds
+scripts/run_multiseed.sh --smoke --seeds "42 7" --symbol MSFT   # fast sanity
+```
+
+It runs `reproduce_all.sh` once per seed **disk-safe** (`--no-resume-ckpt`: no
+replay-heavy `ckpt_ep*.pt`; `best.pt`/`final.pt` still written, so early stopping
+is unaffected), then `make_multiseed_outputs.sh` writes the cross-seed aggregates
+to `results/<setting>/_multiseed/{tables,figures}/`:
+`eval_summary_multiseed` (synthetic), `dqn_results_multiseed` (historical), and
+`algorithm_comparison_multiseed` — each the **IQM of the per-seed mean returns
+with a bootstrap 95% CI over seeds** (schema in `docs/metrics_schema.md`).
+Free ~a few GB of disk before a full multi-seed run.
 
 ---
 

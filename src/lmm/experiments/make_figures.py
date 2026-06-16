@@ -333,6 +333,49 @@ def fig_algorithm_comparison(run_dirs, out: Path) -> None:
     P.save_fig(fig, out, "algorithm_comparison")
 
 
+def fig_algorithm_comparison_multiseed(run_dirs, out: Path) -> None:
+    """Cross-seed comparison (rliable-style): per algo, the IQM of the per-seed
+    mean returns with a bootstrap 95% CI over seeds; AS/TWAP IQM reference lines.
+    One number per run (its 100-episode mean) is the seed-level sample. Emitted
+    only when >= 2 seeds are present."""
+    runs = [r for r in P.collect_runs(run_dirs) if r.records is not None and r.seed is not None]
+    if len({r.seed for r in runs}) < 2:
+        return
+    settings = sorted({r.setting for r in runs})
+    fig, axes = P.plt.subplots(1, len(settings), figsize=(5.5 * len(settings), 4.0), squeeze=False)
+    for col, setting in enumerate(settings):
+        ax = axes[0][col]
+        algo_vals: dict[str, list[float]] = {}
+        bench_vals: dict[str, list[float]] = {"as": [], "twap": []}
+        for r in runs:
+            if r.setting != setting:
+                continue
+            learned = r.records[r.records["policy"] == "dqn"]["return_undisc"].to_numpy(float)
+            if learned.size:
+                algo_vals.setdefault(r.algo, []).append(float(np.mean(learned)))
+            for b in ("as", "twap"):
+                bv = r.records[r.records["policy"] == b]["return_undisc"].to_numpy(float)
+                if bv.size:
+                    bench_vals[b].append(float(np.mean(bv)))
+        algos = [a for a in P.ALGO_ORDER if a in algo_vals]
+        pts, los, his, colors, labels = [], [], [], [], []
+        for a in algos:
+            pt, lo, hi = stats.iqm_ci(np.asarray(algo_vals[a]))
+            pts.append(pt); los.append(pt - lo); his.append(hi - pt)
+            colors.append(P.POLICY_COLORS[a]); labels.append(P.POLICY_LABELS[a])
+        ax.bar(labels, pts, yerr=[los, his], color=colors, capsize=4)
+        for b, ls in (("as", "--"), ("twap", ":")):
+            if bench_vals[b]:
+                ax.axhline(stats.iqm(np.asarray(bench_vals[b])), ls=ls, color="0.3", lw=1.2,
+                           label=P.POLICY_LABELS.get(b, b))
+        ax.set(ylabel="IQM return (per-seed means)", title=setting)
+        ax.legend(fontsize=7)
+    n_seeds = len({r.seed for r in runs})
+    fig.suptitle(f"Cross-seed comparison — IQM of per-seed means, bootstrap 95% CI ({n_seeds} seeds)")
+    fig.tight_layout()
+    P.save_fig(fig, out, "algorithm_comparison_multiseed")
+
+
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
@@ -349,6 +392,10 @@ def build_parser() -> argparse.ArgumentParser:
                         help="bar-chart variant of the evaluation-distribution figure")
     parser.add_argument("--policy", default="dqn", help="policy for the episode-anatomy figure")
     parser.add_argument("--episode", type=int, default=0, help="traced episode index to plot")
+    parser.add_argument(
+        "--multiseed", action="store_true",
+        help="build ONLY the cross-seed IQM/CI figure (run dirs spanning >= 2 seeds)",
+    )
     return parser
 
 
@@ -360,16 +407,22 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     out = Path(args.out) if args.out else primary / "figures"
     out.mkdir(parents=True, exist_ok=True)
 
-    funcs = [
-        ("training_diagnostics", lambda: fig_training_diagnostics(primary, out)),
-        ("regret_curve", lambda: fig_regret_curve(primary, out)),
-        ("episode_anatomy",
-         lambda: fig_episode_anatomy(primary, out, policy=args.policy, episode=args.episode)),
-        ("benchmark_anatomy", lambda: fig_benchmark_anatomy(primary, out, episode=args.episode)),
-        ("eval_distributions",
-         lambda: fig_eval_distributions(primary, out, legacy_style=args.legacy_style)),
-        ("algorithm_comparison", lambda: fig_algorithm_comparison(run_dirs, out)),
-    ]
+    if args.multiseed:
+        funcs = [
+            ("algorithm_comparison_multiseed",
+             lambda: fig_algorithm_comparison_multiseed(run_dirs, out)),
+        ]
+    else:
+        funcs = [
+            ("training_diagnostics", lambda: fig_training_diagnostics(primary, out)),
+            ("regret_curve", lambda: fig_regret_curve(primary, out)),
+            ("episode_anatomy",
+             lambda: fig_episode_anatomy(primary, out, policy=args.policy, episode=args.episode)),
+            ("benchmark_anatomy", lambda: fig_benchmark_anatomy(primary, out, episode=args.episode)),
+            ("eval_distributions",
+             lambda: fig_eval_distributions(primary, out, legacy_style=args.legacy_style)),
+            ("algorithm_comparison", lambda: fig_algorithm_comparison(run_dirs, out)),
+        ]
     for name, fn in funcs:
         try:
             fn()

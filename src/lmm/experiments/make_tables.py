@@ -40,6 +40,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--run-dir", required=True, nargs="+", help="run directory/ies")
     parser.add_argument("--out", default=None, help="output dir (default: <run>/tables)")
+    parser.add_argument(
+        "--multiseed", action="store_true",
+        help="build ONLY the cross-seed IQM/CI aggregate tables (the run dirs "
+        "should span >= 2 seeds of the same setting). Skips the single-seed and "
+        "parameter/hyperparameter tables.",
+    )
     return parser
 
 
@@ -58,9 +64,27 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         except Exception as exc:  # one bad table must not abort the batch
             warnings.warn(f"table {what!r} failed: {exc}", stacklevel=2)
 
-    # (a)/(b) per-setting result tables.
+    # (a)/(b) per-setting result tables. With --multiseed, build ONLY the
+    # cross-seed aggregates (the single-seed builders would silently keep just
+    # one seed's run per algo if handed pooled seeds).
     for setting, group in _group_by_setting(runs).items():
         if not any(r.records is not None for r in group):
+            continue
+        if args.multiseed:
+            n_seeds = len({r.seed for r in group if r.seed is not None})
+            if n_seeds < 2:
+                warnings.warn(f"--multiseed: {setting} has <2 seeds; skipping", stacklevel=2)
+                continue
+            if setting == "historical_sp500":
+                def _hist_ms(group=group):
+                    table = T.build_historical_results_multiseed(group)
+                    written.extend(T.write_table(table, out, "dqn_results_multiseed"))
+                safe(_hist_ms, what=f"historical_multiseed[{setting}]")
+            else:
+                def _eval_ms(group=group):
+                    table = T.build_eval_summary_multiseed(group)
+                    written.extend(T.write_table(table, out, "eval_summary_multiseed"))
+                safe(_eval_ms, what=f"eval_summary_multiseed[{setting}]")
             continue
         if setting == "historical_sp500":
             def _hist(group=group):
@@ -73,6 +97,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 table = T.build_eval_summary(group)
                 written.extend(T.write_table(table, out, "eval_summary_final"))
             safe(_eval, what=f"eval_summary[{setting}]")
+
+    if args.multiseed:
+        print(f"wrote {len(written)} table files to {out}")
+        return 0
 
     # (c) parameter tables from the PRIMARY run's resolved config.
     def _params():

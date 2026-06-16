@@ -35,6 +35,8 @@ __all__ = [
     "to_csv",
     "build_eval_summary",
     "build_historical_results",
+    "build_eval_summary_multiseed",
+    "build_historical_results_multiseed",
     "build_param_tables",
     "build_hyperparam_table",
 ]
@@ -94,6 +96,9 @@ def _fmt_tex(value: Any, fmt: str) -> str:
     if fmt == "pct_ci":
         p, lo, hi = value
         return f"{p:+.1f}\\% [{lo:+.1f}, {hi:+.1f}]"
+    if fmt == "money_ci":
+        p, lo, hi = value
+        return f"{p:,.0f} [{lo:,.0f}, {hi:,.0f}]"
     if fmt == "pval":
         return "$<0.001$" if value < 1e-3 else f"{value:.3f}"
     if fmt == "sci":
@@ -113,6 +118,9 @@ def _fmt_csv(value: Any, fmt: str) -> str:
     if fmt == "pct":
         return f"{value:.1f}"
     if fmt == "pct_ci":
+        p, lo, hi = value
+        return f"{p:.1f} [{lo:.1f}, {hi:.1f}]"
+    if fmt == "money_ci":
         p, lo, hi = value
         return f"{p:.1f} [{lo:.1f}, {hi:.1f}]"
     if fmt == "pval":
@@ -218,6 +226,24 @@ def _aligned(a: pd.DataFrame, b: pd.DataFrame, col: str = RETURN_COL) -> tuple[n
     if "env_seed_a" in merged and not (merged["env_seed_a"] == merged["env_seed_b"]).all():
         raise ValueError("CRN violation: env seeds differ between policies at matched episodes")
     return merged[f"{col}_a"].to_numpy(float), merged[f"{col}_b"].to_numpy(float)
+
+
+def _seed_policy_means(runs: list[RunInfo]) -> dict[str, list[float]]:
+    """For a HOMOGENEOUS group (one setting/symbol spanning multiple seeds):
+    policy key -> list of per-seed mean returns (one number per seed, its
+    100-episode eval mean). The list length is the number of seeds; this is the
+    sample the cross-seed IQM/CI aggregate over."""
+    by_seed: dict[int, list[RunInfo]] = {}
+    for r in runs:
+        if r.seed is None or r.records is None:
+            continue
+        by_seed.setdefault(r.seed, []).append(r)
+    out: dict[str, list[float]] = {}
+    for seed in sorted(by_seed):
+        frames = _policy_frames(by_seed[seed])
+        for pol, df in frames.items():
+            out.setdefault(pol, []).append(float(np.mean(_returns(df))))
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -398,6 +424,96 @@ def build_historical_results(runs: list[RunInfo], *, rng: int = 0) -> tuple[Tabl
         section_breaks={len(imp_rows) - 1},
     )
     return returns_table, improvements_table
+
+
+# ---------------------------------------------------------------------------
+# (b2) cross-seed aggregates (IQM + bootstrap CI over seeds; rliable-style)
+# ---------------------------------------------------------------------------
+
+
+def build_eval_summary_multiseed(runs: list[RunInfo], *, rng: int = 0) -> Table:
+    """Cross-seed aggregate for the synthetic setting. Each seed contributes one
+    number per policy (its 100-episode mean return); these are aggregated across
+    seeds with the IQM (interquartile mean) and a percentile-bootstrap 95\\% CI
+    (Agarwal et al. 2021). Few seeds => wide CIs (the honest multi-seed signal)."""
+    sm = _seed_policy_means(runs)
+    n_seeds = max((len(v) for v in sm.values()), default=0)
+    cols = [p for p in POLICY_ORDER if p in sm]
+    headers = [POLICY_LABELS.get(p, p) for p in cols]
+    iqm_ci = {p: stats.iqm_ci(np.array(sm[p]), rng=rng) for p in cols}
+    iqms = {p: iqm_ci[p][0] for p in cols}
+
+    rows: list[Row] = [
+        Row("IQM Return [95\\% CI]", [iqm_ci[p] for p in cols], "money_ci"),
+        Row("Mean of seed-means", [float(np.mean(sm[p])) for p in cols], "money"),
+        Row("Seeds (n)", [len(sm[p]) for p in cols], "int"),
+    ]
+    section_breaks = {len(rows)}
+    rows.append(Row("IQM improvement vs benchmark (\\%)", [None] * len(cols), "header"))
+
+    def imp(label: str, base: str, skip: set[str]) -> Row:
+        return Row(
+            label,
+            [None if (p in skip or base not in iqms) else stats.rel_improvement(iqms[p], iqms[base]) for p in cols],
+            "pct",
+        )
+
+    if "as" in iqms:
+        rows.append(imp("vs AS", "as", {"initial", "as"}))
+    if "twap" in iqms:
+        rows.append(imp("vs TWAP", "twap", {"initial", "as", "twap"}))
+
+    return Table(
+        columns=headers,
+        rows=rows,
+        caption=f"Cross-seed aggregate (synthetic; {n_seeds} seeds). IQM of the "
+        "per-seed mean returns with percentile-bootstrap 95\\% CIs over seeds; "
+        "undiscounted; reported policy = best-validation checkpoint (early stopping).",
+        label="tab:eval_summary_multiseed",
+        row_label_header="Metric",
+        section_breaks=section_breaks,
+    )
+
+
+def build_historical_results_multiseed(runs: list[RunInfo], *, rng: int = 0) -> Table:
+    """Cross-seed aggregate for the historical setting: per-ticker IQM of the
+    per-seed mean returns, with a final row pooling all ticker$\\times$seed runs
+    into an IQM with a bootstrap 95\\% CI."""
+    groups = _group_by_symbol(runs)
+    symbols = sorted(groups)
+    algos = [a for a in ["dqn", "ddpg", "td3", "sac"]
+             if any(r.algo == a for sym in symbols for r in groups[sym])]
+    col_keys = ["as", "twap"] + algos
+    headers = ["AS", "TWAP"] + [POLICY_LABELS[a] for a in algos]
+
+    pooled: dict[str, list[float]] = {k: [] for k in col_keys}
+    rows: list[Row] = []
+    for sym in symbols:
+        sm = _seed_policy_means(groups[sym])
+        cells: list[Any] = []
+        for k in col_keys:
+            vals = sm.get(k, [])
+            pooled[k] += list(vals)
+            cells.append(stats.iqm(np.array(vals)) if vals else float("nan"))
+        rows.append(Row(sym, cells, "money"))
+    rows.append(
+        Row(
+            "All tickers (IQM [95\\% CI])",
+            [stats.iqm_ci(np.array(pooled[k]), rng=rng) if pooled[k] else None for k in col_keys],
+            "money_ci",
+        )
+    )
+    return Table(
+        columns=headers,
+        rows=rows,
+        caption="Cross-seed aggregate (historical S\\&P 500). Per-ticker IQM of "
+        "the per-seed mean returns; the final row pools all ticker$\\times$seed "
+        "runs into an IQM with a bootstrap 95\\% CI. Undiscounted; best-validation "
+        "checkpoint (early stopping).",
+        label="tab:dqn_results_multiseed",
+        row_label_header="Symbol",
+        section_breaks={len(rows) - 1},
+    )
 
 
 # ---------------------------------------------------------------------------

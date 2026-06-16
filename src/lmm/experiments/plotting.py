@@ -149,6 +149,7 @@ class RunInfo:
     symbol: Optional[str]
     records: Optional[pd.DataFrame]
     metadata: dict
+    seed: Optional[int]  # master seed from seed.txt (cross-seed aggregation key)
 
 
 def collect_runs(run_dirs) -> list[RunInfo]:
@@ -164,6 +165,8 @@ def collect_runs(run_dirs) -> list[RunInfo]:
         cfg = load_config(cfg_path)
         meta = read_metadata(rd)
         algo = cfg.algo.name if cfg.algo is not None else "unknown"
+        seed_file = rd / "seed.txt"
+        seed = int(seed_file.read_text().strip()) if seed_file.exists() else None
         runs.append(
             RunInfo(
                 run_dir=rd,
@@ -173,6 +176,7 @@ def collect_runs(run_dirs) -> list[RunInfo]:
                 symbol=meta.get("symbol"),
                 records=read_records(rd),
                 metadata=meta,
+                seed=seed,
             )
         )
     return runs

@@ -21,6 +21,8 @@ __all__ = [
     "wilcoxon",
     "std_error",
     "rel_improvement",
+    "iqm",
+    "iqm_ci",
 ]
 
 
@@ -160,3 +162,28 @@ def rel_improvement(policy_mean: float, benchmark_mean: float) -> float:
     if benchmark_mean == 0.0 or np.isnan(benchmark_mean):
         return float("nan")
     return 100.0 * (policy_mean - benchmark_mean) / abs(benchmark_mean)
+
+
+def iqm(values: np.ndarray) -> float:
+    """Interquartile mean: the mean after trimming the bottom and top 25%
+    (``scipy.stats.trim_mean(v, 0.25)``). The robust central-tendency estimator
+    recommended for high-variance RL aggregation (Agarwal et al. 2021,
+    ``rliable``). NaNs dropped; small samples degrade to the plain mean (with
+    n seeds < 4 no trimming occurs, so IQM == mean — wide CIs are expected)."""
+    v = np.asarray(values, dtype=float)
+    v = v[~np.isnan(v)]
+    if v.size == 0:
+        return float("nan")
+    return float(_sp_stats.trim_mean(v, 0.25))
+
+
+def iqm_ci(
+    values: np.ndarray,
+    *,
+    n_boot: int = 10000,
+    alpha: float = 0.05,
+    rng: np.random.Generator | int | None = 0,
+) -> tuple[float, float, float]:
+    """``(iqm, lo, hi)`` percentile-bootstrap CI of the interquartile mean
+    across seeds (thin wrapper over :func:`bootstrap_ci` with ``statistic=iqm``)."""
+    return bootstrap_ci(values, statistic=iqm, n_boot=n_boot, alpha=alpha, rng=rng)

@@ -299,3 +299,33 @@ def test_evaluate_is_reproducible(tmp_path):
     first = open(f"{run}/eval/records.csv").read()
     assert evaluate_mod.main(["--run-dir", run, "--n-episodes", "2"]) == 0
     assert open(f"{run}/eval/records.csv").read() == first
+
+
+@pytest.mark.slow
+def test_evaluate_defaults_to_best_checkpoint(tmp_path):
+    """Early stopping: evaluate.py reports the best-VALIDATION checkpoint
+    (best.pt) by DEFAULT, recording ``early_stopping: true`` in metadata;
+    ``--checkpoint final`` selects the last-episode model. best.pt is selected
+    by train.py on the env_eval stream, disjoint from the env_final_eval test
+    seeds, so this is honest model selection (not test-set cherry-picking)."""
+    run = _train(tmp_path, "run_es")
+
+    # default -> best.pt, flagged as early stopping
+    assert evaluate_mod.main(["--run-dir", run, "--n-episodes", "2"]) == 0
+    meta = yaml.safe_load(open(f"{run}/eval/metadata.yaml"))
+    assert meta["checkpoint"].endswith("best.pt")
+    assert meta["early_stopping"] is True
+    rows = list(csv.DictReader(open(f"{run}/eval/records.csv")))
+    assert any(r["policy"] == "dqn" for r in rows)  # the learned policy is present
+    assert all(np.isfinite(float(r["return_undisc"])) for r in rows)
+
+    # explicit --checkpoint final -> final.pt, NOT early stopping
+    assert (
+        evaluate_mod.main(
+            ["--run-dir", run, "--n-episodes", "2", "--checkpoint", "final"]
+        )
+        == 0
+    )
+    meta_final = yaml.safe_load(open(f"{run}/eval/metadata.yaml"))
+    assert meta_final["checkpoint"].endswith("final.pt")
+    assert meta_final["early_stopping"] is False

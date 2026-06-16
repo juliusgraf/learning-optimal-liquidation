@@ -69,10 +69,24 @@ exactly as in metrics.csv: `return_undisc`, `return_disc`, `clob_reward_sum`,
 
 ## eval/metadata.yaml
 
-`master_seed`, `checkpoint`, `n_episodes`, `policies`, the CRN statement,
-the return-convention statement, `reward_params_shared_by_all_policies`
+`master_seed`, `checkpoint`, `early_stopping`, `n_episodes`, `policies`, the
+CRN statement, the return-convention statement, `reward_params_shared_by_all_policies`
 (the single RewardParams applied to every policy — AUDIT C.4) and
-`as_calibration` (A, k, sigma).
+`as_calibration` (A, k, sigma). `checkpoint` is the resolved path of the
+evaluated learned-policy snapshot; `early_stopping` is `true` when that is
+`best.pt` (the default — see "Reported checkpoint" below).
+
+### Reported checkpoint (early stopping)
+
+`evaluate.py` evaluates the learned policy from `best.pt` by **default**
+(`early_stopping: true`): the best-VALIDATION checkpoint, selected by `train.py`
+on the `env_eval` seed stream, which is **disjoint** from the `env_final_eval`
+test stream used for these records. This is standard model selection, not
+test-set cherry-picking, and it discards training episodes that *degraded* the
+policy (e.g. TD3's late collapse). Pass `--checkpoint final` for the
+last-episode model. The full eval trajectory is in `metrics.csv`
+(`eval_return_mean`) / the `training_diagnostics` figure, so instability remains
+visible.
 
 ## eval/regret_<benchmark>.csv (regret.py)
 
@@ -96,3 +110,22 @@ Agent checkpoints contain: hyperparams, episode/env-step counters, both
 Q-networks and both targets, both optimizers, the exploration generator
 state, the torch global RNG state, and (resumable pairs only) the full
 replay buffers including their sampling-generator states.
+
+## Cross-seed aggregates (multi-seed reporting)
+
+`scripts/run_multiseed.sh` runs the pipeline under several master seeds, then
+`scripts/make_multiseed_outputs.sh` writes per-setting aggregates to
+`results/<setting>/_multiseed/{tables,figures}/` (built via `make_tables
+--multiseed` / `make_figures --multiseed`). Each **seed contributes one number
+per policy** (its 100-episode mean return); these are aggregated across seeds
+with the **IQM** (interquartile mean; `scipy.stats.trim_mean(·, 0.25)`) and a
+percentile-**bootstrap 95% CI** over seeds (Agarwal et al. 2021, `rliable`).
+
+| Artifact | What |
+|---|---|
+| `tables/eval_summary_multiseed.{tex,csv}` | synthetic: per-algo IQM [95% CI], mean-of-seed-means, seed count, IQM improvement vs AS/TWAP |
+| `tables/dqn_results_multiseed.{tex,csv}` | historical: per-ticker IQM across seeds; final row pools all ticker×seed runs into IQM [95% CI] |
+| `figures/algorithm_comparison_multiseed.{pdf,png}` | per-algo IQM bars with bootstrap-CI whiskers, AS/TWAP IQM reference lines |
+
+With few seeds (e.g. 3) the CIs are wide and IQM ≈ mean (no trimming below n=4)
+— the honest multi-seed signal, not a defect.

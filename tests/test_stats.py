@@ -72,3 +72,25 @@ def test_bootstrap_improvement_ci_point_and_bracket():
     assert math.isclose(point, stats.rel_improvement(float(np.mean(algo)), float(np.mean(bench))))
     assert lo <= point <= hi
     assert lo > 0.0  # algo clearly beats bench
+
+
+def test_iqm_trims_outliers():
+    # 1..9: trim 25% each end (drop {1,2} and {8,9}) -> mean(3..7) = 5
+    assert stats.iqm(np.arange(1, 10)) == pytest.approx(5.0)
+    # robust to an extreme outlier that wrecks the plain mean
+    base = np.r_[np.full(8, 10.0), [1e6]]
+    assert stats.iqm(base) == pytest.approx(10.0)
+    assert np.mean(base) > 100.0
+    # small samples (n<4): no trimming -> equals the mean (wide CIs expected)
+    assert stats.iqm(np.array([10.0, 20.0, 30.0])) == pytest.approx(20.0)
+    assert math.isnan(stats.iqm(np.array([])))
+
+
+def test_iqm_ci_brackets_and_reproducible():
+    rng = np.random.default_rng(3)
+    vals = rng.normal(50.0, 5.0, size=40)
+    point, lo, hi = stats.iqm_ci(vals, rng=0)
+    assert point == pytest.approx(stats.iqm(vals))
+    assert lo <= point <= hi
+    assert stats.iqm_ci(vals, rng=0) == stats.iqm_ci(vals, rng=0)  # seeded => reproducible
+    assert stats.iqm_ci(np.array([7.0])) == (7.0, 7.0, 7.0)  # degenerate single value

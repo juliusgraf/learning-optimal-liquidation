@@ -86,7 +86,14 @@ def build_parser() -> argparse.ArgumentParser:
         description="Evaluate a frozen policy vs benchmarks with CRN.",
     )
     parser.add_argument("--run-dir", required=True, help="training run directory")
-    parser.add_argument("--checkpoint", default="final", help="checkpoint name (without .pt)")
+    parser.add_argument(
+        "--checkpoint",
+        default="best",
+        help="checkpoint to evaluate (without .pt). Default 'best' = early "
+        "stopping: the best-validation snapshot (selected on the env_eval "
+        "stream, disjoint from the env_final_eval test seeds). Pass 'final' "
+        "for the last-episode checkpoint.",
+    )
     parser.add_argument("--n-episodes", type=int, default=None,
                         help="evaluation episodes (default: algo.hyperparams.final_eval_n_seeds)")
     parser.add_argument("--symbol", default=None, help="historical setting: symbol to replay")
@@ -173,6 +180,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     metadata = {
         "master_seed": master_seed,
         "checkpoint": str(run_dir / "checkpoints" / f"{args.checkpoint}.pt"),
+        "early_stopping": args.checkpoint == "best",
         "n_episodes": n_episodes,
         "policies": list(POLICIES),
         "crn": "identical env seed per episode across all policies (env_final_eval stream)",

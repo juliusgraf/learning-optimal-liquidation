@@ -148,6 +148,16 @@ for episode e = 0 … E−1:
 save final checkpoint
 ```
 
+**Reported policy (early stopping).** `evaluate.py` reports `best.pt` by
+default — the best-`env_eval`-validation checkpoint, disjoint from the
+`env_final_eval` test seeds. This is standard model selection; it discards
+training that *degraded* the policy (e.g. a late TD3 collapse) and is robust
+across tickers/seeds without per-algo episode-budget tuning. `--checkpoint
+final` selects the last-episode model; the full eval curve (`metrics.csv`
+`eval_return_mean`) is reported so instability stays visible. For credible
+reporting across the RNG/init lottery, aggregate over several master seeds with
+IQM + bootstrap CIs (`scripts/run_multiseed.sh`; `docs/metrics_schema.md`).
+
 ## 9. Hyperparameters (defaults; `configs/algo/dqn.yaml`)
 
 | name | value | meaning |
