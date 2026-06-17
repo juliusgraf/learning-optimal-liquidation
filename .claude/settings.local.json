@@ -24,7 +24,9 @@
       "Bash(echo \"EXIT=$?\")",
       "Bash(timeout 300 python3 -m lmm.experiments.train --config configs/base.yaml --config configs/synthetic_rough_heston.yaml --config configs/algo/dqn.yaml -o experiment.episodes=300 --run-name _diag_degen --seed 42)",
       "Read(//tmp/**)",
-      "Bash(git add *)"
+      "Bash(git add *)",
+      "Bash(grep -v '\\\\$')",
+      "Bash(grep -nc '\\\\$\\\\$' meetings/2026-06-17_progress.md)"
     ]
   }
 }
