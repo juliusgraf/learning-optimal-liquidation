@@ -5,3 +5,11 @@ __pycache__/
 .env
 .venv
 .envrc
+results/
+*.egg-info/
+.pytest_cache/
+build/
+# Phase 6: loader outputs + download cache (data/README.md is tracked)
+data/*.csv
+data/*.meta.json
+.cache/

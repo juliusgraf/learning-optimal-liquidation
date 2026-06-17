@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lmm"
+version = "0.1.0"
+description = "Learning Market Making with Closing Auctions (Graf & Mastrolia) — code revision"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=2.0",
+    "pandas>=2.3",
+    "matplotlib>=3.9",
+    "scipy>=1.11",
+    "pyyaml>=6.0",
+    "torch>=2.11",
+    "gymnasium>=1.2",
+    "yfinance>=0.2",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+lmm-train = "lmm.experiments.train:main"
+lmm-evaluate = "lmm.experiments.evaluate:main"
+lmm-make-figures = "lmm.experiments.make_figures:main"
+lmm-make-tables = "lmm.experiments.make_tables:main"
+lmm-regret = "lmm.experiments.regret:main"
+lmm-load-data = "lmm.data.load_yfinance_data:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "slow: slow integration tests (deselect with -m 'not slow')",
+    "legacy: characterization tests of the legacy main.py/data.py emulators (pre-refactor golden values)",
+    "network: tests that hit the network (e.g. a live yfinance download; deselect with -m 'not network')",
+]

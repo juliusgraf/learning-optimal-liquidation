@@ -1,0 +1,69 @@
+# DQN hyperparameters (ruling D9: textbook DQN, Mnih et al. 2015 conventions;
+# neither legacy NFQ nor paper Sec. 4 is authoritative). Legacy values are
+# kept where they are standard (lr, batch, buffer — see PARAMS_FROM_CODE.md
+# section 4); the update SCHEDULE is standard DQN, not legacy's per-episode
+# full-buffer refit. Final values recorded in docs/rl_design.md (Phase 4).
+
+algo:
+  name: dqn
+  hyperparams:
+    buffer_size: 50000          # per phase network; legacy main.py:1487
+    min_buffer: 5000            # learning starts; legacy main.py:1488
+    batch_size: 128             # legacy main.py:1490
+    lr: 1.5e-4                  # Adam. LOWERED from 3e-4 (2026-06-15): vanilla
+                                # DQN max-bootstrap overestimation inflated the
+                                # auction-head value targets (td_abs_max ~289),
+                                # making the eval policy PEAK (~ep800) then DECAY;
+                                # a calmer step damps the feedback loop so the
+                                # FINAL policy holds above AS/TWAP (the reported
+                                # bar), not just a lucky best.pt. (legacy 3e-4.)
+    loss: huber                 # SmoothL1
+    grad_clip_norm: 1.0         # legacy convention
+    hidden_layers: [64, 64]     # per phase network (recorded in rl_design.md).
+                                # WIDENED from legacy [16,16] (2026-06-15): the
+                                # 16-wide net under-fit (flat/noisy eval, no
+                                # convergence in the 2000-ep diagnostic); [64,64]
+                                # matches the continuous agents' width.
+    target_update_interval: 1000  # hard-update cadence (ignored when soft_tau set)
+    target_soft_tau: 0.0025     # Polyak soft updates (2026-06-15): smoother
+                                # targets, fixes the hard-update eval collapse
+                                # (ep1299->223) + grad-norm drift seen with hard
+                                # every-1000 updates. Soft-tau is sanctioned (D9).
+                                # TIGHTENED 0.005 -> 0.0025: slower target drift
+                                # to curb the overestimation-driven late decay.
+    double_q: true              # Double-DQN (van Hasselt et al. 2016; 2026-06-15):
+                                # select a' with the ONLINE net, evaluate with the
+                                # TARGET net. Vanilla max-bootstrap overestimation
+                                # made eval PEAK (~ep800) then DECAY/oscillate so
+                                # final.pt was a coin flip; Double-Q ~doubled
+                                # final.pt (4.8k->9.8k @600ep) and stabilised the
+                                # curve. Default False in code (Mnih-2015 vanilla);
+                                # enabled here. Sanctioned design choice (D9),
+                                # documented in docs/rl_design.md + AUDIT sec F.3.
+    updates_per_env_step: 1     # gradient steps per eligible update
+    update_every: 1             # update every N env steps
+    reward_scale: 1.0e-3        # reward scaling INSIDE replay only (reported
+                                # metrics stay in paper units). The paper's
+                                # rewards are O(1e3-1e6) (auction/terminal terms
+                                # ~K^a*H*(H-S^a) with H~100); 1e-3 keeps Bellman
+                                # targets O(1-100) so the clipped gradients are
+                                # not swamped. Was 1.0 -> value-target blow-up.
+    activation: relu            # mlp activation (relu | tanh | elu)
+    device: cpu                 # torch device
+    checkpoint_interval_episodes: 100  # periodic resumable checkpoints
+    epsilon_start: 1.0          # legacy schedule shape, main.py:1597-1602
+    epsilon_end: 0.01
+    epsilon_decay_episodes: 600.0  # rule of thumb decay ~= 0.6 * episodes. This
+                                # 600 suits the synthetic 1000-ep budget; the
+                                # historical 500-ep runs override it to 300 (via
+                                # scripts/run_historical_dqn.sh -o, since epsilon
+                                # lives in this shared algo config). EXTENDED from
+                                # 300: keeps mild exploration through the region
+                                # where the policy used to peak-then-collapse.
+    epsilon_warmup_episodes: 100
+    eval_interval_episodes: 100 # greedy eval cadence (epsilon = 0)
+    eval_n_seeds: 24            # WIDENED from 8 (2026-06-15): best.pt is selected
+                                # on this (disjoint) validation set; 8 was too
+                                # noisy to trust the selection / the eval curve.
+                                # Still << final_eval_n_seeds=100 (the test set).
+    final_eval_n_seeds: 100

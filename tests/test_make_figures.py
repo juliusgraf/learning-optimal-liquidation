@@ -1,0 +1,53 @@
+"""make_figures regenerates every figure from a committed fixture run dir.
+
+No env stepping happens here — figures come from saved outputs only.
+"""
+
+from __future__ import annotations
+
+from lmm.experiments import make_figures
+
+PER_RUN_FIGURES = [
+    "training_diagnostics",
+    "regret_curve",
+    "episode_anatomy",
+    "benchmark_anatomy",
+    "eval_distributions",
+    "algorithm_comparison",
+]
+
+
+def _assert_pdf_png(out_dir, name):
+    for ext in ("pdf", "png"):
+        p = out_dir / f"{name}.{ext}"
+        assert p.exists(), f"missing {p}"
+        assert p.stat().st_size > 0, f"empty {p}"
+
+
+def test_all_figures_from_single_run(fixture_run_dir, tmp_path):
+    rc = make_figures.main(["--run-dir", str(fixture_run_dir), "--out", str(tmp_path)])
+    assert rc == 0
+    for name in PER_RUN_FIGURES:
+        _assert_pdf_png(tmp_path, name)
+
+
+def test_legacy_style_distribution_variant(fixture_run_dir, tmp_path):
+    make_figures.main(["--run-dir", str(fixture_run_dir), "--out", str(tmp_path), "--legacy-style"])
+    _assert_pdf_png(tmp_path, "eval_distributions_bars")
+
+
+def test_algorithm_comparison_multi_run(fixture_run_dir, fixture_run_dir_ddpg, tmp_path):
+    make_figures.main(
+        ["--run-dir", str(fixture_run_dir), str(fixture_run_dir_ddpg), "--out", str(tmp_path)]
+    )
+    _assert_pdf_png(tmp_path, "algorithm_comparison")
+
+
+def test_default_out_is_run_figures_dir(fixture_run_dir, tmp_path):
+    # Copy the fixture so the default <run>/figures dir lands in tmp.
+    import shutil
+
+    run = tmp_path / "run"
+    shutil.copytree(fixture_run_dir, run)
+    make_figures.main(["--run-dir", str(run)])
+    assert (run / "figures" / "training_diagnostics.png").exists()
