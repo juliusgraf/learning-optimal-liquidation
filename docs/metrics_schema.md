@@ -11,10 +11,11 @@ the eval cadence, NaN placeholders) are empty cells.
 `return_disc` = Σ_steps χ^{t} · r_t + χ^{τ_cl} · r_terminal, where t is the
 DECISION TIME on the paper grid (CLOB decision times are real-valued and
 their count varies per episode; auction times are the integers τ_op..m) and
-the terminal reward — although folded into the final transition for the
-Bellman recursion (see `docs/rl_design.md` §5) — is re-discounted at
-χ^{τ_cl} in the reported value. `return_undisc` is the plain episode sum and
-is the headline evaluation number (CLAUDE.md).
+the terminal reward — although the env returns it combined with the final
+step reward — is re-discounted at χ^{τ_cl} in the reported value. This is
+consistent with the Bellman target, which bootstraps r_terminal at one χ from
+t_m (item 1, no fold; see `docs/rl_design.md` §5). `return_undisc` is the
+plain episode sum and is the headline evaluation number (CLAUDE.md).
 
 ## metrics.csv (train.py; one row per training episode)
 

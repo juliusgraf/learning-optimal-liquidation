@@ -11,7 +11,8 @@ Design mirrors the DQN (docs/rl_design.md):
   networks, optimizers and replay buffer — a documented design choice.
 - Cross-phase junction: a CLOB transition whose next state is the auction open
   bootstraps from the AUCTION target networks; the terminal tau_cl reward is
-  folded into the final auction transition with done=True and ZERO bootstrap.
+  the known absorbing-state value, carried in ``terminal_value`` and
+  bootstrapped as y = r_step + chi*r_tau_cl (item 1, no fold).
 - Per-env-step updates gated on ``update_every`` / ``min_buffer``; Polyak
   target updates (``target_soft_tau``); reward scaled inside replay only.
 - Seeding (D10): exploration noise from the numpy ``exploration`` generator,
@@ -226,9 +227,20 @@ class ContinuousActorCriticAgent(Agent):
         next_cancel_adm = False
         if not tr.done and tr.next_phase == "auction" and tr.next_mask is not None:
             next_cancel_adm = bool(np.asarray(tr.next_mask).all())
-        reward = float(tr.reward) * self.hp.reward_scale
+        # Item 1 (no fold): un-fold the terminal clearing reward, storing the
+        # step reward and carrying g = r_tau_cl in ``terminal_value`` for a
+        # one-chi bootstrap. reward_scale + reward_clip apply to both pieces.
+        step_reward = float(tr.reward)
+        terminal_value = 0.0
+        if tr.done and tr.info is not None and "terminal_reward" in tr.info:
+            r_term = float(tr.info["terminal_reward"])
+            step_reward -= r_term
+            terminal_value = r_term
+        reward = step_reward * self.hp.reward_scale
+        tv = terminal_value * self.hp.reward_scale
         if self.hp.reward_clip is not None:
             reward = float(np.clip(reward, -self.hp.reward_clip, self.hp.reward_clip))
+            tv = float(np.clip(tv, -self.hp.reward_clip, self.hp.reward_clip))
         self.replay[tr.phase].add(
             obs=np.asarray(tr.obs, dtype=np.float32),
             action=action_vec,
@@ -237,6 +249,7 @@ class ContinuousActorCriticAgent(Agent):
             done=tr.done,
             junction=junction,
             next_cancel_admissible=next_cancel_adm,
+            terminal_value=tv,
         )
         self._env_steps += 1
 
@@ -272,8 +285,10 @@ class ContinuousActorCriticAgent(Agent):
 
     def compute_targets(self, phase: str, batch: ContinuousReplayBatch) -> torch.Tensor:
         """Bellman targets with the cross-phase junction rule (the target
-        networks are chosen by the PHASE of x'); done rows get ZERO bootstrap
-        (terminal fold). Exposed for the hand-computed unit tests."""
+        networks are chosen by the PHASE of x'); done rows bootstrap from the
+        known absorbing-state value g = r_tau_cl in ``batch.terminal_value``,
+        y = r_step + chi*g (item 1, no fold). Exposed for the hand-computed
+        unit tests."""
         y = torch.as_tensor(batch.reward, dtype=torch.float32, device=self.device).clone()
         done = batch.done
         junction = batch.junction
@@ -298,6 +313,11 @@ class ContinuousActorCriticAgent(Agent):
                     q_next = q_next - self._alpha(next_phase) * logp_next
                 idx = torch.as_tensor(rows, dtype=torch.int64, device=self.device)
                 y[idx] = y[idx] + self.chi * q_next
+        # Terminal bootstrap from the known absorbing-state value (item 1):
+        # g nonzero only on done rows; None on legacy hand-built batches => skip.
+        if batch.terminal_value is not None:
+            g = torch.as_tensor(batch.terminal_value, dtype=torch.float32, device=self.device)
+            y = y + self.chi * g
         return y
 
     # -- algorithm hooks (overridable) ----------------------------------------

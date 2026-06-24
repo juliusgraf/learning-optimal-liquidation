@@ -151,6 +151,41 @@ def test_observe_applies_reward_scale_on_the_replay_path(algo):
 
 
 @pytest.mark.parametrize("algo", ALGOS)
+def test_terminal_reward_unfolded_not_folded(algo):
+    """Item 1: observe() does NOT fold the terminal clearing reward into the
+    stored step reward. The env returns the combined reward r_step + r_tau_cl
+    (with r_tau_cl in info['terminal_reward']); observe stores only the step
+    reward and carries g = r_tau_cl in ``terminal_value``, so compute_targets
+    bootstraps y = c_r*(r_step + chi*g) -- the rigorous Q* target, not the old
+    chi^0 fold y = c_r*(r_step + g). Covers DQN + DDPG/TD3/SAC."""
+    cfg, agent = build_agent(algo)
+    s, chi = agent.hp.reward_scale, cfg.rl.chi
+    clob_dim = len(cfg.features.clob)
+    # Scaled values 0.003 / 0.12 stay below any reward_clip (8.0), isolating
+    # the un-fold from clipping.
+    r_step, r_term = 3.0, 120.0
+    agent.observe(
+        Transition(
+            obs=np.zeros(clob_dim, np.float32),
+            action=_clob_action(algo, agent),
+            reward=r_step + r_term,  # env folds the terminal reward into the step
+            next_obs=np.zeros(clob_dim, np.float32),
+            done=True,
+            phase="clob",
+            next_phase="clob",
+            next_mask=None,
+            info={"terminal_reward": r_term},
+        )
+    )
+    batch = agent.replay["clob"].sample(1)
+    assert float(batch.reward[0]) == pytest.approx(r_step * s, rel=1e-6)
+    assert float(batch.terminal_value[0]) == pytest.approx(r_term * s, rel=1e-6)
+    y = agent.compute_targets("clob", batch).detach().cpu().numpy()
+    assert y[0] == pytest.approx((r_step + chi * r_term) * s, rel=1e-6)
+    assert y[0] != pytest.approx((r_step + r_term) * s, rel=1e-4)  # not the fold
+
+
+@pytest.mark.parametrize("algo", ALGOS)
 def test_bellman_targets_finite_and_bounded_by_scaled_reward(algo):
     """compute_targets is finite and tracks the scaled-reward magnitude (no
     blow-up beyond reward + a small init-bootstrap slack) -- even when a single

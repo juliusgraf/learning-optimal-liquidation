@@ -31,9 +31,12 @@ class ContinuousReplayBatch:
     action: np.ndarray  # (B, action_dim) float32 (committed continuous action)
     reward: np.ndarray  # (B,) float32
     next_obs: np.ndarray  # (B, next_obs_dim) float32, zero-padded on junction rows
-    done: np.ndarray  # (B,) bool; True => zero bootstrap
+    done: np.ndarray  # (B,) bool; True => bootstrap from terminal_value (item 1)
     junction: np.ndarray  # (B,) bool; True => bootstrap from the auction networks
     next_cancel_admissible: np.ndarray  # (B,) bool; C(x') > 0 (auction next states)
+    # (B,) known absorbing-state value g = r_tau_cl (reward_scale'd, clipped),
+    # nonzero only on done rows; target bootstraps y = r_step + chi * g (item 1).
+    terminal_value: np.ndarray | None = None
 
 
 class ContinuousReplayBuffer:
@@ -66,6 +69,7 @@ class ContinuousReplayBuffer:
         self._done = np.zeros(capacity, dtype=bool)
         self._junction = np.zeros(capacity, dtype=bool)
         self._next_cancel_adm = np.zeros(capacity, dtype=bool)
+        self._terminal_value = np.zeros(capacity, dtype=np.float32)
         self._pos = 0
         self._size = 0
 
@@ -78,16 +82,19 @@ class ContinuousReplayBuffer:
         done: bool,
         junction: bool,
         next_cancel_admissible: bool,
+        terminal_value: float = 0.0,
     ) -> None:
         """Append one transition, evicting FIFO at capacity.
 
-        ``next_obs`` may be None only when ``done`` (terminal: zero bootstrap)."""
+        ``next_obs`` may be None only when ``done`` (terminal: the bootstrap is
+        ``terminal_value`` = g = r_tau_cl, not the next state; item 1)."""
         if next_obs is None and not done:
             raise ValueError("next_obs may be None only on terminal transitions")
         i = self._pos
         self._obs[i] = obs
         self._action[i] = action
         self._reward[i] = float(reward)
+        self._terminal_value[i] = float(terminal_value)
         self._next_obs[i] = 0.0
         if next_obs is not None:
             self._next_obs[i, : len(next_obs)] = next_obs
@@ -110,6 +117,7 @@ class ContinuousReplayBuffer:
             done=self._done[idx].copy(),
             junction=self._junction[idx].copy(),
             next_cancel_admissible=self._next_cancel_adm[idx].copy(),
+            terminal_value=self._terminal_value[idx].copy(),
         )
 
     def __len__(self) -> int:
@@ -126,6 +134,7 @@ class ContinuousReplayBuffer:
             "done": self._done.copy(),
             "junction": self._junction.copy(),
             "next_cancel_adm": self._next_cancel_adm.copy(),
+            "terminal_value": self._terminal_value.copy(),
             "pos": self._pos,
             "size": self._size,
             "rng_state": self.rng.bit_generator.state,
@@ -143,6 +152,8 @@ class ContinuousReplayBuffer:
         self._done[:] = state["done"]
         self._junction[:] = state["junction"]
         self._next_cancel_adm[:] = state["next_cancel_adm"]
+        if "terminal_value" in state:  # robust to pre-item-1 checkpoints
+            self._terminal_value[:] = state["terminal_value"]
         self._pos = int(state["pos"])
         self._size = int(state["size"])
         self.rng.bit_generator.state = state["rng_state"]

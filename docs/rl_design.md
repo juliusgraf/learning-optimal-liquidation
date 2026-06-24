@@ -98,14 +98,19 @@ where the **target network is chosen by the phase of x′**:
 - junction row (x CLOB, x′ auction open) → AUCTION target Q_ψ⁻;
 - auction row → auction target Q_ψ⁻.
 
-Terminal: the τ_cl clearing reward is folded into the final auction
-transition (t = t_m) with done = 1 and ZERO bootstrap. Equivalence: the MDP
-has no decision at τ_cl, so V(x_{τ_cl}) ≡ 0 once the terminal reward is paid;
-folding r_{t_m} + r_{τ_cl} into one transition with zero bootstrap leaves
-every Q(x_t, a_t) for t ≤ m unchanged (the deterministic terminal reward is
-simply part of the return from (x_{t_m}, a_{t_m})). Note the folded reward
-discounts r_{τ_cl} at χ^{t_m} inside the Q-function rather than χ^{τ_cl}; the
-REPORTED discounted return splits it correctly (see `docs/metrics_schema.md`).
+Terminal (item 1, no fold): τ_cl carries no decision, so its value is the
+KNOWN terminal reward, V(x_{τ_cl}) ≡ r_{τ_cl}. The final auction transition
+(t = t_m) is stored with done = 1, the STEP reward r_{t_m} (the terminal
+reward is NOT folded into it), and the terminal payoff g = r_{τ_cl} carried
+alongside (replay `terminal_value`); the Bellman target bootstraps from that
+known value,
+    y_{t_m} = r_{t_m} + χ · r_{τ_cl}
+(one factor χ, since τ_cl = t_m + 1), which equals Q*_{t_m}(x_{t_m}, a_{t_m})
+exactly. Before 2026-06-23 the code FOLDED r_{t_m} + r_{τ_cl} into the stored
+reward with zero bootstrap, discounting r_{τ_cl} at χ^0 relative to t_m —
+exact only for χ = 1, off by (1−χ)r_{τ_cl} otherwise. The REPORTED discounted
+return already re-discounts r_{τ_cl} at χ^{τ_cl}
+(see `docs/metrics_schema.md`), now consistent with the training target.
 
 Hand-computed target tests (ordinary / junction / masked max / terminal):
 `tests/test_dqn.py::test_bellman_targets_hand_computed`.

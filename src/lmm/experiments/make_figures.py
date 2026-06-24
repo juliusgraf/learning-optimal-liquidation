@@ -17,6 +17,7 @@ Figures:
   d benchmark_anatomy     (eval/traces/as,twap)    -> replaces benchmark_behavior_*
   e eval_distributions    (eval/records.csv)       -> replaces final_evaluation_*
   f algorithm_comparison  (all run dirs' records)  -> new
+  g convergence_curves    (all run dirs' metrics, multi-seed)  -> new
 """
 
 from __future__ import annotations
@@ -27,11 +28,15 @@ from pathlib import Path
 from typing import Optional, Sequence
 
 import numpy as np
+import pandas as pd
 
 from lmm.experiments import plotting as P
 from lmm.experiments import stats
 
 __all__ = ["build_parser", "main"]
+
+# Human-readable setting names for figure titles (raw config names are ugly).
+_PRETTY_SETTING = {"synthetic_rough_heston": "synthetic", "historical_sp500": "historical"}
 
 
 # ---------------------------------------------------------------------------
@@ -368,12 +373,153 @@ def fig_algorithm_comparison_multiseed(run_dirs, out: Path) -> None:
             if bench_vals[b]:
                 ax.axhline(stats.iqm(np.asarray(bench_vals[b])), ls=ls, color="0.3", lw=1.2,
                            label=P.POLICY_LABELS.get(b, b))
-        ax.set(ylabel="IQM return (per-seed means)", title=setting)
+        # When several settings share the figure, name them on the panels;
+        # otherwise the setting goes in the suptitle (avoids a redundant title).
+        title = _PRETTY_SETTING.get(setting, setting) if len(settings) > 1 else ""
+        ax.set(ylabel="Undiscounted return", title=title)
         ax.legend(fontsize=7)
-    n_seeds = len({r.seed for r in runs})
-    fig.suptitle(f"Cross-seed comparison — IQM of per-seed means, bootstrap 95% CI ({n_seeds} seeds)")
+    if len(settings) == 1:
+        fig.suptitle(f"Final performance ({_PRETTY_SETTING.get(settings[0], settings[0])})")
+    else:
+        fig.suptitle("Final performance")
     fig.tight_layout()
     P.save_fig(fig, out, "algorithm_comparison_multiseed")
+
+
+def fig_convergence_curves(run_dirs, out: Path) -> None:
+    """Multi-seed training-convergence figure (three panels, one curve per
+    learned algorithm, aggregated across all runs of a single setting — seeds,
+    and tickers in the historical setting):
+
+      (1) greedy evaluation return vs episode  -> policy convergence/plateau. A
+          star marks the across-run median ``best.pt`` (early-stopping) episode;
+          faint AS/TWAP lines give the benchmark level.
+      (2) auction critic loss vs episode (log-y) -> numerical stability
+          (bounded, stationary; no divergence). The CLOB loss is uniformly
+          small and is omitted for clarity.
+      (3) auction mean |TD error| vs episode -> Bellman-residual stabilization.
+
+    The central line is the interquartile mean (IQM) across runs at each
+    episode; the eval panel shows a bootstrap 95% CI band (few eval points), the
+    dense loss/TD panels a 25-75% interquartile band. Honest by construction:
+    DQN's late-training degradation stays visible and the best.pt marker shows
+    which checkpoint is reported. Emitted only with >= 2 runs of one setting.
+    """
+    import matplotlib.lines as mlines
+
+    runs = [r for r in P.collect_runs(run_dirs) if r.seed is not None]
+    if not runs:
+        return
+    by_setting: dict[str, list] = {}
+    for r in runs:
+        by_setting.setdefault(r.setting, []).append(r)
+    setting = max(by_setting, key=lambda s: len(by_setting[s]))
+    runs = by_setting[setting]
+    if len(runs) < 2:
+        return
+
+    metrics_by_algo: dict[str, list] = {}
+    for r in runs:
+        df = P.read_metrics(r.run_dir)
+        if df is None or "eval_return_mean" not in df.columns:
+            continue
+        metrics_by_algo.setdefault(r.algo, []).append(df)
+    algos = [a for a in P.ALGO_ORDER if a in metrics_by_algo]
+    if not algos:
+        return
+
+    def _aligned(dfs, col, *, window=1):
+        """Per-episode matrix [n_episodes x n_runs] aligned on the episode
+        index (outer join), optionally rolling-mean-smoothed per run."""
+        cols = []
+        for k, df in enumerate(dfs):
+            if col not in df.columns or "episode" not in df.columns:
+                continue
+            sub = df[["episode", col]].dropna()
+            if sub.empty:
+                continue
+            s = pd.Series(sub[col].to_numpy(float),
+                          index=sub["episode"].to_numpy(int), name=k)
+            if window > 1:
+                s = s.rolling(window, min_periods=1).mean()
+            cols.append(s)
+        if not cols:
+            return np.empty(0, int), np.empty((0, 0))
+        mat = pd.concat(cols, axis=1).sort_index()
+        return mat.index.to_numpy(int), mat.to_numpy(float)
+
+    fig, axes = P.plt.subplots(1, 3, figsize=(13.0, 3.8))
+
+    # -- panel 1: evaluation return (policy convergence) --------------------
+    ax = axes[0]
+    for a in algos:
+        dfs = metrics_by_algo[a]
+        eps, mat = _aligned(dfs, "eval_return_mean")
+        if eps.size == 0:
+            continue
+        pts, los, his = [], [], []
+        for row in mat:
+            p, lo, hi = stats.iqm_ci(row[~np.isnan(row)])
+            pts.append(p); los.append(lo); his.append(hi)
+        pts, los, his = map(np.asarray, (pts, los, his))
+        c = P.POLICY_COLORS[a]
+        ax.plot(eps, pts, color=c, marker="o", ms=3, label=P.POLICY_LABELS[a])
+        ax.fill_between(eps, los, his, color=c, alpha=0.15, linewidth=0)
+        # best.pt = across-run median argmax episode, snapped to the eval grid
+        best = [int(df.loc[df["eval_return_mean"].idxmax(), "episode"])
+                for df in dfs if df["eval_return_mean"].notna().any()]
+        if best:
+            j = int(np.argmin(np.abs(eps - int(np.median(best)))))
+            ax.scatter([eps[j]], [pts[j]], marker="*", s=160, color=c,
+                       edgecolor="k", linewidth=0.5, zorder=6)
+    bench: dict[str, list] = {"as": [], "twap": []}
+    for r in runs:
+        if r.records is None:
+            continue
+        for b in bench:
+            bv = r.records[r.records["policy"] == b]["return_undisc"].to_numpy(float)
+            if bv.size:
+                bench[b].append(float(np.mean(bv)))
+    for b, ls in (("as", "--"), ("twap", ":")):
+        if bench[b]:
+            ax.axhline(stats.iqm(np.asarray(bench[b])), ls=ls, color="0.4",
+                       lw=1.0, label=P.POLICY_LABELS[b])
+    ax.set(xlabel="Episode", ylabel="Eval. return (undisc.)",
+           title="Policy convergence")
+    handles, _ = ax.get_legend_handles_labels()
+    handles.append(mlines.Line2D([], [], marker="*", linestyle="none",
+                                 markerfacecolor="0.3", markeredgecolor="k",
+                                 markersize=10, label="best.pt"))
+    ax.legend(handles=handles, fontsize=6, ncol=2)
+
+    # -- panels 2-3: stability diagnostics (dense, smoothed) ----------------
+    for ax, col, ylab, title, logy in (
+        (axes[1], "loss_auction", "Critic loss", "Critic-loss stability (auction phase)", True),
+        (axes[2], "td_abs_mean_auction", r"Mean $|$TD error$|$", "Bellman residual (auction phase)", False),
+    ):
+        for a in algos:
+            eps, mat = _aligned(metrics_by_algo[a], col, window=25)
+            if eps.size == 0:
+                continue
+            line = np.full(len(eps), np.nan)
+            lo = np.full(len(eps), np.nan)
+            hi = np.full(len(eps), np.nan)
+            for i, row in enumerate(mat):
+                v = row[~np.isnan(row)]
+                if v.size:
+                    line[i] = stats.iqm(v)
+                    lo[i] = np.percentile(v, 25)
+                    hi[i] = np.percentile(v, 75)
+            c = P.POLICY_COLORS[a]
+            ax.plot(eps, line, color=c, lw=1.2, label=P.POLICY_LABELS[a])
+            ax.fill_between(eps, lo, hi, color=c, alpha=0.12, linewidth=0)
+        if logy:
+            ax.set_yscale("log")
+        ax.set(xlabel="Episode", ylabel=ylab, title=title)
+
+    fig.suptitle(f"Training convergence ({_PRETTY_SETTING.get(setting, setting)})")
+    fig.tight_layout(rect=(0, 0, 1, 0.95))
+    P.save_fig(fig, out, "convergence_curves")
 
 
 # ---------------------------------------------------------------------------
@@ -411,6 +557,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         funcs = [
             ("algorithm_comparison_multiseed",
              lambda: fig_algorithm_comparison_multiseed(run_dirs, out)),
+            ("convergence_curves",
+             lambda: fig_convergence_curves(run_dirs, out)),
         ]
     else:
         funcs = [

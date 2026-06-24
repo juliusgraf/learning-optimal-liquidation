@@ -221,12 +221,14 @@ action's `c_logit'` is forced to `0` (the no-cancel region) before evaluating
 the target critic, matching the env's masking of an inadmissible cancel at `x'`.
 In `continuous_cancel: never` there is no `c` dimension and the clamp is a no-op.
 
-**Terminal fold.** Exactly as in the discrete design: the `τ_cl` clearing reward
-is folded into the final auction transition with `done = 1` and **zero
-bootstrap** (`y = r̃`). The MDP has no decision at `τ_cl`, so `V(x_{τ_cl}) ≡ 0`
-once the terminal reward is paid; this leaves every `Q(x_t, a_t)`, `t ≤ m`,
-correct. The reported discounted return re-discounts the terminal part at
-`χ^{τ_cl}` (`docs/metrics_schema.md`), unchanged from Phase 4.
+**Terminal bootstrap (no fold).** Exactly as in the discrete design (item 1):
+`τ_cl` carries no decision, so its value is the known terminal reward,
+`V(x_{τ_cl}) ≡ r_{τ_cl}`. The final auction transition is stored with
+`done = 1`, the step reward only, and `g = r_{τ_cl}` in `terminal_value`; the
+target bootstraps `y = r̃_step + χ · g̃` (one `χ`, since `τ_cl = t_m + 1`),
+matching `Q*_{t_m}` exactly (the earlier zero-bootstrap fold was exact only for
+`χ = 1`). The reported discounted return re-discounts the terminal part at
+`χ^{τ_cl}` (`docs/metrics_schema.md`), now consistent with the training target.
 
 ## 6. Update rules
 

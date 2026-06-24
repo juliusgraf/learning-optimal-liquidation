@@ -43,6 +43,23 @@ def test_algorithm_comparison_multi_run(fixture_run_dir, fixture_run_dir_ddpg, t
     _assert_pdf_png(tmp_path, "algorithm_comparison")
 
 
+def test_convergence_curves_multiseed(fixture_run_dir, tmp_path):
+    # Two complete run dirs of the same setting with distinct seeds exercise the
+    # multi-seed convergence figure (aggregated IQM/CI over runs).
+    import shutil
+
+    run_dirs = []
+    for seed in ("42", "99"):
+        rd = tmp_path / f"run_seed{seed}"
+        shutil.copytree(fixture_run_dir, rd)
+        (rd / "seed.txt").write_text(seed + "\n")
+        run_dirs.append(str(rd))
+    out = tmp_path / "out"
+    rc = make_figures.main(["--multiseed", "--run-dir", *run_dirs, "--out", str(out)])
+    assert rc == 0
+    _assert_pdf_png(out, "convergence_curves")
+
+
 def test_default_out_is_run_figures_dir(fixture_run_dir, tmp_path):
     # Copy the fixture so the default <run>/figures dir lands in tmp.
     import shutil

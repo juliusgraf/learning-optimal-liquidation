@@ -20,8 +20,11 @@ class Transition:
 
     ``next_phase`` marks the cross-phase junction (CLAUDE.md, D9): a CLOB
     transition whose next state is in the auction bootstraps from the AUCTION
-    target network. The terminal tau_cl reward is folded into the final
-    auction transition with ``done=True`` and zero bootstrap.
+    target network. On the terminal transition (``done=True``) the env returns
+    the combined reward r_step + r_tau_cl and exposes r_tau_cl in
+    ``info["terminal_reward"]``; the RL agents un-fold it and bootstrap the
+    terminal clearing reward as the known absorbing-state value, y = r_step +
+    chi*r_tau_cl (item 1) — it is NOT folded into the stored step reward.
 
     ``action`` is the EXECUTED action (admissibility is enforced by masking
     at selection, never by post-hoc projection — fixes AUDIT N12).

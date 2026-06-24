@@ -15,9 +15,11 @@ Section 4):
   (D10: private exploration/replay generators from the SeedBundle; no global
   RNG).
 - Cross-phase junction: a CLOB transition with next_phase == "auction"
-  bootstraps from the AUCTION target network. The terminal tau_cl reward is
-  folded into the final auction transition with done=True and ZERO bootstrap
-  (documented equivalence in docs/rl_design.md).
+  bootstraps from the AUCTION target network. The terminal tau_cl state has no
+  decision, so its value is the KNOWN terminal reward r_tau_cl: the final
+  auction transition is stored with done=True, the step reward only, and
+  r_tau_cl carried in ``terminal_value``; the target bootstraps it as
+  y = r_step + chi*r_tau_cl (item 1; rigorous Q*, not the old chi^0 fold).
 - Admissibility masking (Adm(x)) in BOTH the greedy argmax and the random
   draw (masking, never projection — AUDIT N12); the Bellman max runs over the
   admissible actions of x' via the stored ``next_mask``.
@@ -193,19 +195,32 @@ class DQNAgent(Agent):
     def observe(self, transition: Transition) -> None:
         """Store the EXECUTED transition (AUDIT N12) in the phase buffer;
         rewards are scaled by ``reward_scale`` INSIDE replay only (reported
-        metrics stay in paper units). Eval transitions are not stored."""
+        metrics stay in paper units). Eval transitions are not stored.
+
+        Item 1 (no fold): on the terminal (done) transition the env returns the
+        COMBINED reward r_step + r_tau_cl; we un-fold it, storing only the step
+        reward and carrying the known absorbing-state value g = r_tau_cl in
+        ``terminal_value`` so the target bootstraps y = r_step + chi*g (one chi,
+        since tau_cl = t_m + 1) instead of the old chi^0 fold."""
         if not self._training:
             return
         tr = transition
         junction = tr.phase == "clob" and tr.next_phase == "auction"
+        step_reward = float(tr.reward)
+        terminal_value = 0.0
+        if tr.done and tr.info is not None and "terminal_reward" in tr.info:
+            r_term = float(tr.info["terminal_reward"])
+            step_reward -= r_term  # un-fold: store the step reward only
+            terminal_value = r_term
         self.replay[tr.phase].add(
             obs=np.asarray(tr.obs, dtype=np.float32),
             action=int(tr.action),
-            reward=float(tr.reward) * self.hp.reward_scale,
+            reward=step_reward * self.hp.reward_scale,
             next_obs=None if tr.done else np.asarray(tr.next_obs, dtype=np.float32),
             done=tr.done,
             junction=junction,
             next_mask=None if tr.done else tr.next_mask,
+            terminal_value=terminal_value * self.hp.reward_scale,
         )
         self._env_steps += 1
 
@@ -236,9 +251,11 @@ class DQNAgent(Agent):
         """Bellman targets y = r + chi (1 - done) max_{a' in Adm(x')}
         Q_target(x', a'), with the target network chosen by the PHASE of x':
         CLOB junction rows (next state at the auction open) bootstrap from
-        the AUCTION target network; done rows bootstrap ZERO (the terminal
-        tau_cl reward is already folded into r). Exposed for the
-        hand-computed unit tests (tests/test_dqn.py)."""
+        the AUCTION target network. Done rows do NOT bootstrap from a network;
+        instead they bootstrap from the KNOWN absorbing-state value g =
+        r_tau_cl carried in ``batch.terminal_value``, y = r_step + chi*g (item
+        1, no fold). Exposed for the hand-computed unit tests
+        (tests/test_dqn.py)."""
         y = torch.as_tensor(batch.reward, dtype=torch.float32, device=self.device).clone()
         done = torch.as_tensor(batch.done, dtype=torch.bool, device=self.device)
         junction = torch.as_tensor(batch.junction, dtype=torch.bool, device=self.device)
@@ -270,6 +287,12 @@ class DQNAgent(Agent):
                 else:
                     qt = self.q_target[next_phase](nobs).masked_fill(~nmask, -torch.inf)
                     y[idx] = y[idx] + self.chi * qt.max(dim=1).values
+        # Terminal bootstrap from the known absorbing-state value (item 1):
+        # g is nonzero only on done rows, so this leaves non-terminal targets
+        # unchanged. None on hand-built legacy batches => skip (y = r on done).
+        if batch.terminal_value is not None:
+            g = torch.as_tensor(batch.terminal_value, dtype=torch.float32, device=self.device)
+            y = y + self.chi * g
         return y
 
     def _gradient_step(self, phase: str, batch: ReplayBatch) -> dict[str, float]:

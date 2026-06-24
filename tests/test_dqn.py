@@ -194,7 +194,7 @@ def test_bellman_targets_hand_computed():
             (0.5, False, True, np.ones(auc_dim), np.ones(n_auc, dtype=bool)),
             # masked max: only the LAST 5 auction actions admissible
             (0.0, False, True, np.ones(auc_dim), mask_low),
-            # terminal: zero bootstrap regardless of stored mask
+            # terminal w/o a clearing reward (terminal_value=None): y = r
             (-3.0, True, False, None, None),
         ],
     )
@@ -221,12 +221,37 @@ def test_bellman_targets_auction_phase():
         max(len(agent.clob_grid), n_auc),
         [
             (2.0, False, False, np.ones(auc_dim), mask),
-            (5.0, True, False, None, None),  # terminal fold: y = r exactly
+            (5.0, True, False, None, None),  # terminal w/o clearing reward: y = r
         ],
     )
     y = agent.compute_targets("auction", batch).cpu().numpy()
     assert y[0] == pytest.approx(2.0 + chi * bias_auc[20], abs=1e-6)
     assert y[1] == pytest.approx(5.0)
+
+
+def test_terminal_value_bootstraps_with_one_chi():
+    """Item 1 (no fold): a done row carrying a known absorbing-state value
+    g = r_tau_cl bootstraps as y = r_step + chi*g (one chi, since tau_cl =
+    t_m + 1) -- the rigorous Q* target, NOT the old chi^0 fold (y = r_step + g)
+    nor a network max. Pins the chi factor at the compute_targets level."""
+    cfg = load_dqn_cfg("algo.hyperparams.double_q=false")
+    agent = make_agent(cfg)
+    chi = cfg.rl.chi
+    n_clob, clob_dim = len(agent.clob_grid), len(cfg.features.clob)
+    r_step, g = 2.0, 50.0
+    batch = ReplayBatch(
+        obs=np.zeros((1, clob_dim), np.float32),
+        action=np.zeros(1, np.int64),
+        reward=np.array([r_step], np.float32),
+        next_obs=np.zeros((1, clob_dim), np.float32),
+        done=np.array([True]),
+        junction=np.array([False]),
+        next_mask=np.zeros((1, n_clob), bool),
+        terminal_value=np.array([g], np.float32),
+    )
+    y = agent.compute_targets("clob", batch).cpu().numpy()
+    assert y[0] == pytest.approx(r_step + chi * g, abs=1e-6)
+    assert y[0] != pytest.approx(r_step + g, abs=1e-3)  # not the chi^0 fold
 
 
 def test_double_q_bellman_targets():
