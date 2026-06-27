@@ -14,6 +14,7 @@ PER_RUN_FIGURES = [
     "benchmark_anatomy",
     "eval_distributions",
     "algorithm_comparison",
+    "reward_decomposition",
 ]
 
 
@@ -41,6 +42,11 @@ def test_algorithm_comparison_multi_run(fixture_run_dir, fixture_run_dir_ddpg, t
         ["--run-dir", str(fixture_run_dir), str(fixture_run_dir_ddpg), "--out", str(tmp_path)]
     )
     _assert_pdf_png(tmp_path, "algorithm_comparison")
+    # The reward decomposition pools both algos + benchmarks for the setting and
+    # writes a companion CSV of the plotted IQM/CI numbers alongside the figure.
+    _assert_pdf_png(tmp_path, "reward_decomposition")
+    csv_path = tmp_path / "reward_decomposition.csv"
+    assert csv_path.exists() and csv_path.stat().st_size > 0
 
 
 def test_convergence_curves_multiseed(fixture_run_dir, tmp_path):

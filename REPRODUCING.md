@@ -254,6 +254,7 @@ Each figure is written as both `.pdf` (for LaTeX) and `.png`.
 | `benchmark_anatomy.{pdf,png}` | `fig:episode-2000-bm` (benchmark behaviour) | `eval/traces/{as,twap}_ep0.csv` |
 | `eval_distributions.{pdf,png}` | final-evaluation distributions | `eval/records.csv` |
 | `algorithm_comparison.{pdf,png}` | **new** (cross-algorithm DQN/DDPG/TD3/SAC) | all runs' `eval/records.csv` |
+| `reward_decomposition.{pdf,png}` (+ `.csv`) | **new** (per setting; CLOB / fictive-auction / realized-terminal reward by method, IQM ± 95% CI — isolates the RL auction edge, AUDIT §F) | all runs' `eval/records.csv` |
 
 ### Generated tables (per run under `<run>/tables/`, and combined under `results/<setting>/_combined/tables/`)
 

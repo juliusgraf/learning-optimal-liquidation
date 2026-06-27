@@ -18,11 +18,13 @@ Figures:
   e eval_distributions    (eval/records.csv)       -> replaces final_evaluation_*
   f algorithm_comparison  (all run dirs' records)  -> new
   g convergence_curves    (all run dirs' metrics, multi-seed)  -> new
+  h reward_decomposition  (all run dirs' records, per setting) -> new
 """
 
 from __future__ import annotations
 
 import argparse
+import csv
 import warnings
 from pathlib import Path
 from typing import Optional, Sequence
@@ -338,6 +340,112 @@ def fig_algorithm_comparison(run_dirs, out: Path) -> None:
     P.save_fig(fig, out, "algorithm_comparison")
 
 
+# ---------------------------------------------------------------------------
+# (h) reward decomposition: CLOB / auction-fictive / terminal-realized
+# ---------------------------------------------------------------------------
+
+# Setting labels for the paper-grade title parenthetical.
+_SETTING_TITLE = {
+    "synthetic_rough_heston": "synthetic setting",
+    "historical_sp500": "historical setting",
+}
+
+# The three additive reward components: (records.csv column, panel title).
+# Their sum equals ``return_undisc`` (verified). CLAUDE.md reward forms:
+# CLOB f_c (no clamp), per-step fictive auction f_a, terminal clearing + lambda|I|^2.
+_REWARD_COMPONENTS = [
+    ("clob_reward_sum", "Limit-order (CLOB) phase"),
+    ("auction_step_reward_sum", "Auction phase: fictive shaping reward"),
+    ("terminal_reward", "Auction clearing: realized terminal P&L"),
+]
+
+
+def fig_reward_decomposition(run_dirs, out: Path) -> None:
+    """Per-setting reward decomposition over the evaluation episodes.
+
+    Splits each method's undiscounted return into its three additive parts —
+    the CLOB (limit-order) reward, the per-step *fictive* auction shaping
+    reward, and the *realized* terminal clearing P&L — to isolate where the RL
+    edge actually lives: it is overwhelmingly the fictive auction reward, while
+    the realized terminal P&L roughly ties the AS benchmark (AUDIT Sec. F).
+    Bars are the IQM over the pooled evaluation episodes (robust to the
+    heavy-tailed auction clearing-singularity episodes) with a bootstrap 95% CI;
+    ONE figure file per setting (synthetic / historical), plus a companion CSV
+    of the plotted numbers. Reads ``eval/records.csv`` only — no env stepping.
+
+    The learned policy is always labelled ``"dqn"`` in records, so its identity
+    comes from each run's ``algo.name`` (plotting.py convention); benchmark rows
+    (``as``/``twap``) are pooled across the setting's runs (identical under CRN).
+    """
+    runs = [r for r in P.collect_runs(run_dirs) if r.records is not None]
+    if not runs:
+        return
+    settings = sorted({r.setting for r in runs})
+    single_setting = len(settings) == 1
+    for setting in settings:
+        sruns = [r for r in runs if r.setting == setting]
+
+        def _add(pooled, method, rows):
+            d = pooled.setdefault(method, {c: [] for c, _ in _REWARD_COMPONENTS})
+            for col, _ in _REWARD_COMPONENTS:
+                d[col].extend(rows[col].to_numpy(float).tolist())
+
+        # method -> {component column -> pooled per-episode values}.
+        # Learned rows (labelled "dqn") are keyed by each run's algo and pooled
+        # across its runs (distinct policies). Benchmark rows (as/twap) are
+        # identical across the algo runs of a given (symbol, seed) under CRN, so
+        # they are pooled ONCE per (symbol, seed) — pooling them per-algo would
+        # replicate the same episodes and spuriously shrink their CI.
+        pooled: dict[str, dict[str, list[float]]] = {}
+        bench_seen: set = set()
+        for r in sruns:
+            learned = r.records[r.records["policy"] == "dqn"]
+            if not learned.empty:
+                _add(pooled, r.algo, learned)
+            key = (r.symbol, r.seed)
+            if key not in bench_seen:
+                bench_seen.add(key)
+                for b in ("as", "twap"):
+                    rows = r.records[r.records["policy"] == b]
+                    if not rows.empty:
+                        _add(pooled, b, rows)
+        methods = [a for a in P.ALGO_ORDER if a in pooled]
+        methods += [b for b in ("as", "twap") if b in pooled]
+        if not methods:
+            continue
+        labels = [P.POLICY_LABELS[m] for m in methods]
+        colors = [P.POLICY_COLORS[m] for m in methods]
+        x = np.arange(len(methods))
+
+        csv_rows: list[tuple] = []  # (component, method, iqm, lo, hi, n)
+        fig, axes = P.plt.subplots(1, 3, figsize=(13.5, 4.2), squeeze=False)
+        for ax, (col, title) in zip(axes[0], _REWARD_COMPONENTS):
+            pts, los, his = [], [], []
+            for m in methods:
+                vals = np.asarray(pooled[m][col], float)
+                pt, lo, hi = stats.iqm_ci(vals)
+                pts.append(pt); los.append(pt - lo); his.append(hi - pt)
+                csv_rows.append((title, P.POLICY_LABELS[m], pt, lo, hi, int(vals.size)))
+            ax.bar(x, pts, yerr=[los, his], color=colors, capsize=4)
+            ax.axhline(0.0, color="0.5", linewidth=0.8, zorder=0)
+            ax.set_xticks(x)
+            ax.set_xticklabels(labels, rotation=20)
+            ax.set_title(title)
+        axes[0][0].set_ylabel("Undiscounted reward  (IQM, 95% CI)")
+        fig.suptitle(
+            "Reward decomposition over evaluation phases "
+            f"({_SETTING_TITLE.get(setting, setting)})"
+        )
+        fig.tight_layout()
+        name = "reward_decomposition" if single_setting else f"reward_decomposition_{setting}"
+        P.save_fig(fig, out, name)
+        with (Path(out) / f"{name}.csv").open("w", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(["component", "method", "iqm", "ci_lo", "ci_hi", "n_episodes"])
+            for comp, method, pt, lo, hi, n in csv_rows:
+                writer.writerow([comp, method, *(format(v, ".17g") for v in (pt, lo, hi)), n])
+
+
 def fig_algorithm_comparison_multiseed(run_dirs, out: Path) -> None:
     """Cross-seed comparison (rliable-style): per algo, the IQM of the per-seed
     mean returns with a bootstrap 95% CI over seeds; AS/TWAP IQM reference lines.
@@ -570,6 +678,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             ("eval_distributions",
              lambda: fig_eval_distributions(primary, out, legacy_style=args.legacy_style)),
             ("algorithm_comparison", lambda: fig_algorithm_comparison(run_dirs, out)),
+            ("reward_decomposition", lambda: fig_reward_decomposition(run_dirs, out)),
         ]
     for name, fn in funcs:
         try:
