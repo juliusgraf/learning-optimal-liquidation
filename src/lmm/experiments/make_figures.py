@@ -19,6 +19,7 @@ Figures:
   f algorithm_comparison  (all run dirs' records)  -> new
   g convergence_curves    (all run dirs' metrics, multi-seed)  -> new
   h reward_decomposition  (all run dirs' records, per setting) -> new
+  i regret_multiseed      (DQN regret, IQM/CI across seeds; multi-seed) -> new
 """
 
 from __future__ import annotations
@@ -631,6 +632,86 @@ def fig_convergence_curves(run_dirs, out: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
+# (i) cross-seed regret curve (DQN; IQM + bootstrap 95% CI across seeds)
+# ---------------------------------------------------------------------------
+
+
+def fig_regret_multiseed(run_dirs, out: Path, *, symbol: str = "GOOGL") -> None:
+    """Cross-seed cumulative-regret curve for the DQN policy, one figure per
+    setting. For each seed run, PRegret accumulates the per-episode discounted
+    V0 gap ``v_benchmark - v_dqn`` (paper sec:learning; CRN holds within each
+    run, asserted by equal per-episode env seeds). The seeds' cumulative-regret
+    curves are aligned by eval-episode index; the central line is the IQM across
+    seeds at each episode and the band is a percentile bootstrap 95% CI across
+    seeds (same construction as the convergence figure's eval panel). Two curves
+    per figure: vs AS and vs TWAP; negative => DQN beats the benchmark.
+
+    Historical runs differ by mid-price path, so they are NOT comparable across
+    tickers; the historical figure is restricted to a single ticker ``symbol``
+    (default GOOGL). Emitted only with >= 2 seeds for the (setting, dqn[, symbol])
+    group. Reads eval/records.csv only.
+    """
+    runs = [r for r in P.collect_runs(run_dirs)
+            if r.records is not None and r.algo == "dqn" and r.seed is not None]
+    if not runs:
+        return
+    for setting in sorted({r.setting for r in runs}):
+        is_hist = setting == "historical_sp500"
+        sruns = [r for r in runs if r.setting == setting]
+        if is_hist:
+            sruns = [r for r in sruns if r.symbol == symbol]
+        by_seed = {}
+        for r in sruns:
+            by_seed.setdefault(r.seed, r)        # one run per seed
+        seeds = sorted(by_seed)
+        if len(seeds) < 2:
+            continue
+
+        fig, ax = P.plt.subplots()
+        drawn = False
+        for bench in ("as", "twap"):
+            curves = []
+            for s in seeds:
+                df = by_seed[s].records
+                p = df[df["policy"] == "dqn"][["episode", "env_seed", "return_disc"]]
+                b = df[df["policy"] == bench][["episode", "env_seed", "return_disc"]]
+                m = p.merge(b, on="episode", suffixes=("_p", "_b")).sort_values("episode")
+                if m.empty or (m["env_seed_p"].to_numpy() != m["env_seed_b"].to_numpy()).any():
+                    continue  # CRN guard: paper regret needs the shared env seed
+                reg = m["return_disc_b"].to_numpy(float) - m["return_disc_p"].to_numpy(float)
+                curves.append(np.cumsum(reg))
+            if len(curves) < 2:
+                continue
+            length = min(c.size for c in curves)
+            mat = np.vstack([c[:length] for c in curves])      # [n_seeds x length]
+            x = np.arange(1, length + 1)
+            pts, los, his = [], [], []
+            for i in range(length):
+                pt, lo, hi = stats.iqm_ci(mat[:, i], n_boot=2000)
+                pts.append(pt); los.append(lo); his.append(hi)
+            color = P.POLICY_COLORS[bench]
+            ax.plot(x, pts, color=color, label=f"vs {P.POLICY_LABELS[bench]}")
+            ax.fill_between(x, los, his, color=color, alpha=0.2, linewidth=0)
+            drawn = True
+        if not drawn:
+            P.plt.close(fig)
+            continue
+        ax.axhline(0.0, color="0.5", linewidth=0.8)
+        loc = _SETTING_TITLE.get(setting, setting)
+        if is_hist:
+            loc = f"{loc}, {symbol}"
+        ax.set(
+            xlabel="Eval episode",
+            ylabel="Cumulative regret " r"$\mathrm{PRegret}$" "\n(IQM, 95% CI across seeds)",
+            title=f"DQN cumulative regret across {len(seeds)} seeds ({loc})",
+        )
+        ax.legend()
+        fig.tight_layout()
+        name = f"regret_multiseed_{symbol}" if is_hist else "regret_multiseed"
+        P.save_fig(fig, out, name)
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
@@ -648,7 +729,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--episode", type=int, default=0, help="traced episode index to plot")
     parser.add_argument(
         "--multiseed", action="store_true",
-        help="build ONLY the cross-seed IQM/CI figure (run dirs spanning >= 2 seeds)",
+        help="build ONLY the cross-seed IQM/CI figures (run dirs spanning >= 2 seeds)",
+    )
+    parser.add_argument(
+        "--regret-symbol", default="GOOGL",
+        help="ticker for the historical cross-seed DQN regret figure (multiseed)",
     )
     return parser
 
@@ -667,6 +752,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
              lambda: fig_algorithm_comparison_multiseed(run_dirs, out)),
             ("convergence_curves",
              lambda: fig_convergence_curves(run_dirs, out)),
+            ("regret_multiseed",
+             lambda: fig_regret_multiseed(run_dirs, out, symbol=args.regret_symbol)),
         ]
     else:
         funcs = [

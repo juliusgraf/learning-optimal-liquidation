@@ -127,6 +127,7 @@ percentile-**bootstrap 95% CI** over seeds (Agarwal et al. 2021, `rliable`).
 | `tables/eval_summary_multiseed.{tex,csv}` | synthetic: per-algo IQM [95% CI], mean-of-seed-means, seed count, IQM improvement vs AS/TWAP |
 | `tables/dqn_results_multiseed.{tex,csv}` | historical: per-ticker IQM across seeds; final row pools all ticker×seed runs into IQM [95% CI] |
 | `figures/algorithm_comparison_multiseed.{pdf,png}` | per-algo IQM bars with bootstrap-CI whiskers, AS/TWAP IQM reference lines |
+| `figures/regret_multiseed.{pdf,png}` (synthetic) / `regret_multiseed_<ticker>.{pdf,png}` (historical, default GOOGL) | DQN cumulative regret vs AS/TWAP, central line = IQM across seeds per eval episode, band = bootstrap 95% CI across seeds (CRN within each run); ticker fixed for the historical setting (`--regret-symbol`) |
 
 With few seeds (e.g. 3) the CIs are wide and IQM ≈ mean (no trimming below n=4)
 — the honest multi-seed signal, not a defect.

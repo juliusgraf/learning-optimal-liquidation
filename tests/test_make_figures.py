@@ -64,6 +64,8 @@ def test_convergence_curves_multiseed(fixture_run_dir, tmp_path):
     rc = make_figures.main(["--multiseed", "--run-dir", *run_dirs, "--out", str(out)])
     assert rc == 0
     _assert_pdf_png(out, "convergence_curves")
+    # Cross-seed DQN regret curve (synthetic fixture => no ticker suffix).
+    _assert_pdf_png(out, "regret_multiseed")
 
 
 def test_default_out_is_run_figures_dir(fixture_run_dir, tmp_path):
