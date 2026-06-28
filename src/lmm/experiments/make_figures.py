@@ -19,7 +19,8 @@ Figures:
   f algorithm_comparison  (all run dirs' records)  -> new
   g convergence_curves    (all run dirs' metrics, multi-seed)  -> new
   h reward_decomposition  (all run dirs' records, per setting) -> new
-  i regret_multiseed      (DQN regret, IQM/CI across seeds; multi-seed) -> new
+  i regret_multiseed      (DQN regret, IQM/CI across all runs; multi-seed) -> new
+  j reward_decomposition_multiseed (run-level IQM/CI across all runs; multi-seed) -> new
 """
 
 from __future__ import annotations
@@ -636,20 +637,20 @@ def fig_convergence_curves(run_dirs, out: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def fig_regret_multiseed(run_dirs, out: Path, *, symbol: str = "GOOGL") -> None:
-    """Cross-seed cumulative-regret curve for the DQN policy, one figure per
-    setting. For each seed run, PRegret accumulates the per-episode discounted
-    V0 gap ``v_benchmark - v_dqn`` (paper sec:learning; CRN holds within each
-    run, asserted by equal per-episode env seeds). The seeds' cumulative-regret
-    curves are aligned by eval-episode index; the central line is the IQM across
-    seeds at each episode and the band is a percentile bootstrap 95% CI across
-    seeds (same construction as the convergence figure's eval panel). Two curves
-    per figure: vs AS and vs TWAP; negative => DQN beats the benchmark.
+def fig_regret_multiseed(run_dirs, out: Path, *, symbol: str | None = None) -> None:
+    """Cross-config cumulative-regret curve for the DQN policy, one figure per
+    setting. For each run, PRegret accumulates the per-episode discounted V0 gap
+    ``v_benchmark - v_dqn`` (paper sec:learning; CRN holds within each run,
+    asserted by equal per-episode env seeds). The runs' cumulative-regret curves
+    are aligned by eval-episode index; the central line is the IQM across runs at
+    each episode and the band is a percentile bootstrap 95% CI across runs (same
+    construction as the convergence figure's eval panel). Two curves per figure:
+    vs AS and vs TWAP; negative => DQN beats the benchmark.
 
-    Historical runs differ by mid-price path, so they are NOT comparable across
-    tickers; the historical figure is restricted to a single ticker ``symbol``
-    (default GOOGL). Emitted only with >= 2 seeds for the (setting, dqn[, symbol])
-    group. Reads eval/records.csv only.
+    Aggregates over ALL runs of a setting — seeds, and tickers in the historical
+    setting (the same 5x5 configurations as the convergence figure). Pass
+    ``symbol`` to restrict the historical figure to a single ticker. Emitted only
+    with >= 2 runs. Reads eval/records.csv only.
     """
     runs = [r for r in P.collect_runs(run_dirs)
             if r.records is not None and r.algo == "dqn" and r.seed is not None]
@@ -658,21 +659,23 @@ def fig_regret_multiseed(run_dirs, out: Path, *, symbol: str = "GOOGL") -> None:
     for setting in sorted({r.setting for r in runs}):
         is_hist = setting == "historical_sp500"
         sruns = [r for r in runs if r.setting == setting]
-        if is_hist:
+        if is_hist and symbol:
             sruns = [r for r in sruns if r.symbol == symbol]
-        by_seed = {}
+        by_cfg = {}
         for r in sruns:
-            by_seed.setdefault(r.seed, r)        # one run per seed
-        seeds = sorted(by_seed)
-        if len(seeds) < 2:
+            by_cfg.setdefault((r.symbol, r.seed), r)   # one run per (ticker, seed)
+        cfgs = sorted(by_cfg, key=lambda k: (str(k[0]), k[1]))
+        if len(cfgs) < 2:
             continue
+        n_seeds = len({s for _, s in cfgs})
+        n_tickers = len({t for t, _ in cfgs})
 
         fig, ax = P.plt.subplots()
         drawn = False
         for bench in ("as", "twap"):
             curves = []
-            for s in seeds:
-                df = by_seed[s].records
+            for k in cfgs:
+                df = by_cfg[k].records
                 p = df[df["policy"] == "dqn"][["episode", "env_seed", "return_disc"]]
                 b = df[df["policy"] == bench][["episode", "env_seed", "return_disc"]]
                 m = p.merge(b, on="episode", suffixes=("_p", "_b")).sort_values("episode")
@@ -683,7 +686,7 @@ def fig_regret_multiseed(run_dirs, out: Path, *, symbol: str = "GOOGL") -> None:
             if len(curves) < 2:
                 continue
             length = min(c.size for c in curves)
-            mat = np.vstack([c[:length] for c in curves])      # [n_seeds x length]
+            mat = np.vstack([c[:length] for c in curves])      # [n_runs x length]
             x = np.arange(1, length + 1)
             pts, los, his = [], [], []
             for i in range(length):
@@ -697,18 +700,108 @@ def fig_regret_multiseed(run_dirs, out: Path, *, symbol: str = "GOOGL") -> None:
             P.plt.close(fig)
             continue
         ax.axhline(0.0, color="0.5", linewidth=0.8)
-        loc = _SETTING_TITLE.get(setting, setting)
-        if is_hist:
-            loc = f"{loc}, {symbol}"
+        base = _SETTING_TITLE.get(setting, setting)
+        if not is_hist:
+            title = f"DQN cumulative regret across {n_seeds} seeds ({base})"
+        elif symbol:
+            title = f"DQN cumulative regret across {n_seeds} seeds ({base}, {symbol})"
+        else:
+            title = (f"DQN cumulative regret across {len(cfgs)} runs "
+                     f"({base}, {n_tickers} tickers × {n_seeds} seeds)")
         ax.set(
             xlabel="Eval episode",
-            ylabel="Cumulative regret " r"$\mathrm{PRegret}$" "\n(IQM, 95% CI across seeds)",
-            title=f"DQN cumulative regret across {len(seeds)} seeds ({loc})",
+            ylabel="Cumulative regret " r"$\mathrm{PRegret}$" "\n(IQM, 95% CI across runs)",
+            title=title,
         )
         ax.legend()
         fig.tight_layout()
-        name = f"regret_multiseed_{symbol}" if is_hist else "regret_multiseed"
+        name = f"regret_multiseed_{symbol}" if (is_hist and symbol) else "regret_multiseed"
         P.save_fig(fig, out, name)
+
+
+def fig_reward_decomposition_multiseed(run_dirs, out: Path) -> None:
+    """Cross-config reward decomposition (one figure per setting), the multiseed
+    companion to :func:`fig_reward_decomposition`. The sample for each
+    (method, component) is the set of RUN-level means — one number per run, its
+    mean component reward over the 100 eval episodes — aggregated across ALL runs
+    of the setting (seeds, and tickers in the historical setting: the same 5x5
+    configurations as the convergence figure). Bars are the IQM across runs with
+    a bootstrap 95% CI across runs (the rliable convention, matching
+    dqn_results_multiseed); panels = CLOB / fictive auction / realized terminal.
+    A companion CSV records the plotted numbers. Emitted only with >= 2 runs.
+    Reads eval/records.csv only.
+
+    Learned rows are keyed by ``algo`` (records always label them "dqn");
+    benchmark rows are taken once per (ticker, seed) (identical across algos
+    under CRN). Run-level aggregation (not episode pooling) keeps the CI a
+    config-level signal and tames the heavy-tailed per-episode auction reward.
+    """
+    runs = [r for r in P.collect_runs(run_dirs)
+            if r.records is not None and r.seed is not None]
+    if not runs:
+        return
+    for setting in sorted({r.setting for r in runs}):
+        sruns = [r for r in runs if r.setting == setting]
+
+        def _add_run(pooled, method, rows):
+            d = pooled.setdefault(method, {c: [] for c, _ in _REWARD_COMPONENTS})
+            for col, _ in _REWARD_COMPONENTS:
+                d[col].append(float(rows[col].mean()))
+
+        # method -> {component column -> list of per-RUN means}
+        pooled: dict[str, dict[str, list[float]]] = {}
+        bench_seen: set = set()
+        for r in sruns:
+            learned = r.records[r.records["policy"] == "dqn"]
+            if not learned.empty:
+                _add_run(pooled, r.algo, learned)
+            key = (r.symbol, r.seed)
+            if key not in bench_seen:
+                bench_seen.add(key)
+                for b in ("as", "twap"):
+                    rows = r.records[r.records["policy"] == b]
+                    if not rows.empty:
+                        _add_run(pooled, b, rows)
+        methods = [a for a in P.ALGO_ORDER if a in pooled]
+        methods += [b for b in ("as", "twap") if b in pooled]
+        n_runs = max((len(pooled[m]["clob_reward_sum"]) for m in methods), default=0)
+        if not methods or n_runs < 2:
+            continue
+        labels = [P.POLICY_LABELS[m] for m in methods]
+        colors = [P.POLICY_COLORS[m] for m in methods]
+        x = np.arange(len(methods))
+        n_seeds = len({r.seed for r in sruns})
+        n_tickers = len({r.symbol for r in sruns})
+
+        csv_rows: list[tuple] = []
+        fig, axes = P.plt.subplots(1, 3, figsize=(13.5, 4.2), squeeze=False)
+        for ax, (col, title) in zip(axes[0], _REWARD_COMPONENTS):
+            pts, los, his = [], [], []
+            for m in methods:
+                vals = np.asarray(pooled[m][col], float)
+                pt, lo, hi = stats.iqm_ci(vals, n_boot=2000)
+                pts.append(pt); los.append(pt - lo); his.append(hi - pt)
+                csv_rows.append((title, P.POLICY_LABELS[m], pt, lo, hi, int(vals.size)))
+            ax.bar(x, pts, yerr=[los, his], color=colors, capsize=4)
+            ax.axhline(0.0, color="0.5", linewidth=0.8, zorder=0)
+            ax.set_xticks(x)
+            ax.set_xticklabels(labels, rotation=20)
+            ax.set_title(title)
+        axes[0][0].set_ylabel("Undiscounted reward per episode\n(IQM across runs, 95% CI)")
+        scope = (f"{n_tickers} tickers × {n_seeds} seeds"
+                 if setting == "historical_sp500" else f"{n_seeds} seeds")
+        fig.suptitle(
+            f"Reward decomposition across {n_runs} runs "
+            f"({_SETTING_TITLE.get(setting, setting)}, {scope})"
+        )
+        fig.tight_layout()
+        name = "reward_decomposition_multiseed"
+        P.save_fig(fig, out, name)
+        with (Path(out) / f"{name}.csv").open("w", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(["component", "method", "iqm", "ci_lo", "ci_hi", "n_runs"])
+            for comp, method, pt, lo, hi, n in csv_rows:
+                writer.writerow([comp, method, *(format(v, ".17g") for v in (pt, lo, hi)), n])
 
 
 # ---------------------------------------------------------------------------
@@ -732,8 +825,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="build ONLY the cross-seed IQM/CI figures (run dirs spanning >= 2 seeds)",
     )
     parser.add_argument(
-        "--regret-symbol", default="GOOGL",
-        help="ticker for the historical cross-seed DQN regret figure (multiseed)",
+        "--regret-symbol", default=None,
+        help="restrict the historical cross-config DQN regret figure to one ticker "
+             "(default: all tickers × seeds, like the convergence figure)",
     )
     return parser
 
@@ -754,6 +848,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
              lambda: fig_convergence_curves(run_dirs, out)),
             ("regret_multiseed",
              lambda: fig_regret_multiseed(run_dirs, out, symbol=args.regret_symbol)),
+            ("reward_decomposition_multiseed",
+             lambda: fig_reward_decomposition_multiseed(run_dirs, out)),
         ]
     else:
         funcs = [

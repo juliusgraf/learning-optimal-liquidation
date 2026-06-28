@@ -66,6 +66,10 @@ def test_convergence_curves_multiseed(fixture_run_dir, tmp_path):
     _assert_pdf_png(out, "convergence_curves")
     # Cross-seed DQN regret curve (synthetic fixture => no ticker suffix).
     _assert_pdf_png(out, "regret_multiseed")
+    # Run-level reward decomposition across the two seeds, with companion CSV.
+    _assert_pdf_png(out, "reward_decomposition_multiseed")
+    csv_path = out / "reward_decomposition_multiseed.csv"
+    assert csv_path.exists() and csv_path.stat().st_size > 0
 
 
 def test_default_out_is_run_figures_dir(fixture_run_dir, tmp_path):
