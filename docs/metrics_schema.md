@@ -128,7 +128,7 @@ percentile-**bootstrap 95% CI** over seeds (Agarwal et al. 2021, `rliable`).
 | `tables/dqn_results_multiseed.{tex,csv}` | historical: per-ticker IQM across seeds; final row pools all ticker×seed runs into IQM [95% CI] |
 | `figures/algorithm_comparison_multiseed.{pdf,png}` | per-algo IQM bars with bootstrap-CI whiskers, AS/TWAP IQM reference lines |
 | `figures/regret_multiseed.{pdf,png}` | DQN cumulative regret vs AS/TWAP, central line = IQM per eval episode, band = bootstrap 95% CI, both **across all runs of the setting** (CRN within each run). Historical aggregates all ticker×seed configs (same configs as `convergence_curves`); pass `--regret-symbol <ticker>` to restrict to one ticker, which writes `regret_multiseed_<ticker>.{pdf,png}` instead |
-| `figures/reward_decomposition_multiseed.{pdf,png}` (+`.csv`) | per-method reward split (CLOB / fictive auction / realized terminal); each run contributes **one number per component** (its 100-episode mean), aggregated **across all runs of the setting** with IQM and bootstrap 95% CI (same construction as the multiseed tables); historical spans all ticker×seed configs |
+| `figures/reward_decomposition.{pdf,png}` (+`.csv`) | per-method reward split (CLOB / fictive auction / realized terminal); each run contributes **one number per component** (its 100-episode mean), aggregated **across all runs of the setting** with IQM and bootstrap 95% CI (same construction as the multiseed tables, so component bars roughly add up to the eval-table totals); historical spans all ticker×seed configs |
 
 With few seeds (e.g. 3) the CIs are wide and IQM ≈ mean (no trimming below n=4)
 — the honest multi-seed signal, not a defect.

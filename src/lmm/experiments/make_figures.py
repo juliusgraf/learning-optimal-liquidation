@@ -18,9 +18,8 @@ Figures:
   e eval_distributions    (eval/records.csv)       -> replaces final_evaluation_*
   f algorithm_comparison  (all run dirs' records)  -> new
   g convergence_curves    (all run dirs' metrics, multi-seed)  -> new
-  h reward_decomposition  (all run dirs' records, per setting) -> new
+  h reward_decomposition  (run-level IQM/CI across all runs, per setting; multi-seed) -> new
   i regret_multiseed      (DQN regret, IQM/CI across all runs; multi-seed) -> new
-  j reward_decomposition_multiseed (run-level IQM/CI across all runs; multi-seed) -> new
 """
 
 from __future__ import annotations
@@ -363,23 +362,31 @@ _REWARD_COMPONENTS = [
 
 
 def fig_reward_decomposition(run_dirs, out: Path) -> None:
-    """Per-setting reward decomposition over the evaluation episodes.
+    """Cross-seed reward decomposition, one figure per setting (multiseed).
 
     Splits each method's undiscounted return into its three additive parts —
     the CLOB (limit-order) reward, the per-step *fictive* auction shaping
     reward, and the *realized* terminal clearing P&L — to isolate where the RL
     edge actually lives: it is overwhelmingly the fictive auction reward, while
     the realized terminal P&L roughly ties the AS benchmark (AUDIT Sec. F).
-    Bars are the IQM over the pooled evaluation episodes (robust to the
-    heavy-tailed auction clearing-singularity episodes) with a bootstrap 95% CI;
-    ONE figure file per setting (synthetic / historical), plus a companion CSV
-    of the plotted numbers. Reads ``eval/records.csv`` only — no env stepping.
+
+    The sample for each (method, component) is the set of RUN-level means — one
+    number per run, its mean component reward over the 100 eval episodes —
+    aggregated across ALL runs of the setting (seeds, and tickers in the
+    historical setting: the same 5x5 configurations as the convergence and
+    regret figures). Bars are the IQM across runs with a bootstrap 95% CI across
+    runs (the rliable convention, matching eval_summary/dqn_results_multiseed),
+    so component bars roughly add up to the multiseed eval-table totals (exactly
+    only up to IQM's non-additivity). Run-level aggregation also tames the
+    heavy-tailed per-episode auction reward. A companion CSV records the plotted
+    numbers. Emitted only with >= 2 runs. Reads eval/records.csv only.
 
     The learned policy is always labelled ``"dqn"`` in records, so its identity
     comes from each run's ``algo.name`` (plotting.py convention); benchmark rows
-    (``as``/``twap``) are pooled across the setting's runs (identical under CRN).
+    (``as``/``twap``) are taken once per (ticker, seed) (identical across algos
+    under CRN, so pooling per-algo would replicate them and shrink the CI).
     """
-    runs = [r for r in P.collect_runs(run_dirs) if r.records is not None]
+    runs = [r for r in P.collect_runs(run_dirs) if r.records is not None and r.seed is not None]
     if not runs:
         return
     settings = sorted({r.setting for r in runs})
@@ -387,45 +394,42 @@ def fig_reward_decomposition(run_dirs, out: Path) -> None:
     for setting in settings:
         sruns = [r for r in runs if r.setting == setting]
 
-        def _add(pooled, method, rows):
+        def _add_run(pooled, method, rows):
             d = pooled.setdefault(method, {c: [] for c, _ in _REWARD_COMPONENTS})
             for col, _ in _REWARD_COMPONENTS:
-                d[col].extend(rows[col].to_numpy(float).tolist())
+                d[col].append(float(rows[col].mean()))
 
-        # method -> {component column -> pooled per-episode values}.
-        # Learned rows (labelled "dqn") are keyed by each run's algo and pooled
-        # across its runs (distinct policies). Benchmark rows (as/twap) are
-        # identical across the algo runs of a given (symbol, seed) under CRN, so
-        # they are pooled ONCE per (symbol, seed) — pooling them per-algo would
-        # replicate the same episodes and spuriously shrink their CI.
+        # method -> {component column -> list of per-RUN means}
         pooled: dict[str, dict[str, list[float]]] = {}
         bench_seen: set = set()
         for r in sruns:
             learned = r.records[r.records["policy"] == "dqn"]
             if not learned.empty:
-                _add(pooled, r.algo, learned)
+                _add_run(pooled, r.algo, learned)
             key = (r.symbol, r.seed)
             if key not in bench_seen:
                 bench_seen.add(key)
                 for b in ("as", "twap"):
                     rows = r.records[r.records["policy"] == b]
                     if not rows.empty:
-                        _add(pooled, b, rows)
+                        _add_run(pooled, b, rows)
         methods = [a for a in P.ALGO_ORDER if a in pooled]
         methods += [b for b in ("as", "twap") if b in pooled]
-        if not methods:
+        n_runs = max((len(pooled[m]["clob_reward_sum"]) for m in methods), default=0)
+        if not methods or n_runs < 2:
             continue
         labels = [P.POLICY_LABELS[m] for m in methods]
         colors = [P.POLICY_COLORS[m] for m in methods]
         x = np.arange(len(methods))
+        across = "seeds" if setting != "historical_sp500" else "runs"
 
-        csv_rows: list[tuple] = []  # (component, method, iqm, lo, hi, n)
+        csv_rows: list[tuple] = []  # (component, method, iqm, lo, hi, n_runs)
         fig, axes = P.plt.subplots(1, 3, figsize=(13.5, 4.2), squeeze=False)
         for ax, (col, title) in zip(axes[0], _REWARD_COMPONENTS):
             pts, los, his = [], [], []
             for m in methods:
                 vals = np.asarray(pooled[m][col], float)
-                pt, lo, hi = stats.iqm_ci(vals)
+                pt, lo, hi = stats.iqm_ci(vals, n_boot=2000)
                 pts.append(pt); los.append(pt - lo); his.append(hi - pt)
                 csv_rows.append((title, P.POLICY_LABELS[m], pt, lo, hi, int(vals.size)))
             ax.bar(x, pts, yerr=[los, his], color=colors, capsize=4)
@@ -433,7 +437,7 @@ def fig_reward_decomposition(run_dirs, out: Path) -> None:
             ax.set_xticks(x)
             ax.set_xticklabels(labels, rotation=20)
             ax.set_title(title)
-        axes[0][0].set_ylabel("Undiscounted reward  (IQM, 95% CI)")
+        axes[0][0].set_ylabel(f"Undiscounted reward\n(IQM, 95% CI across {across})")
         fig.suptitle(
             "Reward decomposition over evaluation phases "
             f"({_SETTING_TITLE.get(setting, setting)})"
@@ -443,7 +447,7 @@ def fig_reward_decomposition(run_dirs, out: Path) -> None:
         P.save_fig(fig, out, name)
         with (Path(out) / f"{name}.csv").open("w", newline="") as f:
             writer = csv.writer(f)
-            writer.writerow(["component", "method", "iqm", "ci_lo", "ci_hi", "n_episodes"])
+            writer.writerow(["component", "method", "iqm", "ci_lo", "ci_hi", "n_runs"])
             for comp, method, pt, lo, hi, n in csv_rows:
                 writer.writerow([comp, method, *(format(v, ".17g") for v in (pt, lo, hi)), n])
 
@@ -462,16 +466,23 @@ def fig_algorithm_comparison_multiseed(run_dirs, out: Path) -> None:
         ax = axes[0][col]
         algo_vals: dict[str, list[float]] = {}
         bench_vals: dict[str, list[float]] = {"as": [], "twap": []}
+        bench_seen: set = set()
         for r in runs:
             if r.setting != setting:
                 continue
             learned = r.records[r.records["policy"] == "dqn"]["return_undisc"].to_numpy(float)
             if learned.size:
                 algo_vals.setdefault(r.algo, []).append(float(np.mean(learned)))
-            for b in ("as", "twap"):
-                bv = r.records[r.records["policy"] == b]["return_undisc"].to_numpy(float)
-                if bv.size:
-                    bench_vals[b].append(float(np.mean(bv)))
+            # Benchmark per-run means are identical across the algo runs of a
+            # given (ticker, seed) under CRN; take each once so the reference
+            # lines match the multiseed tables' deduped benchmark IQM.
+            key = (r.symbol, r.seed)
+            if key not in bench_seen:
+                bench_seen.add(key)
+                for b in ("as", "twap"):
+                    bv = r.records[r.records["policy"] == b]["return_undisc"].to_numpy(float)
+                    if bv.size:
+                        bench_vals[b].append(float(np.mean(bv)))
         algos = [a for a in P.ALGO_ORDER if a in algo_vals]
         pts, los, his, colors, labels = [], [], [], [], []
         for a in algos:
@@ -719,91 +730,6 @@ def fig_regret_multiseed(run_dirs, out: Path, *, symbol: str | None = None) -> N
         P.save_fig(fig, out, name)
 
 
-def fig_reward_decomposition_multiseed(run_dirs, out: Path) -> None:
-    """Cross-config reward decomposition (one figure per setting), the multiseed
-    companion to :func:`fig_reward_decomposition`. The sample for each
-    (method, component) is the set of RUN-level means — one number per run, its
-    mean component reward over the 100 eval episodes — aggregated across ALL runs
-    of the setting (seeds, and tickers in the historical setting: the same 5x5
-    configurations as the convergence figure). Bars are the IQM across runs with
-    a bootstrap 95% CI across runs (the rliable convention, matching
-    dqn_results_multiseed); panels = CLOB / fictive auction / realized terminal.
-    A companion CSV records the plotted numbers. Emitted only with >= 2 runs.
-    Reads eval/records.csv only.
-
-    Learned rows are keyed by ``algo`` (records always label them "dqn");
-    benchmark rows are taken once per (ticker, seed) (identical across algos
-    under CRN). Run-level aggregation (not episode pooling) keeps the CI a
-    config-level signal and tames the heavy-tailed per-episode auction reward.
-    """
-    runs = [r for r in P.collect_runs(run_dirs)
-            if r.records is not None and r.seed is not None]
-    if not runs:
-        return
-    for setting in sorted({r.setting for r in runs}):
-        sruns = [r for r in runs if r.setting == setting]
-
-        def _add_run(pooled, method, rows):
-            d = pooled.setdefault(method, {c: [] for c, _ in _REWARD_COMPONENTS})
-            for col, _ in _REWARD_COMPONENTS:
-                d[col].append(float(rows[col].mean()))
-
-        # method -> {component column -> list of per-RUN means}
-        pooled: dict[str, dict[str, list[float]]] = {}
-        bench_seen: set = set()
-        for r in sruns:
-            learned = r.records[r.records["policy"] == "dqn"]
-            if not learned.empty:
-                _add_run(pooled, r.algo, learned)
-            key = (r.symbol, r.seed)
-            if key not in bench_seen:
-                bench_seen.add(key)
-                for b in ("as", "twap"):
-                    rows = r.records[r.records["policy"] == b]
-                    if not rows.empty:
-                        _add_run(pooled, b, rows)
-        methods = [a for a in P.ALGO_ORDER if a in pooled]
-        methods += [b for b in ("as", "twap") if b in pooled]
-        n_runs = max((len(pooled[m]["clob_reward_sum"]) for m in methods), default=0)
-        if not methods or n_runs < 2:
-            continue
-        labels = [P.POLICY_LABELS[m] for m in methods]
-        colors = [P.POLICY_COLORS[m] for m in methods]
-        x = np.arange(len(methods))
-        n_seeds = len({r.seed for r in sruns})
-        n_tickers = len({r.symbol for r in sruns})
-
-        csv_rows: list[tuple] = []
-        fig, axes = P.plt.subplots(1, 3, figsize=(13.5, 4.2), squeeze=False)
-        for ax, (col, title) in zip(axes[0], _REWARD_COMPONENTS):
-            pts, los, his = [], [], []
-            for m in methods:
-                vals = np.asarray(pooled[m][col], float)
-                pt, lo, hi = stats.iqm_ci(vals, n_boot=2000)
-                pts.append(pt); los.append(pt - lo); his.append(hi - pt)
-                csv_rows.append((title, P.POLICY_LABELS[m], pt, lo, hi, int(vals.size)))
-            ax.bar(x, pts, yerr=[los, his], color=colors, capsize=4)
-            ax.axhline(0.0, color="0.5", linewidth=0.8, zorder=0)
-            ax.set_xticks(x)
-            ax.set_xticklabels(labels, rotation=20)
-            ax.set_title(title)
-        axes[0][0].set_ylabel("Undiscounted reward per episode\n(IQM across runs, 95% CI)")
-        scope = (f"{n_tickers} tickers × {n_seeds} seeds"
-                 if setting == "historical_sp500" else f"{n_seeds} seeds")
-        fig.suptitle(
-            f"Reward decomposition across {n_runs} runs "
-            f"({_SETTING_TITLE.get(setting, setting)}, {scope})"
-        )
-        fig.tight_layout()
-        name = "reward_decomposition_multiseed"
-        P.save_fig(fig, out, name)
-        with (Path(out) / f"{name}.csv").open("w", newline="") as f:
-            writer = csv.writer(f)
-            writer.writerow(["component", "method", "iqm", "ci_lo", "ci_hi", "n_runs"])
-            for comp, method, pt, lo, hi, n in csv_rows:
-                writer.writerow([comp, method, *(format(v, ".17g") for v in (pt, lo, hi)), n])
-
-
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
@@ -848,8 +774,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
              lambda: fig_convergence_curves(run_dirs, out)),
             ("regret_multiseed",
              lambda: fig_regret_multiseed(run_dirs, out, symbol=args.regret_symbol)),
-            ("reward_decomposition_multiseed",
-             lambda: fig_reward_decomposition_multiseed(run_dirs, out)),
+            ("reward_decomposition",
+             lambda: fig_reward_decomposition(run_dirs, out)),
         ]
     else:
         funcs = [
@@ -861,7 +787,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             ("eval_distributions",
              lambda: fig_eval_distributions(primary, out, legacy_style=args.legacy_style)),
             ("algorithm_comparison", lambda: fig_algorithm_comparison(run_dirs, out)),
-            ("reward_decomposition", lambda: fig_reward_decomposition(run_dirs, out)),
         ]
     for name, fn in funcs:
         try:

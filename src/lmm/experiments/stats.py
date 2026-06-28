@@ -48,6 +48,12 @@ def bootstrap_ci(
     """
     v = np.asarray(values, dtype=float)
     v = v[~np.isnan(v)]
+    # Sort to a canonical order: the resampling below is positional under a
+    # fixed seed, so without this the CI would depend on the INPUT ORDER. A
+    # percentile-bootstrap CI is a property of the multiset alone, so two callers
+    # passing the same values in different orders (e.g. a figure iterating runs
+    # lexicographically vs a table grouping by numeric seed) must agree.
+    v = np.sort(v)
     point = float(statistic(v)) if v.size else float("nan")
     if v.size < 2:
         return point, point, point

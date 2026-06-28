@@ -212,10 +212,13 @@ It runs `reproduce_all.sh` once per seed **disk-safe** (`--no-resume-ckpt`: no
 replay-heavy `ckpt_ep*.pt`; `best.pt`/`final.pt` still written, so early stopping
 is unaffected), then `make_multiseed_outputs.sh` writes the cross-seed aggregates
 to `results/<setting>/_multiseed/{tables,figures}/`:
-`eval_summary_multiseed` (synthetic), `dqn_results_multiseed` (historical), and
-`algorithm_comparison_multiseed` — each the **IQM of the per-seed mean returns
-with a bootstrap 95% CI over seeds** (schema in `docs/metrics_schema.md`).
-Free ~a few GB of disk before a full multi-seed run.
+`eval_summary_multiseed` (synthetic), `dqn_results_multiseed` (historical),
+`algorithm_comparison_multiseed`, `convergence_curves`, `regret_multiseed`
+(DQN cumulative regret vs AS/TWAP), and `reward_decomposition` (CLOB /
+fictive-auction / realized-terminal split by method) — each the **IQM with a
+bootstrap 95% CI across runs** (seeds, and ticker×seed configs in the historical
+setting; schema in `docs/metrics_schema.md`). Free ~a few GB of disk before a
+full multi-seed run.
 
 ---
 
@@ -254,7 +257,11 @@ Each figure is written as both `.pdf` (for LaTeX) and `.png`.
 | `benchmark_anatomy.{pdf,png}` | `fig:episode-2000-bm` (benchmark behaviour) | `eval/traces/{as,twap}_ep0.csv` |
 | `eval_distributions.{pdf,png}` | final-evaluation distributions | `eval/records.csv` |
 | `algorithm_comparison.{pdf,png}` | **new** (cross-algorithm DQN/DDPG/TD3/SAC) | all runs' `eval/records.csv` |
-| `reward_decomposition.{pdf,png}` (+ `.csv`) | **new** (per setting; CLOB / fictive-auction / realized-terminal reward by method, IQM ± 95% CI — isolates the RL auction edge, AUDIT §F) | all runs' `eval/records.csv` |
+
+The cross-seed `reward_decomposition` and `regret_multiseed` figures are
+**multi-seed** outputs (run-level IQM ± 95% CI across runs) and live under
+`results/<setting>/_multiseed/figures/` — see the multi-seed section above and
+`docs/metrics_schema.md`, not this per-run/combined table.
 
 ### Generated tables (per run under `<run>/tables/`, and combined under `results/<setting>/_combined/tables/`)
 
