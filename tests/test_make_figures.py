@@ -12,6 +12,7 @@ PER_RUN_FIGURES = [
     "regret_curve",
     "episode_anatomy",
     "benchmark_anatomy",
+    "cancellation_strategy",
     "eval_distributions",
     "algorithm_comparison",
 ]
@@ -64,6 +65,30 @@ def test_convergence_curves_multiseed(fixture_run_dir, tmp_path):
     _assert_pdf_png(out, "reward_decomposition")
     csv_path = out / "reward_decomposition.csv"
     assert csv_path.exists() and csv_path.stat().st_size > 0
+
+
+def test_cancellation_strategy_marks_cancel_events(fixture_run_dir, tmp_path):
+    # The fixture DQN trace never cancels (all c_t = 0); inject two cancel-alls
+    # so the figure also exercises the c_t = 1 marking path, then confirm the
+    # standalone cancellation figure renders for the same policy/episode that
+    # episode_anatomy uses.
+    import shutil
+
+    import pandas as pd
+
+    run = tmp_path / "run"
+    shutil.copytree(fixture_run_dir, run)
+    trace = run / "eval" / "traces" / "dqn_ep0.csv"
+    df = pd.read_csv(trace)
+    auc_idx = df.index[df["phase"] == "auction"].to_list()
+    assert len(auc_idx) >= 2, "fixture must have auction rows"
+    df.loc[auc_idx[5], "act_cancel"] = 1
+    df.loc[auc_idx[12], "act_cancel"] = 1
+    df.to_csv(trace, index=False)
+
+    out = tmp_path / "out"
+    make_figures.fig_cancellation_strategy(run, out, policy="dqn", episode=0)
+    _assert_pdf_png(out, "cancellation_strategy")
 
 
 def test_default_out_is_run_figures_dir(fixture_run_dir, tmp_path):

@@ -15,6 +15,7 @@ Figures:
   b regret_curve          (eval/regret_*.csv)      -> replaces dqn_vs_glft_regret
   c episode_anatomy       (eval/traces/dqn_ep0)    -> replaces episode_*
   d benchmark_anatomy     (eval/traces/as,twap)    -> replaces benchmark_behavior_*
+  j cancellation_strategy (eval/traces/dqn_ep0)    -> c_t (cancel-all) over the auction
   e eval_distributions    (eval/records.csv)       -> replaces final_evaluation_*
   f algorithm_comparison  (all run dirs' records)  -> new
   g convergence_curves    (all run dirs' metrics, multi-seed)  -> new
@@ -243,6 +244,61 @@ def fig_benchmark_anatomy(run_dir: Path, out: Path, *, episode: int = 0) -> None
     fig.suptitle(f"Benchmark anatomy (episode {episode})")
     fig.tight_layout()
     P.save_fig(fig, out, "benchmark_anatomy")
+
+
+# ---------------------------------------------------------------------------
+# (j) cancellation strategy c_t (same eval episode as the anatomy figures)
+# ---------------------------------------------------------------------------
+
+
+def fig_cancellation_strategy(
+    run_dir: Path, out: Path, *, policy: str = "dqn", episode: int = 0
+) -> None:
+    """Cancel-all action c_t over the auction window for a single eval episode.
+
+    Companion to ``episode_anatomy`` (called with the SAME ``policy``/``episode``,
+    hence the same eval seed under CRN): the anatomy figure has no panel for the
+    scalar cancel-all action A^5_t = c_t in {0, 1} (auction phase only,
+    t in {n+1, ..., m}; CLAUDE.md ruling D4). This isolates the cancellation
+    strategy, reading ``act_cancel`` (c_t) straight from the saved trace
+    (``eval/traces/<policy>_ep<episode>.csv``); no env stepping happens here.
+    """
+    tr = P.read_trace(run_dir, policy, episode)
+    if tr is None:
+        return
+    auc = tr[tr["phase"] == "auction"]
+    if auc.empty:
+        warnings.warn(
+            f"no auction rows in {policy}_ep{episode}; skipping cancellation figure",
+            stacklevel=2,
+        )
+        return
+
+    t = auc["t"].to_numpy(float)
+    c = auc["act_cancel"].fillna(0.0).to_numpy(float)
+    blue = P.POLICY_COLORS[policy]
+
+    fig, ax = P.plt.subplots(figsize=(9.0, 3.0))
+    # A single, one-colour impulse plot: one marker per auction decision at its
+    # value c_t in {0, 1}, with a stem to the c_t = 0 baseline. No second series,
+    # no overlaid bars/crosses -- the y position alone reads off c_t.
+    markerline, stemline, _ = ax.stem(t, c, basefmt=" ")
+    P.plt.setp(stemline, color=blue, linewidth=1.2)
+    P.plt.setp(markerline, color=blue, markersize=5)
+    ax.axhline(0.0, color="0.85", linewidth=0.8, zorder=0)
+
+    ax.set_ylim(-0.15, 1.2)
+    ax.set_yticks([0, 1])
+    ax.set_yticklabels(["0", "1"])
+    ax.set_ylabel(r"$c_t$")
+    ax.set_xlabel("t")
+
+    ax.set_title(
+        rf"Cancellation strategy $c_t$ "
+        f"({P.POLICY_LABELS.get(policy, policy)}, episode {episode})"
+    )
+    fig.tight_layout()
+    P.save_fig(fig, out, "cancellation_strategy")
 
 
 # ---------------------------------------------------------------------------
@@ -784,6 +840,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             ("episode_anatomy",
              lambda: fig_episode_anatomy(primary, out, policy=args.policy, episode=args.episode)),
             ("benchmark_anatomy", lambda: fig_benchmark_anatomy(primary, out, episode=args.episode)),
+            ("cancellation_strategy",
+             lambda: fig_cancellation_strategy(primary, out, policy=args.policy, episode=args.episode)),
             ("eval_distributions",
              lambda: fig_eval_distributions(primary, out, legacy_style=args.legacy_style)),
             ("algorithm_comparison", lambda: fig_algorithm_comparison(run_dirs, out)),

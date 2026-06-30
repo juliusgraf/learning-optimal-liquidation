@@ -255,6 +255,7 @@ Each figure is written as both `.pdf` (for LaTeX) and `.png`.
 | `regret_curve.{pdf,png}` | `fig:regret_training` (DQN-vs-GLFT regret) | `eval/regret_*.csv` |
 | `episode_anatomy.{pdf,png}` | `fig:episode-2000` | `eval/traces/dqn_ep0.csv` |
 | `benchmark_anatomy.{pdf,png}` | `fig:episode-2000-bm` (benchmark behaviour) | `eval/traces/{as,twap}_ep0.csv` |
+| `cancellation_strategy.{pdf,png}` | **new** (cancel-all action $c_t$ over the auction; same episode as `episode_anatomy`) | `eval/traces/dqn_ep0.csv` |
 | `eval_distributions.{pdf,png}` | final-evaluation distributions | `eval/records.csv` |
 | `algorithm_comparison.{pdf,png}` | **new** (cross-algorithm DQN/DDPG/TD3/SAC) | all runs' `eval/records.csv` |
 
