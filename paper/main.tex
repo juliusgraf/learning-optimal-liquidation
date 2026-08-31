@@ -119,8 +119,8 @@ Based on the random arrivals of market takers, there is (at least partial) execu
 Note that as soon as the buying volume of market takers reaches selling index $k_t$ of the agent, her order gets (at least partially) executed.
 \end{remark}
 
-The number of executed shares at time $t$ of the agent is then given by 
-\[\forall i \in \llbracket 0,n \rrbracket, \quad E_{t_i} = \max\left(0, \min\left(v_{t_i}, \sum_{i=N_{t_i}^++1}^{N_{t_{i+1}}^+}\nu_{i}^{+}- \sum_{j=1}^{{\delta_{t_i}-1}} V_{t_i}^{+,j}\right)\right).\]
+For $i\in\llbracket0,n\rrbracket$, let $E_{t_i}$ denote the total number of shares executed over $(t_i,t_{i+1}]$ from the order submitted by the agent at $t_i$. This quantity is observed at $t_{i+1}$ and is given by
+\[\forall i \in \llbracket 0,n \rrbracket, \quad E_{t_i} = \max\left(0, \min\left(v_{t_i}, \sum_{i=N_{t_i}^++1}^{N_{t_{i+1}}^+}\nu_{t_{i+1}}^{+,i}- \sum_{j=1}^{{\delta_{t_i}-1}} V_{t_i}^{+,j}\right)\right).\]
 We recall that $E_{t_i}$ is a random variable since $v_{t_i}$ and $V_{t_i}^{+,j}$ are random. The inventory of the agent between $t_i$ and $t_{i+1}$ is $I_{t_{i+1}} = I_{t_i}-E_{t_i}$.\vspace{0.5em}
 
 Motivated by the reinforcement learning approach, we assume that the agent will trade during this session until the deterministic physical time $t_n=\tau^\op-1$ before the market switch to the closing auction phase, where $n$ is the final CLOB decision index; hence $t_0,\ldots,t_n$ comprise $n+1$ CLOB decisions.\vspace{0.5em}
@@ -204,15 +204,27 @@ Theorem \ref{th:clearing} provides conditions under which the clearing equation 
 In what follows, we impose the conditions of Theorem \ref{th:clearing} at each auction evaluation time, so that the estimated and terminal clearing prices are well defined. Precisely:
 \[D_j = \sum_{i=1}^{M_{t_{j-1}}} K_{t_{j-1}}^i +A_j > 0 \quad \text{and} \quad F_j = \sum_{i=1}^{M_{t_{j-1}}} K_{t_{j-1}}^iS_{t_{j-1}}^i +B_j +C_j \geqslant 0.\]
 
-Note that since prices lie on a grid with tick $\alpha$, the continuous theoretical root of Equation \eqref{eq:hyp_cl_auction_estimation}  is rounded to the closest tick. More precisely, if its solution is $p_j^\star$, the numerical indicative price is $\alpha \lfloor p_j^\star/\alpha +1/2\rfloor$. This creates a subsequent absolute aggregate imbalance of at most $D_j\alpha/2$, which we solve numerically with a stylized pro-rata allocation rule.\vspace{0.5em}
+Note that since prices lie on a grid with tick $\alpha$, the continuous theoretical root of Equation \eqref{eq:hyp_cl_auction_estimation}  is rounded to the closest tick. More precisely, if its solution is $p_j^\star$, the numerical indicative price is $p_\alpha=\alpha \lfloor p_j^\star/\alpha +1/2\rfloor$. This creates a subsequent absolute aggregate imbalance of at most $D_j\alpha/2$, which we solve numerically with a stylized pro-rata allocation rule.\vspace{0.5em}
 
 The agent’s requested signed quantity at the rounded clearing price
 \[\tilde Z_{ \tau^\cl} = \sum_{s= n+1}^{m}\left(1-\theta_{t_{m+1}}^{(s-n)}\right)
 K_{t_s}^a\left(S_{\tau^\cl}^\cl - S_{t_s}^a\right).\]
-At the rounded clearing price, the short side of the market is fully
-executed and the long side is rationed pro rata. Let
-$\rho_{\tau^\cl}^S,\rho_{\tau^\cl}^D\in[0,1]$ denote the resulting
-supply- and demand-side execution fractions. At the rounded clearing price, $Q^S$ (respectively $Q^D$) denotes the sum of the positive (respectively negative, in absolute value) parts of all active net-supply schedules, augmented by sell (respectively buy) market-order volume. Then $\rho^S=\min\{1,Q^D/Q^S\}$ when $Q^S>0$ and $\rho^D=\min\{1,Q^S/Q^D\}$ when $Q^D>0$. The actual executed volume of the agent at the clearing time is then given by $Z_{\tau^\cl} = \rho_{\tau^\cl}^S[\tilde Z_{\tau^\cl}]_+ - \rho_{\tau^\cl}^D[-\tilde Z_{\tau^\cl}]_+$. The agent's active schedules are aggregated into a single net schedule before this allocation, so no self-trade is counted. A negative terminal inventory is an admissible outcome of the enlarged auction action set rather than a violation of an inventory constraint. Deviations from zero are discouraged through the terminal inventory penalty.
+Let
+\[\forall p \in \mathbb{R}_+,\quad \Sigma_{\tau^\cl}^a(p) = \sum_{s= n+1}^{m}\left(1-\theta_{t_{m+1}}^{(s-n)}\right)
+K_{t_s}^a\left(p - S_{t_s}^a\right).\]
+At the rounded terminal price $p^\alpha$, total
+supply and demand are
+\[
+Q^S(p^\alpha) = \sum_{i=1}^{M_{t_m}}g_{i,t_m}(p^\alpha)_+ + \Sigma_{\tau^\cl}^a(p^\alpha)_+ + \sum_{i=1}^{N_{t_m}^-}\nu_{t_m}^{-,i},\]
+and
+\[
+Q^D(p^\alpha) = \sum_{i=1}^{M_{t_m}}(-g_{i,t_m}(p^\alpha))_+ + (-\Sigma_{\tau^\cl}^a(p^\alpha))_+ + \sum_{i=1}^{N_{t_m}^+}\nu_{t_m}^{+,i}. \]
+Let
+\[ \rho_S = \left\{\begin{array}{ll} 1 & \text{if }Q^S=0\text{ or }Q^S\leq Q^D\\ Q^D/Q^S & \text{if }Q^S>Q^D \end{array}\right.\]
+and
+\[\rho_D = \left\{ \begin{array}{ll} 1, & \text{if }Q^D=0\text{ or }Q^D\leq Q^S\\ Q^S/Q^D & \text{if }Q^D>Q^S \end{array}\right..\]
+The actual executed volume of the agent at the clearing time is then given by \[Z_{\tau^\cl} = \rho_{\tau^\cl}^S[\tilde Z_{\tau^\cl}]_+ - \rho_{\tau^\cl}^D[-\tilde Z_{\tau^\cl}]_+.\]
+The agent's active schedules are aggregated into a single net schedule before this allocation, so no self-trade is counted. A negative terminal inventory is an admissible outcome of the enlarged auction action set rather than a violation of an inventory constraint. Deviations from zero are discouraged through the terminal inventory penalty.
 
 \subsubsection{Projected Hypothetical Clearing Price During the Continuous Session}\label{sec:proj}
 
@@ -410,7 +422,7 @@ S_t^\bullet E_t f^c(k^\star \alpha -( H_t^\cl -S_t^\bullet)_+), &
 \end{array}\right.
 \]
 
-In our setting, the agent chooses action $A_t$ in state $X_t$. Then, the executed volume $E_t$ is randomly observed. Finally, the agent transitions into state $X_{t+1}$.\vspace{0.5em}
+In our setting, the agent chooses action $A_t$ in state $X_t$. Then, the executed volume $E_t$ is realized, determining the one-step reward $r_t(X_t,A_t)$ during the state transition. Finally, the agent transitions into state $X_{t+1}$.\vspace{0.5em}
 
 The learning objective of the agent is to solve
 \begin{align*}
