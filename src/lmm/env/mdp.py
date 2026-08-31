@@ -1,60 +1,10 @@
-"""MarketMakingEnv: the paper's MDP (`sec:MDP`) as a gymnasium-style env.
+"""Two-phase controlled market simulator matching the revised chronology.
 
-TIMING CONTRACT (CLAUDE.md grid + rulings D1/D2; enforced by
-tests/test_timing_conventions.py)
-================================================================------------
-
-Grid: 0 = t_0 < ... < t_n < tau_op = t_{n+1} < ... < t_m < tau_cl = t_{m+1},
-n = tau_op - 1, m = tau_cl - 1. CLOB decisions at t in {0,...,n} (the grid
-always reaches t_n exactly — fixes AUDIT N1), auction decisions at
-t in {n+1,...,m}; t = tau_cl is terminal (no action; clearing + terminal
-reward only, folded into the final t_m transition with done=True and zero
-bootstrap — documented equivalence, ruling D9).
-
-At decision time t the agent SEES the state before the step-t randomness:
-X^7 = N^+_{t-}, X^8 = N^-_{t-} (counts as of end of t-1), X^9 = theta_t
-(predictable: embeds c_{t-1}), and X^3 = H^cl_t — the value CACHED at the
-end of step t-1. Nothing sampled or decided at t enters the time-t state or
-reward. One cached H drives both:
-
-- CLOB step t (ruling D2): place the agent's order -> realize the step's
-  exogenous flow (executions E_t) -> Algorithm-1 update over the post-flow
-  standing book (incl. the agent's unexecuted remainder, BEFORE the next
-  refresh) -> reward from the OLD cache -> cache <- the new H (input to the
-  time-(t+1) state/reward). H_0 = the configured initial value (= initial
-  mid); the reward at t = 0 uses H_0.
-- Auction step t (rulings D1, D3): reward from the cache -> sample the
-  step-t exogenous events -> record the agent's time-t order (K^a = 0 ==
-  abstain) -> apply c_t (kills orders submitted < t, i.e. theta_{t+1}) ->
-  recompute corrected Eq. (2) on end-of-t information -> cache <- the root.
-  At t_{n+1} the cache holds Algorithm 1's last CLOB output.
-- At t = t_m the same end-of-step recompute IS corrected Eq. (1) (setting
-  j = m+1 recovers it exactly; theta_{t_{m+1}} embeds c_{t_m}): S_cl := it,
-  then Z_{tau_cl}, I_{tau_cl} = I_{tau_op} - Z_{tau_cl} (inventory frozen
-  during the auction; NO clipping, ruling D8 — optional `numerical_guard`
-  config, default OFF, logged loudly if it ever binds) and the terminal
-  reward.
-
-Rewards (corrected three-regime definitions; see env/rewards.py):
-- CLOB (ruling D5): r_t = S*_t E_t f_c(k* alpha - (H^cl_t - S*_t)) with
-  f_c(u) = (u)_+/(k* alpha), NO clamp of the multiplier at 1.
-- Auction (rulings D1, D4): r_t = K^a_t H^cl_t (H^cl_t - S^a_t) + f_a(...)
-  - d_t c_t with f_a(u) = -q(-u)_+, d_t = (t - n - 1) d, scalar c_t in {0,1}.
-- Terminal (rulings D3, D8): see env/rewards.terminal_reward.
-
-State (ruling D11): EFFICIENT internal representation (inventory, cached
-H_cl, book arrays, auction ledgers, theta, counters) + a `paper_state()`
-accessor materializing X^1..X^17 for tests/documentation only (never in the
-training hot path). Naming follows the paper sign convention (D3): X^7 = N^+
-counts BUYING market orders.
-
-RNG (ruling D10): `reset(seed)` seeds only the env's PRIVATE generator; all
-draws occur unconditionally or on exogenous-only conditions, so the event
-stream is policy-independent (common random numbers across policies). Fixed
-per-step draw order — reset: book refresh (2 Beta); CLOB step: tau^+, tau^-
-(2 Exp), then (volume, next-interarrival) per processed order, then refresh
-(2 Beta; skipped after the t_n step) and the mid-price update (2 Normal for
-rough Heston, 0 historical); auction step: see market/auction.py.
+The random CLOB decision grid and all CLOB exogenous data are sampled before
+the first action.  Every returned observation is already a complete
+pre-action state: a fresh exogenous CLOB snapshot in the continuous phase, or
+the current accepted auction proposals combined with the lagged indicative
+price in the auction phase.
 """
 
 from __future__ import annotations
@@ -73,299 +23,545 @@ from lmm.env.action_spaces import (
     ClobAction,
     ClobActionGrid,
 )
-from lmm.env.features import FeatureExtractor
-from lmm.env.rewards import auction_reward, clob_reward, terminal_reward
-from lmm.market.auction import AgentOrderLedger
-from lmm.market.clearing import Algo1Estimator, ClearingInputs, Eq2Cache
-from lmm.market.generator import MarketGenerator
+from lmm.env.features import COMMON_FEATURES, FeatureExtractor
+from lmm.env.rewards import auction_reward, clob_reward, f_a, terminal_reward
+from lmm.market.auction import AgentOrderLedger, AuctionEvents
+from lmm.market.clearing import (
+    Algo1Diagnostics,
+    Algo1Estimator,
+    CarryoverCalibration,
+    ClearingInputs,
+    ClearingResult,
+    Eq2Cache,
+    TerminalAllocation,
+    allocate_terminal,
+    clear_linear,
+    round_half_up_to_tick,
+)
+from lmm.market.generator import EpisodeGrid, MarketGenerator
 from lmm.market.midprice import MidPriceModel, build_midprice
 
 __all__ = ["MarketMakingEnv", "make_env"]
 
 logger = logging.getLogger(__name__)
+_EPS = 1e-9
 
 
 class MarketMakingEnv(gymnasium.Env):
-    """The market-making MDP with CLOB and auction phases.
-
-    Actions: an integer index into the CURRENT phase's discrete grid
-    (`lmm.env.action_spaces`), or a decoded :class:`ClobAction` /
-    :class:`AuctionAction` instance (used by benchmarks and the Phase-5
-    continuous relaxation, whose values may be off-grid). Admissibility
-    Adm(x) is exposed via ``action_mask()`` for agent-side masking (AUDIT
-    N12: stored action == executed action) and ENFORCED here: inadmissible
-    submissions raise ValueError (the env never projects).
-
-    ``action_space``/``observation_space`` are PER-PHASE and re-assigned at
-    the auction open (documented deviation from static gymnasium spaces; the
-    two-network RL design consumes per-phase dimensions anyway).
-
-    ``info`` diagnostics per step: ``t``, ``phase``, ``H_used`` (the H^cl in
-    the time-t state/reward), ``H_next`` (the freshly cached value),
-    ``E_t``/``S_bullet`` (CLOB), exogenous-event flags and ``d_t`` (auction),
-    degenerate-fallback counter (D17), and at the terminal ``S_cl``, ``Z``,
-    ``I_final``, ``terminal_reward``.
-    """
+    """Gymnasium-style environment with phase-specific action spaces."""
 
     metadata = {"render_modes": []}
 
     def __init__(self, cfg: ExperimentConfig, midprice: MidPriceModel) -> None:
         super().__init__()
+        if cfg.grid.h != cfg.grid.tau_cl - cfg.grid.tau_op:
+            raise ValueError("grid.h must equal tau_cl-tau_op")
+        if cfg.rl.chi != 1.0:
+            raise ValueError("the revised finite-horizon problem requires rl.chi=1")
+
         self.cfg = cfg
         self.grid = cfg.grid
         self.midprice = midprice
         self.generator = MarketGenerator(cfg.clob_flow, cfg.auction_flow, cfg.grid)
         self.algo1 = Algo1Estimator(cfg.algo1, cfg.grid)
         self.eq2 = Eq2Cache(cfg.grid)
-        self.features = FeatureExtractor(cfg.features, cfg.grid, cfg.clob_flow, cfg.auction_flow)
+        self.features = FeatureExtractor(
+            cfg.features, cfg.grid, cfg.clob_flow, cfg.auction_flow
+        )
         self.clob_grid = ClobActionGrid(cfg.actions)
         self.auction_grid = AuctionActionGrid(cfg.actions)
         self._ledger = AgentOrderLedger(cfg.grid)
 
         self._clob_space = gymnasium.spaces.Discrete(len(self.clob_grid))
         self._auction_space = gymnasium.spaces.Discrete(len(self.auction_grid))
+        feature_shape = (len(COMMON_FEATURES),)
         self._clob_obs_space = gymnasium.spaces.Box(
-            -np.inf, np.inf, shape=(len(cfg.features.clob),), dtype=np.float32
+            -np.inf, np.inf, shape=feature_shape, dtype=np.float32
         )
         self._auction_obs_space = gymnasium.spaces.Box(
-            -np.inf, np.inf, shape=(len(cfg.features.auction),), dtype=np.float32
+            -np.inf, np.inf, shape=feature_shape, dtype=np.float32
         )
         self.action_space = self._clob_space
         self.observation_space = self._clob_obs_space
+        self._done = True
 
-        self._n = cfg.grid.tau_op - 1  # n = tau_op - 1
-        self._m = cfg.grid.tau_cl - 1  # m = tau_cl - 1
-        self._done = True  # reset() required before step()
-
-    # -- gymnasium API ------------------------------------------------------
+    # ------------------------------------------------------------------
+    # Episode preparation
+    # ------------------------------------------------------------------
 
     def reset(
-        self, *, seed: int | None = None, options: dict[str, Any] | None = None
+        self,
+        *,
+        seed: int | None = None,
+        options: dict[str, Any] | None = None,
     ) -> tuple[np.ndarray, dict[str, Any]]:
-        """Start an episode; seeds the env's PRIVATE generator only (D10)."""
+        del options
         super().reset(seed=seed)
-        g = self.grid
 
-        self._t: float = 0.0
-        self._phase: str = "clob"
+        # The grid must exist before the non-uniform mid-price path is built.
+        self._episode_grid = self.generator.reset_episode(self.np_random)
+        self._prepare_midprice_path()
+
+        self._phase = "clob"
         self._done = False
-        self._inventory: float = float(g.I0)
-        self._mid: float = self.midprice.reset(self.np_random)
+        self._clob_index = 0
+        self._auction_index = -1
+        self._decision_index = 0
+        self._t = float(self._episode_grid.clob_times[0])
+        self._mid = float(self._clob_mid_values[0])
         self._frozen_mid: float | None = None
+        self._inventory = float(self.grid.I0)
         self._I_tau_op: float | None = None
-        self._Z: float = 0.0
+        self._Z = 0.0
         self._S_cl: float | None = None
+        self._terminal_allocation: TerminalAllocation | None = None
+        self._last_clearing_result: ClearingResult | None = None
+        self._pending_auction_events: AuctionEvents | None = None
+        self._current_algo1_diag: Algo1Diagnostics | None = None
+        self._interim_shaping_by_slot = np.zeros(self.grid.h, dtype=float)
 
-        h0 = self._mid if self.cfg.algo1.H0_from_mid else self.cfg.algo1.H0
-        if h0 is None:
-            raise ValueError("algo1.H0 must be set when H0_from_mid is false")
-        self.algo1.reset(float(h0))
-        self._h_cache: float = self.algo1.h
+        self.algo1.reset(self.cfg.algo1.H0)
+        self._h_cache = self.algo1.h
         self.eq2.reset(self._h_cache)
-
-        self.generator.book.refresh(self.np_random)
-        self.generator.book.k_mid = self._k_mid()
-        self.generator.auction_flow.reset(self._mid)
         self._ledger.reset()
+        self.generator.prepare_clob_decision(0, self._k_mid())
 
+        self._n = self._episode_grid.n
+        self._m = self._episode_grid.m
         self.action_space = self._clob_space
         self.observation_space = self._clob_obs_space
-
-        info = {"t": self._t, "phase": self._phase, "H_used": self._h_cache}
+        info = {
+            "t": self._t,
+            "decision_index": self._decision_index,
+            "phase": self._phase,
+            "H_used": self._h_cache,
+            "episode_n": self._n,
+            "episode_m": self._m,
+        }
         return self.features.clob_features(self), info
 
+    def _prepare_midprice_path(self) -> None:
+        """Simulate/replay the complete revealed path and project half-up."""
+        alpha = self.grid.alpha
+        values = [round_half_up_to_tick(self.midprice.reset(self.np_random), alpha)]
+        for t in self._episode_grid.clob_times[1:]:
+            values.append(round_half_up_to_tick(self.midprice.advance_to(float(t)), alpha))
+        frozen = round_half_up_to_tick(
+            self.midprice.advance_to(float(self.grid.tau_op)), alpha
+        )
+        self._clob_mid_values = np.asarray(values, dtype=float)
+        self._clob_mid_values.setflags(write=False)
+        self._prepared_frozen_mid = float(frozen)
+
+    # ------------------------------------------------------------------
+    # Gym transition
+    # ------------------------------------------------------------------
+
     def step(self, action) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
-        """One decision step; the final auction step folds in the terminal
-        clearing reward and returns terminated=True."""
         if self._done:
             raise RuntimeError("episode is over; call reset()")
         if self._phase == "clob":
             return self._step_clob(action)
         return self._step_auction(action)
 
-    # -- CLOB step (ruling D2; sequencing per the module docstring) ----------
-
-    def _step_clob(self, action) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
+    def _step_clob(
+        self, action
+    ) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
         a = self._decode_clob(action)
-        if a.volume < 0.0:
-            raise ValueError(f"volume must be >= 0, got {a.volume}")
-        if a.volume > self._inventory:
-            raise ValueError(
-                f"inadmissible action: volume {a.volume} > inventory {self._inventory} (Adm: a^1 <= x^1)"
-            )
-        if a.delta < 0:
-            raise ValueError(f"delta must be >= 0, got {a.delta} (Adm: a^2 >= x^10/alpha)")
+        self._validate_clob_action(a)
 
         t = self._t
+        i = self._clob_index
+        h_used = self._h_cache
+        s_bullet = float(self._mid + self.grid.alpha * a.delta)
         book = self.generator.book
-        k_mid = self._k_mid()
-        book.k_mid = k_mid
-        s_bullet = self.grid.alpha * (k_mid + a.delta)
         book.place_agent_order(a.volume, a.delta)
-
-        is_final = t >= float(self._n)
-        flow = self.generator.step_clob(self.np_random, t, final=is_final)
-        executed = flow.executed_agent
+        flow = self.generator.step_clob_index(i)
+        executed = float(flow.executed_agent)
         self._inventory -= executed
-        # Float-safety only: the running inventory is non-negative by
-        # construction (executed <= v <= inventory, admissibility), but a
-        # near-full fractional liquidation can leave a sub-epsilon negative
-        # float residue that would spuriously reject the next no-op (v=0 > -eps)
-        # in the admissibility check. Snap that residue to 0; this is a no-op
-        # for any inventory the discrete DQN actually reaches and is NOT the D8
-        # terminal clip (which stays gated behind numerical_guard).
-        if -1e-9 < self._inventory < 0.0:
+        if -_EPS < self._inventory < 0.0:
             self._inventory = 0.0
 
-        # End-of-step Algorithm-1 update (D2): post-flow book incl. the
-        # agent's remainder, BEFORE the refresh. Output = H_{t+1}.
-        h_next = self.algo1.update(book.snapshot())
-        h_used = self._h_cache
-        reward = clob_reward(s_bullet, executed, h_used, self.cfg.reward.k_star, self.grid.alpha)
-        self._h_cache = h_next
-        book.clear_agent_order()
+        economic_cash = s_bullet * executed
+        reward = clob_reward(
+            s_bullet,
+            executed,
+            h_used,
+            self.cfg.reward.k_star,
+            self.grid.alpha,
+            shaping_enabled=self.cfg.reward.shaping_enabled,
+        )
+        shaping_adjustment = reward - economic_cash
+        book.clear_agent_order()  # every strategic CLOB order lasts one interval
 
         info: dict[str, Any] = {
             "t": t,
+            "t_next": float(flow.t_next),
+            "decision_index": self._decision_index,
             "phase": "clob",
             "action": a,
             "H_used": h_used,
-            "H_next": h_next,
             "E_t": executed,
             "S_bullet": s_bullet,
             "n_buy_step": flow.n_buy,
             "n_sell_step": flow.n_sell,
-            "t_next": flow.t_next,
+            "algo1": self._current_algo1_diag,
+            "clob_economic_cash": economic_cash,
+            "auction_economic_cash": 0.0,
+            "cancellation_fee": 0.0,
+            "residual_mark": 0.0,
+            "terminal_penalty": 0.0,
+            "clob_shaping_adjustment": shaping_adjustment,
+            "auction_interim_shaping": 0.0,
+            "auction_terminal_shaping": 0.0,
         }
 
-        if is_final:
-            # Auction open: the mid advances to tau_op and FREEZES there
-            # (Algorithm 2: S^i ~ S^mid_{tau_op} + ...); no book refresh —
-            # the CLOB ceases to exist. Eq. (2) cache seeded with Algorithm
-            # 1's last CLOB output (D1).
-            self._t = float(self.grid.tau_op)
-            self._phase = "auction"
-            self._frozen_mid = self.midprice.advance_to(float(self.grid.tau_op))
-            self._mid = self._frozen_mid
-            self._I_tau_op = self._inventory
-            self.generator.auction_flow.reset(self._frozen_mid)
-            self._ledger.reset()
-            self.eq2.reset(self._h_cache)
-            self.action_space = self._auction_space
-            self.observation_space = self._auction_obs_space
+        if i == self._episode_grid.n:
+            residual = flow.residual_exogenous
+            if residual is None:
+                raise AssertionError("final CLOB interval did not retain its residual book")
+            carryover = self.algo1.calibrate_carryover(
+                residual, n=self._episode_grid.n
+            )
+            if not self.cfg.experiment.auction_enabled:
+                reward += self._terminate_no_auction(carryover, info)
+                info["H_next"] = self._h_cache
+                info["training_reward"] = reward
+                obs = self.features.clob_features(self)
+                return obs, float(reward), True, False, info
+            self._open_auction(carryover)
             obs = self.features.auction_features(self)
         else:
-            self._t = flow.t_next
-            book.refresh(self.np_random)
-            self._mid = self.midprice.advance_to(self._t)
-            book.k_mid = self._k_mid()
+            self._prepare_next_clob_decision(i + 1)
             obs = self.features.clob_features(self)
 
-        return obs, reward, False, False, info
+        info["H_next"] = self._h_cache
+        info["training_reward"] = reward
+        return obs, float(reward), False, False, info
 
-    # -- auction step (rulings D1, D3, D4; sequencing per the docstring) -----
-
-    def _step_auction(self, action) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
-        a = self._decode_auction(action)
-        if a.K_a < 0.0:
-            raise ValueError(f"inadmissible action: K^a must be >= 0, got {a.K_a}")
-        if a.cancel not in (0, 1):
-            raise ValueError(f"c_t must be 0 or 1, got {a.cancel}")
-        if a.cancel == 1 and not self._ledger.cancel_admissible():
-            raise ValueError(
-                "inadmissible action: cancel-all with no live prior K^a > 0 order (Adm: a^5 <= C(x))"
+    def _terminate_no_auction(
+        self,
+        carryover: CarryoverCalibration,
+        info: dict[str, Any],
+    ) -> float:
+        """No-auction comparator: mark and penalize at ``tau_op``."""
+        frozen_mid = float(self._prepared_frozen_mid)
+        i_final = float(self._inventory)
+        residual_mark = frozen_mid * i_final
+        penalty = self.cfg.reward.lambda_inv * i_final**2
+        r_term = residual_mark - penalty
+        self._frozen_mid = frozen_mid
+        self._mid = frozen_mid
+        self._I_tau_op = i_final
+        self._S_cl = frozen_mid
+        self._Z = 0.0
+        self._t = float(self.grid.tau_op)
+        self._decision_index = self._episode_grid.n + 1
+        self._phase = "terminal"
+        self._done = True
+        empty_counts = {
+            name: {
+                "proposed": 0,
+                "accepted": 0,
+                "rejected": 0,
+                "ineligible": 0,
+            }
+            for name in (
+                "schedule_arrival",
+                "schedule_cancel",
+                "buy_arrival",
+                "buy_cancel",
+                "sell_arrival",
+                "sell_cancel",
             )
-
-        t = int(self._t)
-        g = self.grid
-        k_mid_frozen = int(math.floor(self._frozen_mid / g.alpha))
-        s_a = g.alpha * (k_mid_frozen + a.offset)  # tick-snapped quote (AUDIT N4)
-        d_t = (t - g.tau_op) * self.cfg.reward.d  # d_t = (t - n - 1) d (D4)
-
-        # Reward FIRST, from the end-of-(t-1) cache (D1): nothing sampled or
-        # decided at t may enter it.
-        h_used = self._h_cache
-        reward = auction_reward(
-            a.K_a, s_a, h_used, self.cfg.reward.q, d_t, a.cancel, one_sided=a.one_sided
+        }
+        info.update(
+            t_next=float(self.grid.tau_op),
+            S_cl=frozen_mid,
+            Z=0.0,
+            requested_Z=0.0,
+            I_final=i_final,
+            Q_supply=0.0,
+            Q_demand=0.0,
+            rho_supply=1.0,
+            rho_demand=1.0,
+            executed_supply=0.0,
+            executed_demand=0.0,
+            self_trade_count=0,
+            terminal_reward=r_term,
+            auction_economic_cash=0.0,
+            residual_mark=residual_mark,
+            terminal_penalty=penalty,
+            auction_terminal_shaping=0.0,
+            continuous_price=frozen_mid,
+            tick_price=frozen_mid,
+            clearing_residual=0.0,
+            leave_agent_out_continuous_price=frozen_mid,
+            leave_agent_out_tick_price=frozen_mid,
+            agent_price_displacement=0.0,
+            carryover_slope=float(carryover.total_slope),
+            fallback_used=bool(carryover.total_slope < self.cfg.auction_flow.D_mu),
+            persistent_schedule_id=-1,
+            proposal_counts=empty_counts,
+            no_auction_comparator=True,
         )
+        return float(r_term)
 
-        events = self.generator.step_auction(self.np_random)
-        self._ledger.submit(t, a.K_a, s_a, one_sided=a.one_sided)
+    def _prepare_next_clob_decision(self, next_index: int) -> None:
+        self._clob_index = int(next_index)
+        self._decision_index = int(next_index)
+        self._t = float(self._episode_grid.clob_times[next_index])
+        self._mid = float(self._clob_mid_values[next_index])
+        snapshot = self.generator.prepare_clob_decision(next_index, self._k_mid())
+        self._current_algo1_diag = self.algo1.observe(next_index, snapshot)
+        self._h_cache = self._current_algo1_diag.H
+
+    def _open_auction(self, carryover: CarryoverCalibration) -> None:
+        self._phase = "auction"
+        self._auction_index = 0
+        self._decision_index = self._episode_grid.n + 1
+        self._t = float(self._episode_grid.auction_times[0])
+        self._frozen_mid = self._prepared_frozen_mid
+        self._mid = self._frozen_mid
+        self._I_tau_op = self._inventory
+        self._ledger.reset()
+        self._interim_shaping_by_slot.fill(0.0)
+        self.generator.auction_flow.reset(self._frozen_mid, carryover)
+        self._carryover_slope = float(carryover.total_slope)
+        self._fallback_used = any(
+            rec.provenance == "fallback"
+            for rec in self.generator.auction_flow.active_schedules
+        )
+        persistent = [
+            rec for rec in self.generator.auction_flow.active_schedules if rec.persistent
+        ]
+        if len(persistent) != 1:
+            raise AssertionError("auction initialization must designate one persistent schedule")
+        self._persistent_schedule_id = persistent[0].schedule_id
+        self.eq2.reset(self._h_cache)
+        self._last_clearing_result = None
+        self.action_space = self._auction_space
+        self.observation_space = self._auction_obs_space
+        self._prepare_current_auction_proposals()
+
+    def _prepare_current_auction_proposals(self) -> None:
+        """Accept current proposals before constructing the action state."""
+        self._pending_auction_events = self.generator.step_auction(self.np_random)
+        self.generator.auction_flow.assert_valid()
+
+    def _step_auction(
+        self, action
+    ) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
+        a = self._decode_auction(action)
+        external = self._is_external_action(a)
+        s_a = self._auction_reference(a)
+        self._validate_auction_action(a, s_a, external)
+        if self._pending_auction_events is None:
+            raise AssertionError("auction proposals were not prepared before the action")
+
+        t = self._t
+        h_used = self._h_cache
+        d_t = float(self._auction_index) * self.cfg.reward.d
+        fee = d_t * int(a.cancel)
+        interim_reward = auction_reward(
+            a.K_a,
+            s_a,
+            h_used,
+            self.cfg.reward.q,
+            d_t,
+            a.cancel,
+            shaping_enabled=self.cfg.reward.shaping_enabled,
+            external_policy=external,
+        )
+        interim_shaping = interim_reward + fee
+
+        prior_live = self._ledger.live.copy()
+        clawback = 0.0
         if a.cancel == 1:
-            self._ledger.apply_cancel_all(t)  # theta_{t+1}: kills orders < t
+            if self.cfg.reward.clawback_shaping:
+                clawback = float(np.sum(self._interim_shaping_by_slot[prior_live]))
+                interim_reward -= clawback
+                self._interim_shaping_by_slot[prior_live] = 0.0
+            self._ledger.apply_cancel_all(t)
+        self._ledger.submit(
+            t,
+            a.K_a,
+            s_a,
+            one_sided=external,
+            quantity_cap=a.quantity_cap,
+            reference_price=s_a if external else None,
+        )
+        if a.K_a > 0.0 and self.cfg.reward.shaping_enabled and not external:
+            self._interim_shaping_by_slot[self._auction_index] = interim_shaping
 
-        # End-of-step corrected Eq. (2) recompute -> the time-(t+1) cache.
-        n_degen_before = self.eq2.n_degenerate_fallbacks
-        h_next = self.eq2.recompute(self._clearing_inputs())
-        self._h_cache = h_next
+        inputs = self._clearing_inputs()
+        external_schedule = self._ledger.external_schedule()
+        result = self.eq2.recompute_result(
+            inputs,
+            self.cfg.auction_flow.D_mu,
+            external_schedule=external_schedule,
+        )
+        self._last_clearing_result = result
+        self._h_cache = result.tick_price
 
+        events = self._pending_auction_events
         info: dict[str, Any] = {
-            "t": float(t),
+            "t": t,
+            "t_next": (
+                float(self.grid.tau_cl)
+                if self._auction_index == self.grid.h - 1
+                else float(self._episode_grid.auction_times[self._auction_index + 1])
+            ),
+            "decision_index": self._decision_index,
             "phase": "auction",
             "action": a,
             "H_used": h_used,
-            "H_next": h_next,
+            "H_next": result.tick_price,
             "S_a": s_a,
             "d_t": d_t,
             "events": events,
-            "degenerate_fallback": self.eq2.n_degenerate_fallbacks > n_degen_before,
+            "proposal_counts": self.generator.auction_flow.proposal_counts,
+            "carryover_slope": self._carryover_slope,
+            "fallback_used": self._fallback_used,
+            "persistent_schedule_id": self._persistent_schedule_id,
+            "D": result.D,
+            "R": result.R,
+            "continuous_price": result.continuous_price,
+            "tick_price": result.tick_price,
+            "clearing_residual": result.residual_at_tick,
+            "nonlinear_clearing": result.nonlinear,
+            "degenerate_fallback": False,
+            "clob_economic_cash": 0.0,
+            "auction_economic_cash": 0.0,
+            "cancellation_fee": fee,
+            "residual_mark": 0.0,
+            "terminal_penalty": 0.0,
+            "clob_shaping_adjustment": 0.0,
+            "auction_interim_shaping": interim_shaping,
+            "auction_shaping_clawback": clawback,
+            "auction_terminal_shaping": 0.0,
         }
 
-        terminated = t == self._m
+        terminated = self._auction_index == self.grid.h - 1
+        total_reward = float(interim_reward)
         if terminated:
-            reward += self._terminal(info)
-            self._t = float(g.tau_cl)
+            total_reward += self._terminal(result, inputs, external_schedule, info)
+            self._t = float(self.grid.tau_cl)
+            self._decision_index = self._episode_grid.m + 1
             self._done = True
+            self._pending_auction_events = None
         else:
-            self._t = float(t + 1)
+            self._auction_index += 1
+            self._decision_index += 1
+            self._t = float(self._episode_grid.auction_times[self._auction_index])
+            self._prepare_current_auction_proposals()
 
-        return self.features.auction_features(self), reward, terminated, False, info
+        info["training_reward"] = total_reward
+        obs = self.features.auction_features(self)
+        return obs, total_reward, terminated, False, info
 
-    def _terminal(self, info: dict[str, Any]) -> float:
-        """Terminal clearing at tau_cl (corrected Eq. (1) = the end-of-t_m
-        Eq. (2) recompute; rulings D3, D8, D17)."""
-        r = self.cfg.reward
-        s_cl = self._h_cache
-        K_live, S_live, hockey = self._ledger.live_orders_split()
-        one_sided: np.ndarray | None = None
-        if hockey is not None:
-            # Ruling D16: the benchmark's one-sided order clears (S_cl - S~)_+.
-            K_live = np.append(K_live, hockey[0])
-            S_live = np.append(S_live, hockey[1])
-            one_sided = np.zeros(len(K_live), dtype=bool)
-            one_sided[-1] = True
-        gap = s_cl - S_live
-        if one_sided is not None:
-            gap = np.where(one_sided, np.maximum(gap, 0.0), gap)
-        z = float(np.sum(K_live * gap))
-        i_final = self._I_tau_op - z
-
-        if r.numerical_guard and abs(i_final) > r.numerical_guard_bound:
-            logger.error(
-                "numerical_guard BOUND (|I_final| = %.6g > %.6g): clipping. "
-                "This should never happen on standard runs (ruling D8).",
-                abs(i_final),
-                r.numerical_guard_bound,
-            )
-            i_final = float(np.clip(i_final, -r.numerical_guard_bound, r.numerical_guard_bound))
-
-        r_term = terminal_reward(
-            K_live, S_live, s_cl, i_final, r.lambda_inv, r.q, one_sided=one_sided
+    def _terminal(
+        self,
+        result: ClearingResult,
+        inputs: ClearingInputs,
+        external_schedule,
+        info: dict[str, Any],
+    ) -> float:
+        if self._I_tau_op is None or self._frozen_mid is None:
+            raise AssertionError("terminal clearing before auction initialization")
+        allocation = allocate_terminal(
+            inputs,
+            result.tick_price,
+            external_agent_schedule=external_schedule,
         )
-        self._S_cl = s_cl
+        z = allocation.actual_agent
+        i_final = float(self._I_tau_op - z)
+        if (
+            self.cfg.reward.numerical_guard
+            and abs(i_final) > self.cfg.reward.numerical_guard_bound
+        ):
+            logger.warning(
+                "terminal inventory %.12g exceeds diagnostic bound %.12g; "
+                "the revised simulator does not clip it",
+                i_final,
+                self.cfg.reward.numerical_guard_bound,
+            )
+
+        external_policy = external_schedule is not None
+        r_term = terminal_reward(
+            result.tick_price,
+            z,
+            i_final,
+            self._frozen_mid,
+            self.cfg.reward.lambda_inv,
+            self.cfg.reward.q,
+            shaping_enabled=self.cfg.reward.shaping_enabled,
+            external_policy=external_policy,
+        )
+        auction_cash = result.tick_price * z
+        residual_mark = self._frozen_mid * i_final
+        terminal_penalty = self.cfg.reward.lambda_inv * i_final**2
+        terminal_shaping = (
+            f_a(auction_cash, self.cfg.reward.q)
+            if self.cfg.reward.shaping_enabled and not external_policy
+            else 0.0
+        )
+
+        leave_agent_out_inputs = ClearingInputs(
+            K_exo=inputs.K_exo,
+            S_exo=inputs.S_exo,
+            K_agent=np.zeros(0, dtype=float),
+            S_agent=np.zeros(0, dtype=float),
+            net_market_volume=inputs.net_market_volume,
+            fallback_mid=inputs.fallback_mid,
+            buy_market_volume=inputs.buy_market_volume,
+            sell_market_volume=inputs.sell_market_volume,
+        )
+        leave_agent_out = clear_linear(
+            leave_agent_out_inputs,
+            self.grid.alpha,
+            self.cfg.auction_flow.D_mu,
+        )
+
+        self._S_cl = result.tick_price
         self._Z = z
         self._inventory = i_final
-        info.update(S_cl=s_cl, Z=z, I_final=i_final, terminal_reward=r_term)
-        return r_term
+        self._terminal_allocation = allocation
+        info.update(
+            S_cl=result.tick_price,
+            Z=z,
+            requested_Z=allocation.requested_agent,
+            I_final=i_final,
+            Q_supply=allocation.Q_supply,
+            Q_demand=allocation.Q_demand,
+            rho_supply=allocation.rho_supply,
+            rho_demand=allocation.rho_demand,
+            executed_supply=allocation.executed_supply,
+            executed_demand=allocation.executed_demand,
+            self_trade_count=allocation.self_trade_count,
+            leave_agent_out_continuous_price=leave_agent_out.continuous_price,
+            leave_agent_out_tick_price=leave_agent_out.tick_price,
+            agent_price_displacement=(result.tick_price - leave_agent_out.tick_price),
+            terminal_reward=r_term,
+            auction_economic_cash=auction_cash,
+            residual_mark=residual_mark,
+            terminal_penalty=terminal_penalty,
+            auction_terminal_shaping=terminal_shaping,
+        )
+        return float(r_term)
 
-    # -- decoding / admissibility --------------------------------------------
+    # ------------------------------------------------------------------
+    # Action decoding and admissibility
+    # ------------------------------------------------------------------
 
     def _decode_clob(self, action) -> ClobAction:
         if isinstance(action, ClobAction):
             return action
         if isinstance(action, (int, np.integer)):
             return self.clob_grid.decode(int(action))
-        raise TypeError(f"CLOB action must be an index or ClobAction, got {type(action).__name__}")
+        raise TypeError(
+            f"CLOB action must be an index or ClobAction, got {type(action).__name__}"
+        )
 
     def _decode_auction(self, action) -> AuctionAction:
         if isinstance(action, AuctionAction):
@@ -376,157 +572,244 @@ class MarketMakingEnv(gymnasium.Env):
             f"auction action must be an index or AuctionAction, got {type(action).__name__}"
         )
 
-    def action_mask(self) -> np.ndarray:
-        """Boolean admissibility mask over the current phase's action grid:
-        a^1 <= x^1, a^2 >= x^10/alpha (structural), a^5 <= C(x).
+    def _validate_clob_action(self, a: ClobAction) -> None:
+        if not math.isfinite(float(a.volume)) or a.volume < 0.0:
+            raise ValueError(f"volume must be finite and nonnegative, got {a.volume}")
+        if not math.isclose(float(a.volume), round(float(a.volume)), abs_tol=1e-10):
+            raise ValueError("strategic CLOB submitted volume must be integer-valued")
+        max_volume = min(
+            self.cfg.actions.V_max,
+            max(0, math.floor(float(self._inventory) + 1e-12)),
+        )
+        if a.volume > max_volume:
+            raise ValueError(
+                f"inadmissible CLOB volume {a.volume}; current maximum is {max_volume}"
+            )
+        if int(a.delta) != a.delta or not 0 <= int(a.delta) <= self.cfg.actions.L_max:
+            raise ValueError(
+                f"CLOB offset must be an integer in [0,{self.cfg.actions.L_max}]"
+            )
+        if a.volume == 0.0 and int(a.delta) != 0:
+            raise ValueError("the canonical zero CLOB action has delta=0")
 
-        The cancel-admissibility comes from the internal ledger's liveness
-        flags — equivalent to evaluating C on ``paper_state()`` (asserted in
-        tests/test_admissibility.py)."""
+    @staticmethod
+    def _is_external_action(a: AuctionAction) -> bool:
+        return bool(
+            a.one_sided or a.quantity_cap is not None or a.reference_price is not None
+        )
+
+    def _auction_reference(self, a: AuctionAction) -> float:
+        if a.reference_price is not None:
+            return float(a.reference_price)
+        if self._frozen_mid is None:
+            raise AssertionError("auction reference requested before auction open")
+        return float(self._frozen_mid + self.grid.alpha * int(a.offset))
+
+    def _validate_auction_action(
+        self, a: AuctionAction, s_a: float, external: bool
+    ) -> None:
+        if not math.isfinite(float(a.K_a)) or a.K_a < 0.0:
+            raise ValueError(f"K^a must be finite and nonnegative, got {a.K_a}")
+        if not external and a.K_a > self.cfg.actions.auction_K_grid_max + _EPS:
+            raise ValueError(
+                f"K^a exceeds {self.cfg.actions.auction_K_grid_max}: {a.K_a}"
+            )
+        if int(a.offset) != a.offset:
+            raise ValueError("auction offset must be integer-valued")
+        if not external and abs(int(a.offset)) > self.cfg.actions.B_max:
+            raise ValueError(
+                f"auction offset must lie in [-{self.cfg.actions.B_max},{self.cfg.actions.B_max}]"
+            )
+        if a.K_a == 0.0 and int(a.offset) != 0:
+            raise ValueError("the canonical zero-slope action has offset=0")
+        if not math.isfinite(float(s_a)) or s_a < 0.0:
+            raise ValueError(f"auction reference price must be nonnegative, got {s_a}")
+        if a.cancel not in (0, 1):
+            raise ValueError(f"cancel must be 0 or 1, got {a.cancel}")
+        if a.cancel and self.cfg.actions.auction_cancel_mode == "never":
+            raise ValueError("cancellation is disabled in this treatment")
+        if a.cancel and not self._ledger.cancel_admissible():
+            raise ValueError("cancel-all is ineligible without a live prior schedule")
+
+    def action_mask(self) -> np.ndarray:
         if self._phase == "clob":
             return self.clob_grid.mask(self._inventory)
-        return self.auction_grid.mask(self._ledger.cancel_admissible())
+        if self._frozen_mid is None:
+            raise AssertionError("auction mask requested before auction open")
+        return self.auction_grid.mask(
+            self.cancel_admissible,
+            frozen_mid=self._frozen_mid,
+            alpha=self.grid.alpha,
+        )
+
+    # ------------------------------------------------------------------
+    # Clearing inputs and observable feature accessors
+    # ------------------------------------------------------------------
 
     def _clearing_inputs(self) -> ClearingInputs:
         flow = self.generator.auction_flow
         K_exo, S_exo = flow.supply_curves()
-        K_agent, S_agent, hockey = self._ledger.live_orders_split()
+        K_agent, S_agent = self._ledger.live_orders()
         return ClearingInputs(
             K_exo=K_exo,
             S_exo=S_exo,
             K_agent=K_agent,
             S_agent=S_agent,
             net_market_volume=flow.net_market_volume(),
-            fallback_mid=self._frozen_mid,  # D17: S^mid (frozen at tau_op)
-            hockey=hockey,  # D16: live one-sided benchmark order, if any
+            fallback_mid=float(self._frozen_mid if self._frozen_mid is not None else self._mid),
+            buy_market_volume=flow.buy_market_volume(),
+            sell_market_volume=flow.sell_market_volume(),
         )
 
     def _k_mid(self) -> int:
-        """Mid tick floor(S^mid/alpha) — ONE rounding convention (AUDIT N3)."""
-        return int(math.floor(self._mid / self.grid.alpha))
+        return int(round(float(self._mid) / self.grid.alpha))
 
-    # -- lightweight accessors (D11; consumed by FeatureExtractor) -----------
+    @property
+    def episode_grid(self) -> EpisodeGrid:
+        return self._episode_grid
 
     @property
     def t(self) -> float:
-        """Current decision time (tau_cl after the terminal transition)."""
-        return self._t
+        return float(self._t)
+
+    @property
+    def decision_index(self) -> int:
+        return int(self._decision_index)
 
     @property
     def phase(self) -> str:
-        """'clob' for t <= n, 'auction' for n+1 <= t (incl. the terminal)."""
         return self._phase
 
     @property
     def inventory(self) -> float:
-        """X^1_t = I_t."""
-        return self._inventory
+        return float(self._inventory)
 
     @property
     def h_cl(self) -> float:
-        """X^3_t: the CACHED hypothetical clearing price (D1/D2 vintage)."""
-        return self._h_cache
+        return float(self._h_cache)
 
     @property
     def s_mid(self) -> float:
-        """X^10_t = S^mid_t (frozen at tau_op during the auction)."""
-        return self._mid
+        return float(self._mid)
 
     @property
     def depth_ask(self) -> int:
-        """X^4_t = L^+_t (0 in the auction phase)."""
         return self.generator.book.depth(+1) if self._phase == "clob" else 0
 
     @property
     def depth_bid(self) -> int:
-        """X^5_t = L^-_t (0 in the auction phase)."""
         return self.generator.book.depth(-1) if self._phase == "clob" else 0
 
     @property
     def top_ask(self) -> float:
-        """X^13_t[0] = V^{+,1}_t (0 in the auction phase)."""
-        return float(self.generator.book.ask_volumes[0]) if self._phase == "clob" else 0.0
+        return (
+            float(self.generator.book.ask_volumes[0]) if self._phase == "clob" else 0.0
+        )
 
     @property
     def top_bid(self) -> float:
-        """X^14_t[0] = V^{-,1}_t (0 in the auction phase)."""
-        return float(self.generator.book.bid_volumes[0]) if self._phase == "clob" else 0.0
+        return (
+            float(self.generator.book.bid_volumes[0]) if self._phase == "clob" else 0.0
+        )
 
     @property
     def n_mm(self) -> int:
-        """X^6_t = M_t (0 in the CLOB phase)."""
         return self.generator.auction_flow.n_mm if self._phase == "auction" else 0
 
     @property
     def n_buy(self) -> int:
-        """X^7_t = N^+_{t-}: BUYING market orders (paper convention, D3)."""
         return self.generator.auction_flow.n_buy if self._phase == "auction" else 0
 
     @property
     def n_sell(self) -> int:
-        """X^8_t = N^-_{t-}: selling market orders."""
         return self.generator.auction_flow.n_sell if self._phase == "auction" else 0
 
-    # -- paper state (D11: tests/documentation only) --------------------------
+    @property
+    def cancel_admissible(self) -> bool:
+        return bool(
+            self._phase == "auction"
+            and self.cfg.actions.auction_cancel_mode == "enabled"
+            and self._ledger.cancel_admissible()
+        )
+
+    @property
+    def own_slope(self) -> float:
+        return self._ledger.aggregates()[0] if self._phase == "auction" else 0.0
+
+    @property
+    def own_weighted_quote(self) -> float:
+        return self._ledger.aggregates()[1] if self._phase == "auction" else 0.0
+
+    @property
+    def exogenous_slope(self) -> float:
+        return (
+            self.generator.auction_flow.aggregates()[0]
+            if self._phase == "auction"
+            else 0.0
+        )
+
+    @property
+    def auction_imbalance(self) -> float:
+        return (
+            self.generator.auction_flow.aggregates()[2]
+            if self._phase == "auction"
+            else 0.0
+        )
+
+    @property
+    def exogenous_weighted_quote(self) -> float:
+        return (
+            self.generator.auction_flow.aggregates()[1]
+            if self._phase == "auction"
+            else 0.0
+        )
+
+    # ------------------------------------------------------------------
+    # Complete latent configuration for diagnostics only
+    # ------------------------------------------------------------------
 
     def paper_state(self) -> dict[str, Any]:
-        """Materialize the paper state X^1..X^17 (correctly shaped,
-        zero-padded vectors; fixes AUDIT N5). Tests/documentation only —
-        never called in the training hot path (D11).
-
-        Shapes: X^9, X^16, X^17 in R^{m-n} (component s-n for the order
-        decided at t_s; predictable indexing — entries up to t-1 only);
-        X^11/X^12 in R^{L_max}; X^13/X^14 in R^{Lc} (volumes zeroed above
-        the depth); X^15 in R^{La x 2} (rows (K^i, S^i), zero-padded). The
-        paper's script-N/script-L bounds are realized by the config caps.
-        """
-        g = self.grid
         in_clob = self._phase == "clob"
-        in_auction = not in_clob
-        book = self.generator.book
         flow = self.generator.auction_flow
-        n_slots = g.tau_cl - g.tau_op
-
         S_hist, K_hist = self._ledger.history_at(self._t)
-        theta = self._ledger.theta() if in_auction else np.zeros(n_slots)
-
-        def book_side(vols: np.ndarray, depth: int) -> np.ndarray:
-            out = np.zeros(self.cfg.clob_flow.Lc)
-            if in_clob:
-                out[:] = vols
-                out[depth:] = 0.0  # X^13_j = V^{+,j} 1{j <= L^+} (legacy rule)
-            return out
-
-        x15 = np.zeros((self.cfg.auction_flow.La, 2))
-        if in_auction:
-            K_exo, S_exo = flow.supply_curves()
-            m_show = min(len(K_exo), self.cfg.auction_flow.La)
-            x15[:m_show, 0] = K_exo[:m_show]
-            x15[:m_show, 1] = S_exo[:m_show]
-
+        K_exo, S_exo = flow.supply_curves()
         return {
             "X1": self._inventory,
-            "X2": self._Z if self._t == float(g.tau_cl) else 0.0,
+            "X2": self._Z if self._done else 0.0,
             "X3": self._h_cache,
             "X4": self.depth_ask,
             "X5": self.depth_bid,
             "X6": self.n_mm,
             "X7": self.n_buy,
             "X8": self.n_sell,
-            "X9": theta,
+            "X9": self._ledger.theta() if not in_clob else np.zeros(self.grid.h),
             "X10": self._mid,
-            "X11": flow.buy_volumes.copy() if in_auction else np.zeros(self.cfg.auction_flow.L_max),
-            "X12": flow.sell_volumes.copy() if in_auction else np.zeros(self.cfg.auction_flow.L_max),
-            "X13": book_side(book.ask_volumes, book.depth(+1)),
-            "X14": book_side(book.bid_volumes, book.depth(-1)),
-            "X15": x15,
+            "X11": flow.buy_volumes.copy() if not in_clob else np.zeros(0),
+            "X12": flow.sell_volumes.copy() if not in_clob else np.zeros(0),
+            "X13": self.generator.book.ask_volumes.copy() if in_clob else np.zeros(0),
+            "X14": self.generator.book.bid_volumes.copy() if in_clob else np.zeros(0),
+            "X15": (
+                np.column_stack((K_exo, S_exo)) if not in_clob else np.zeros((0, 2))
+            ),
             "X16": S_hist,
             "X17": K_hist,
+            "X18": self._decision_index,
             "time": self._t,
         }
 
 
-def make_env(cfg: ExperimentConfig, symbol: str | None = None, repo_root: str = ".") -> MarketMakingEnv:
-    """Build the env with the configured mid-price model (one call site for
-    experiments and tests)."""
-    return MarketMakingEnv(cfg, build_midprice(cfg, symbol=symbol, repo_root=repo_root))
+def make_env(
+    cfg: ExperimentConfig,
+    symbol: str | None = None,
+    repo_root: str = ".",
+    data_split: str = "train",
+) -> MarketMakingEnv:
+    return MarketMakingEnv(
+        cfg,
+        build_midprice(
+            cfg,
+            symbol=symbol,
+            repo_root=repo_root,
+            data_split=data_split,
+        ),
+    )

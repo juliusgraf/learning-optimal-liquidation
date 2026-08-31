@@ -1,15 +1,13 @@
-"""Textbook-standard DQN (Mnih et al. 2015 conventions; ruling D9).
+"""Two-phase Double DQN for the manuscript's undiscounted control problem.
 
 Design (full spec in docs/rl_design.md, from which the author rewrites paper
 Section 4):
-- TWO phase networks Q_phi (CLOB, 8-dim features) and Q_psi (auction, 7-dim
+- TWO phase networks Q_phi (CLOB, 18-dim features) and Q_psi (auction, 18-dim
   features) on time-augmented features — a documented DESIGN CHOICE (the
   phases have structurally different state/action spaces), not paper
   fidelity.
-- Uniform replay (one buffer per phase), per-environment-step minibatch
-  updates (every ``update_every`` env steps; NOT legacy's per-episode
-  full-buffer refit), target networks (hard update every
-  ``target_update_interval`` env steps; optional Polyak ``target_soft_tau``),
+- Uniform replay (one buffer per phase), exactly one eligible minibatch update
+  from the current transition's phase, and phase-local target updates,
   epsilon-greedy with the configured schedule, Huber loss, Adam, gradient
   clipping, eval mode (epsilon = 0, no_grad), checkpointing, full seeding
   (D10: private exploration/replay generators from the SeedBundle; no global
@@ -18,12 +16,12 @@ Section 4):
   bootstraps from the AUCTION target network. The terminal tau_cl state has no
   decision, so its value is the KNOWN terminal reward r_tau_cl: the final
   auction transition is stored with done=True, the step reward only, and
-  r_tau_cl carried in ``terminal_value``; the target bootstraps it as
-  y = r_step + chi*r_tau_cl (item 1; rigorous Q*, not the old chi^0 fold).
+  r_tau_cl carried in ``terminal_value``; the target is
+  y = c_r*r_step + c_r*r_tau_cl exactly once, without a network bootstrap.
 - Admissibility masking (Adm(x)) in BOTH the greedy argmax and the random
   draw (masking, never projection — AUDIT N12); the Bellman max runs over the
   admissible actions of x' via the stored ``next_mask``.
-- Bellman targets use chi from config (rl.chi = 0.99, ruling D15).
+- The Bellman factor is exactly one on every row.
 """
 
 from __future__ import annotations
@@ -36,12 +34,18 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from lmm.agents.base import Agent, Transition
+from lmm.agents.base import (
+    BELLMAN_FACTOR,
+    ENVIRONMENT_CONTRACT,
+    REWARD_SCALE,
+    Agent,
+    Transition,
+)
 from lmm.config import ExperimentConfig, build_hyperparams
 from lmm.env.action_spaces import AuctionActionGrid, ClobActionGrid
 from lmm.rl.networks import ACTIVATIONS, mlp
 from lmm.rl.replay import ReplayBatch, ReplayBuffer
-from lmm.rl.schedules import ExponentialEpsilonSchedule
+from lmm.rl.schedules import LinearEpsilonSchedule
 from lmm.utils.seeding import SeedBundle
 
 __all__ = ["DQNAgent", "DQNHyperparams"]
@@ -68,9 +72,6 @@ class DQNHyperparams:
     epsilon_end: float
     epsilon_decay_episodes: float
     epsilon_warmup_episodes: int
-    eval_interval_episodes: int
-    eval_n_seeds: int
-    final_eval_n_seeds: int
     checkpoint_interval_episodes: int
     activation: str
     device: str
@@ -90,7 +91,14 @@ class DQNAgent(Agent):
             raise ValueError("DQNAgent requires algo.name == 'dqn' in the config")
         self.cfg = cfg
         self.hp: DQNHyperparams = build_hyperparams(DQNHyperparams, cfg.algo.hyperparams)
-        self.chi = cfg.rl.chi
+        self.artifact_schema_version = int(cfg.experiment.artifact_schema_version)
+        self.chi = BELLMAN_FACTOR  # public compatibility; intentionally ignores cfg.rl.chi
+        if not np.isclose(self.hp.reward_scale, REWARD_SCALE, rtol=0.0, atol=1e-15):
+            raise ValueError(
+                f"revised DQN requires reward_scale={REWARD_SCALE:g}, got {self.hp.reward_scale:g}"
+            )
+        if self.hp.update_every != 1 or self.hp.updates_per_env_step != 1:
+            raise ValueError("revised DQN performs exactly one eligible update per environment step")
         self.device = torch.device(self.hp.device)
 
         self.clob_grid = ClobActionGrid(cfg.actions)
@@ -143,7 +151,7 @@ class DQNAgent(Agent):
             ),
         }
         self._explore_rng = seeds.generators["exploration"]
-        self.schedule = ExponentialEpsilonSchedule(
+        self.schedule = LinearEpsilonSchedule(
             self.hp.epsilon_start,
             self.hp.epsilon_end,
             self.hp.epsilon_decay_episodes,
@@ -151,6 +159,8 @@ class DQNAgent(Agent):
         )
         self._episode = 0
         self._env_steps = 0
+        self._update_count = {phase: 0 for phase in ("clob", "auction")}
+        self._pending_update_phase: str | None = None
         self._training = True
 
     # -- lifecycle -------------------------------------------------------------
@@ -188,7 +198,19 @@ class DQNAgent(Agent):
             qvals = qvals.masked_fill(
                 ~torch.as_tensor(mask, dtype=torch.bool, device=self.device), -torch.inf
             )
-            return int(torch.argmax(qvals).item())
+            return self._lexicographic_greedy_index(qvals)
+
+    @staticmethod
+    def _lexicographic_greedy_index(masked_q: torch.Tensor) -> int:
+        """Return the first maximum in the lexicographically ordered grid.
+
+        Both action grids are constructed in lexicographic tuple order.  The
+        explicit first-winner rule makes evaluation deterministic even when
+        several admissible actions have identical Q values.
+        """
+        best = torch.max(masked_q)
+        winners = torch.nonzero(masked_q == best, as_tuple=False).flatten()
+        return int(winners[0].item())
 
     # -- replay ------------------------------------------------------------------
 
@@ -197,11 +219,9 @@ class DQNAgent(Agent):
         rewards are scaled by ``reward_scale`` INSIDE replay only (reported
         metrics stay in paper units). Eval transitions are not stored.
 
-        Item 1 (no fold): on the terminal (done) transition the env returns the
-        COMBINED reward r_step + r_tau_cl; we un-fold it, storing only the step
-        reward and carrying the known absorbing-state value g = r_tau_cl in
-        ``terminal_value`` so the target bootstraps y = r_step + chi*g (one chi,
-        since tau_cl = t_m + 1) instead of the old chi^0 fold."""
+        On the terminal transition the env returns the combined reward
+        ``r_step + g``.  Replay stores the two scaled pieces separately so the
+        target can add each exactly once."""
         if not self._training:
             return
         tr = transition
@@ -221,40 +241,49 @@ class DQNAgent(Agent):
             junction=junction,
             next_mask=None if tr.done else tr.next_mask,
             terminal_value=terminal_value * self.hp.reward_scale,
+            discount=BELLMAN_FACTOR,
         )
         self._env_steps += 1
+        self._pending_update_phase = tr.phase
 
     # -- learning -----------------------------------------------------------------
 
-    def update(self) -> dict[str, float]:
-        """Per-env-step update (gated on ``update_every``): for each phase
-        buffer holding >= min_buffer transitions, ``updates_per_env_step``
-        gradient steps; then the target-network sync rule."""
+    def update(self, phase: str | None = None) -> dict[str, float]:
+        """Perform at most one update from the current transition's buffer."""
         if not self._training or self._env_steps == 0:
             return {}
-        if self._env_steps % self.hp.update_every != 0:
-            self._maybe_sync_targets()
+        pending = self._pending_update_phase
+        if pending is None:
+            # The one update opportunity associated with the latest observed
+            # transition has already been consumed.  Supplying ``phase``
+            # explicitly must not manufacture another optimizer step.
             return {}
-        diag: dict[str, float] = {}
-        for phase in ("clob", "auction"):
-            if len(self.replay[phase]) < self.hp.min_buffer:
-                continue
-            for _ in range(self.hp.updates_per_env_step):
-                stats = self._gradient_step(phase, self.replay[phase].sample(self.hp.batch_size))
-                for k, v in stats.items():
-                    diag[f"{k}_{phase}"] = v
-                diag[f"n_grad_steps_{phase}"] = diag.get(f"n_grad_steps_{phase}", 0.0) + 1.0
-        self._maybe_sync_targets()
-        return diag
+        if phase is None:
+            phase = pending
+        elif phase != pending:
+            raise ValueError(f"update phase {phase!r} does not match observed phase {pending!r}")
+        # Consume the per-transition update opportunity even when warm-up has
+        # not completed, preventing repeated calls from updating one env step.
+        self._pending_update_phase = None
+        if phase not in self.replay:
+            raise ValueError(f"unknown phase {phase!r}")
+        if len(self.replay[phase]) < self.hp.min_buffer:
+            return {}
+        stats = self._gradient_step(phase, self.replay[phase].sample(self.hp.batch_size))
+        self._update_count[phase] += 1
+        self._sync_target_after_update(phase)
+        return {
+            **{f"{k}_{phase}": v for k, v in stats.items()},
+            f"n_grad_steps_{phase}": 1.0,
+        }
 
     def compute_targets(self, phase: str, batch: ReplayBatch) -> torch.Tensor:
-        """Bellman targets y = r + chi (1 - done) max_{a' in Adm(x')}
+        """Bellman targets y = r + (1 - done) max_{a' in Adm(x')}
         Q_target(x', a'), with the target network chosen by the PHASE of x':
         CLOB junction rows (next state at the auction open) bootstrap from
         the AUCTION target network. Done rows do NOT bootstrap from a network;
-        instead they bootstrap from the KNOWN absorbing-state value g =
-        r_tau_cl carried in ``batch.terminal_value``, y = r_step + chi*g (item
-        1, no fold). Exposed for the hand-computed unit tests
+        instead they add the known terminal value ``g`` exactly once. Exposed
+        for the hand-computed unit tests
         (tests/test_dqn.py)."""
         y = torch.as_tensor(batch.reward, dtype=torch.float32, device=self.device).clone()
         done = torch.as_tensor(batch.done, dtype=torch.bool, device=self.device)
@@ -283,16 +312,15 @@ class DQNAgent(Agent):
                     q_sel = self.q[next_phase](nobs).masked_fill(~nmask, -torch.inf)
                     a_star = q_sel.argmax(dim=1, keepdim=True)
                     q_eval = self.q_target[next_phase](nobs)
-                    y[idx] = y[idx] + self.chi * q_eval.gather(1, a_star).squeeze(1)
+                    y[idx] = y[idx] + q_eval.gather(1, a_star).squeeze(1)
                 else:
                     qt = self.q_target[next_phase](nobs).masked_fill(~nmask, -torch.inf)
-                    y[idx] = y[idx] + self.chi * qt.max(dim=1).values
-        # Terminal bootstrap from the known absorbing-state value (item 1):
-        # g is nonzero only on done rows, so this leaves non-terminal targets
-        # unchanged. None on hand-built legacy batches => skip (y = r on done).
+                    y[idx] = y[idx] + qt.max(dim=1).values
+        # Terminal value is added only to terminal rows; there is no network
+        # bootstrap and no discount on the final transition.
         if batch.terminal_value is not None:
             g = torch.as_tensor(batch.terminal_value, dtype=torch.float32, device=self.device)
-            y = y + self.chi * g
+            y[done] = y[done] + g[done]
         return y
 
     def _gradient_step(self, phase: str, batch: ReplayBatch) -> dict[str, float]:
@@ -313,18 +341,15 @@ class DQNAgent(Agent):
             "td_abs_max": float(td.abs().max().item()),
         }
 
-    def _maybe_sync_targets(self) -> None:
-        """Hard sync every ``target_update_interval`` env steps, or Polyak
-        averaging with ``target_soft_tau`` after every env step if set."""
+    def _sync_target_after_update(self, phase: str) -> None:
+        """Update only the target paired with the optimizer step just taken."""
         if self.hp.target_soft_tau is not None:
             tau = self.hp.target_soft_tau
-            for phase in ("clob", "auction"):
-                with torch.no_grad():
-                    for p, pt in zip(self.q[phase].parameters(), self.q_target[phase].parameters()):
-                        pt.mul_(1.0 - tau).add_(p, alpha=tau)
-        elif self._env_steps % self.hp.target_update_interval == 0:
-            for phase in ("clob", "auction"):
-                self.q_target[phase].load_state_dict(self.q[phase].state_dict())
+            with torch.no_grad():
+                for p, pt in zip(self.q[phase].parameters(), self.q_target[phase].parameters()):
+                    pt.mul_(1.0 - tau).add_(p, alpha=tau)
+        elif self._update_count[phase] % self.hp.target_update_interval == 0:
+            self.q_target[phase].load_state_dict(self.q[phase].state_dict())
 
     # -- checkpointing (resumable; D10) -------------------------------------------
 
@@ -334,9 +359,14 @@ class DQNAgent(Agent):
         contents (needed for bit-identical --resume; omitted from the
         initial/best/final snapshots to keep them small)."""
         state = {
+            "artifact_schema_version": self.artifact_schema_version,
+            "environment_contract": ENVIRONMENT_CONTRACT,
+            "feature_normalizer": self._feature_normalizer_state(),
             "hyperparams": self.hp.__dict__,
             "episode": self._episode,
             "env_steps": self._env_steps,
+            "update_count": dict(self._update_count),
+            "pending_update_phase": self._pending_update_phase,
             "q": {p: self.q[p].state_dict() for p in self.q},
             "q_target": {p: self.q_target[p].state_dict() for p in self.q_target},
             "optim": {p: self.optim[p].state_dict() for p in self.optim},
@@ -350,8 +380,31 @@ class DQNAgent(Agent):
 
     def load(self, path: str | Path) -> None:
         state = torch.load(Path(path), map_location=self.device, weights_only=False)
+        saved_schema = state.get("artifact_schema_version")
+        if saved_schema is None:
+            raise ValueError(
+                "checkpoint is missing artifact_schema_version; old checkpoints "
+                "cannot be loaded into the revised DQN agent"
+            )
+        if int(saved_schema) != self.artifact_schema_version:
+            raise ValueError(
+                "checkpoint artifact_schema_version mismatch: "
+                f"expected {self.artifact_schema_version}, got {saved_schema}"
+            )
+        if state.get("environment_contract") != ENVIRONMENT_CONTRACT:
+            raise ValueError(
+                "checkpoint environment contract mismatch; old auction/grid "
+                "checkpoints cannot be loaded by the revised pipeline"
+            )
+        if state.get("feature_normalizer") is None:
+            raise ValueError(
+                "checkpoint predates the frozen feature-normalization contract"
+            )
+        self._load_feature_normalizer_state(state["feature_normalizer"])
         self._episode = int(state["episode"])
         self._env_steps = int(state["env_steps"])
+        self._update_count = {p: int(state["update_count"][p]) for p in ("clob", "auction")}
+        self._pending_update_phase = state.get("pending_update_phase")
         for p in ("clob", "auction"):
             self.q[p].load_state_dict(state["q"][p])
             self.q_target[p].load_state_dict(state["q_target"][p])

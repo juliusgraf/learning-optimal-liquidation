@@ -1,63 +1,64 @@
-# `data/` — historical mid-price datasets
+# Historical mid-price data
 
-This directory holds **loader-regenerated** historical mid-price CSVs. The
-historical experiments do **not** read from here by default.
+The active historical input is `historical_sp500_1m.csv`, accompanied by
+`historical_sp500_1m.csv.meta.json`. It contains 20 one-minute sessions for the
+five manuscript assets: CAT, PG, GOOGL, JPM, and MSFT.
 
-## What the historical experiments actually use
+The chronological pools are fixed in both the sidecar and
+`configs/historical_sp500.yaml`:
 
-The committed **frozen experimental input** is [`../legacy/data.csv`](../legacy/data.csv)
-— real S&P 500 1-minute mid prices, Dec 31 2025, normalized to 100 at session
-start (ruling D13, `audit/AUDIT.md` A.12). `configs/historical_sp500.yaml` points
-`midprice.historical.csv_path` at that file, and it is the source of truth for
-every historical run. Do not edit or delete it.
+- training: 2026-08-03 through 2026-08-14 (10 sessions);
+- validation: 2026-08-17 through 2026-08-21 (5 sessions);
+- test: 2026-08-24 through 2026-08-28 (5 sessions).
 
-## Why a frozen CSV (and not a live download)
+The loader verifies the CSV SHA-256 digest, dataset ID, tickers, timezone,
+missing-data rule, split ranges, and nonempty split membership whenever a
+historical environment is constructed. Every run also copies the verified
+sidecar to `historical_data_manifest.json`.
 
-yfinance only serves **1-minute** bars for a **~30-day lookback**. The paper's
-Dec 2025 session is already outside that window, so it cannot be re-fetched. The
-loader therefore exists to *regenerate* an equivalent dataset for **new** dates,
-not to reproduce the frozen file byte-for-byte.
+## Data interpretation
 
-## Regenerating a dataset
+- Source: yfinance one-minute bar closes. These are a documented mid-price
+  proxy, not exchange quote midpoints.
+- Window: 13:30–16:00 America/New_York, producing 151 rows per session.
+- Physical units: one simulator unit is one minute.
+- CLOB input: rows 0 through 120 supply the path through
+  `tau_op = 120`. A realized noninteger decision time uses the latest
+  observation at or before that time.
+- Auction input: the row-120 mid is frozen for the 30-minute call. Later source
+  rows are retained for source-window provenance but are never revealed to the
+  environment.
+- Normalization: each ticker/session starts at 100.
+- Missing bars: forward-filled within that session only. Every filled timestamp
+  is enumerated in the sidecar; there is no cross-session fill.
+
+Order flow, CLOB depth, auction proposals, clearing, and allocation remain
+synthetic, as required by the manuscript.
+
+## Rebuilding a recent multi-session dataset
+
+Yahoo retains one-minute data only for a short period. Run the range builder
+while all requested sessions remain available, then freeze the resulting CSV
+and sidecar together:
 
 ```bash
-python -m lmm.data.load_yfinance_data \
-    --tickers CAT PG GOOGL JPM MSFT \
-    --date 2025-12-31 \
-    --interval 1m \
-    --session-start 14:30 --session-end 17:00 \
-    --clob-minutes 120 --auction-minutes 30 \
-    --normalize first=100 \
-    --out data/mid_prices_2025-12-31.csv
+python3 -m lmm.data.load_yfinance_data \
+  --tickers CAT PG GOOGL JPM MSFT \
+  --start-date 2026-08-03 --end-date 2026-08-28 \
+  --train-range 2026-08-03 2026-08-14 \
+  --validation-range 2026-08-17 2026-08-21 \
+  --test-range 2026-08-24 2026-08-28 \
+  --dataset-id sp500_1m_2026-08_v1 \
+  --session-start 13:30 --session-end 16:00 \
+  --fill ffill \
+  --out data/historical_sp500_1m.csv
 ```
 
-(equivalently the `lmm-load-data` console script). This writes the CSV plus a
-JSON sidecar `data/mid_prices_<date>.csv.meta.json` recording tickers, date,
-interval, source, mid proxy, normalization, fill policy, download timestamp, and
-yfinance version.
+The downloader requests sessions separately, uses an isolated writable
+yfinance cache, retries partial grouped-download failures by ticker, and fails
+on an empty weekday unless `--allow-skipped-sessions` is explicitly supplied.
+Even when skipping is enabled, generation fails if training, validation, or
+test would be empty.
 
-To actually run experiments on a regenerated file, set
-`midprice.historical.csv_path` and `midprice.historical.date` in
-`configs/historical_sp500.yaml` (the **date is a config value, never a hard-coded
-constant**) and pick `symbols` present in the new CSV.
-
-## Conventions
-
-- **Mid proxy.** yfinance 1m bars are not true midpoints; we use the bar
-  **close** as the mid proxy (recorded in the sidecar).
-- **Timezone.** `--session-start`/`--session-end` are wall-clock in `--timezone`
-  (default `America/New_York`, i.e. Eastern — EST on Dec 31). The loader writes
-  correct tz-aware Eastern `Datetime` values. (The legacy `legacy/data.csv`
-  labels its Eastern timestamps `+00:00` — a known quirk, audit A.12/D13 — which
-  the loader does **not** reproduce.)
-- **Row → decision time (ruling D13).** Row `r` is the mid at decision time
-  `t = r`. The CLOB phase consumes rows `0..tau_op-1` (`tau_op = clob_minutes`);
-  the auction mid is frozen at row `tau_op-1`; clearing is at
-  `tau_cl = clob_minutes + auction_minutes`. The CSV spans the full decision grid
-  (`tau_cl + 1` rows); the env reads only `n_rows = tau_op` via config.
-- **Completeness.** The session grid is validated bar-by-bar; missing minutes
-  fail loudly (`--fill error`, default) or are forward-filled (`--fill ffill`,
-  recorded in the sidecar).
-
-Regenerated CSVs and the `.cache/` download cache are git-ignored; this README is
-committed.
+Single-session mode remains available for diagnostics via `--date YYYY-MM-DD`,
+but it is not the configured experiment input.

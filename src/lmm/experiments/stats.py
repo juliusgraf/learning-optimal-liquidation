@@ -72,7 +72,7 @@ def bootstrap_cumulative_band(
     alpha: float = 0.05,
     rng: np.random.Generator | int | None = 0,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Bootstrap band for a CUMULATIVE curve (e.g. cumulative regret).
+    """Bootstrap band for a cumulative paired-difference curve.
 
     For each resample, draw ``E`` per-episode values with replacement and take
     the cumulative sum; the band is the per-index ``1 - alpha`` percentile

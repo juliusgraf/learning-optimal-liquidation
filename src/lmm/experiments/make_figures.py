@@ -1,6 +1,6 @@
 """Regenerate all figures from saved run outputs (Phase 7).
 
-Figures are ALWAYS regenerated from results/<...>/metrics.csv and eval/ records
+Figures are ALWAYS regenerated from results/revision_v2/<...>/metrics.csv and eval/ records
 (incl. eval/traces/ for the anatomy figures) — never produced inside training
 code (engineering conventions). No env stepping happens here.
 
@@ -12,7 +12,7 @@ LaTeX) and PNG.
 
 Figures:
   a training_diagnostics  (metrics.csv)            -> replaces dqn_training_loss / *_returns
-  b regret_curve          (eval/regret_*.csv)      -> replaces dqn_vs_glft_regret
+  b policy_difference_curve (eval/policy_difference_*.csv)
   c episode_anatomy       (eval/traces/dqn_ep0)    -> replaces episode_*
   d benchmark_anatomy     (eval/traces/as,twap)    -> replaces benchmark_behavior_*
   j cancellation_strategy (eval/traces/dqn_ep0)    -> c_t (cancel-all) over the auction
@@ -20,7 +20,7 @@ Figures:
   f algorithm_comparison  (all run dirs' records)  -> new
   g convergence_curves    (all run dirs' metrics, multi-seed)  -> new
   h reward_decomposition  (run-level IQM/CI across all runs, per setting; multi-seed) -> new
-  i regret_multiseed      (DQN regret, IQM/CI across all runs; multi-seed) -> new
+  i policy_difference_multiseed (DQN economic differences, IQM/CI; multi-seed)
 """
 
 from __future__ import annotations
@@ -41,6 +41,48 @@ __all__ = ["build_parser", "main"]
 
 # Human-readable setting names for figure titles (raw config names are ugly).
 _PRETTY_SETTING = {"synthetic_rough_heston": "synthetic", "historical_sp500": "historical"}
+
+_PRIMARY_COL = "risk_adjusted_pnl"
+_OUTCOME_PRIORITY = (_PRIMARY_COL,)
+_OUTCOME_LABELS = {
+    _PRIMARY_COL: "Risk-adjusted PnL (currency units)",
+}
+_EVAL_OUTCOME_COLUMNS = (
+    (_PRIMARY_COL, "eval_risk_adjusted_pnl_mean"),
+)
+
+
+def _primary_col(df: pd.DataFrame) -> str:
+    """Require the revised primary outcome."""
+    if _PRIMARY_COL not in df.columns:
+        raise KeyError(f"revised artifact is missing required column {_PRIMARY_COL!r}")
+    return _PRIMARY_COL
+
+
+def _common_primary_col(frames) -> str:
+    """Highest-priority outcome shared by every supplied artifact."""
+    frames = [df for df in frames if df is not None]
+    if not frames:
+        return _PRIMARY_COL
+    if not all(_PRIMARY_COL in df.columns for df in frames):
+        raise KeyError(f"all revised artifacts must contain {_PRIMARY_COL!r}")
+    return _PRIMARY_COL
+
+
+def _outcome_label(metric: str) -> str:
+    return _OUTCOME_LABELS[metric]
+
+
+def _common_eval_col(frames) -> tuple[str, str]:
+    """Return (records metric, validation column) shared by all metrics files."""
+    frames = [df for df in frames if df is not None]
+    for metric, col in _EVAL_OUTCOME_COLUMNS:
+        if frames and all(col in df.columns for df in frames):
+            return metric, col
+    raise KeyError(
+        "metrics artifacts share none of the supported validation columns "
+        f"{tuple(col for _, col in _EVAL_OUTCOME_COLUMNS)}"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -64,12 +106,14 @@ def fig_training_diagnostics(run_dir: Path, out: Path) -> None:
     ax.legend()
 
     ax = axes[1]
-    ep, ret = df["episode"], df["return_undisc"]
-    ax.plot(ep, ret, color="0.7", linewidth=0.8, label="Return")
+    metric = _primary_col(df)
+    metric_label = _outcome_label(metric)
+    ep, outcome = df["episode"], df[metric]
+    ax.plot(ep, outcome, color="0.7", linewidth=0.8, label=metric_label)
     window = max(1, min(50, len(df) // 5))
-    ax.plot(ep, ret.rolling(window, min_periods=1).mean(),
+    ax.plot(ep, outcome.rolling(window, min_periods=1).mean(),
             color=P.POLICY_COLORS["dqn"], label=f"Trailing mean ({window})")
-    ax.set(xlabel="Episode", ylabel="Undiscounted return", title="Episode return")
+    ax.set(xlabel="Episode", ylabel=metric_label, title="Training episode outcome")
     ax.legend()
 
     ax = axes[2]
@@ -82,20 +126,21 @@ def fig_training_diagnostics(run_dir: Path, out: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# (b) regret curve
+# (b) paired fixed-policy economic differences
 # ---------------------------------------------------------------------------
 
 
-def fig_regret_curve(run_dir: Path, out: Path) -> None:
+def fig_policy_difference_curve(run_dir: Path, out: Path) -> None:
+    """Plot cumulative paired risk-adjusted-PnL differences."""
     fig, ax = P.plt.subplots()
     drawn = False
     for bench in ("as", "twap"):
-        df = P.read_regret(run_dir, bench)
+        df = P.read_policy_difference(run_dir, bench)
         if df is None:
             continue
         x = df["episode"].to_numpy(float) + 1.0
-        per_ep = df["regret"].to_numpy(float)
-        cum = df["cum_regret"].to_numpy(float)
+        per_ep = df["policy_minus_benchmark"].to_numpy(float)
+        cum = df["cumulative_policy_minus_benchmark"].to_numpy(float)
         lo, hi = stats.bootstrap_cumulative_band(per_ep)
         color = P.POLICY_COLORS[bench]
         ax.plot(x, cum, color=color, label=f"vs {P.POLICY_LABELS[bench]}")
@@ -103,14 +148,20 @@ def fig_regret_curve(run_dir: Path, out: Path) -> None:
         drawn = True
     if not drawn:
         P.plt.close(fig)
-        warnings.warn(f"no regret_*.csv under {run_dir}/eval; skipping regret figure", stacklevel=2)
+        warnings.warn(
+            f"no policy_difference_*.csv under {run_dir}/eval; skipping difference figure",
+            stacklevel=2,
+        )
         return
     ax.axhline(0.0, color="0.5", linewidth=0.8)
-    ax.set(xlabel="Eval episode", ylabel=r"Cumulative regret $\mathrm{PRegret}(T)$",
-           title="Cumulative regret vs benchmarks (bootstrap 95% CI)")
+    ax.set(
+        xlabel="Eval episode",
+        ylabel="Cumulative policy minus benchmark $\\Pi_\\lambda$",
+        title="Paired fixed-policy differences (bootstrap 95% CI)",
+    )
     ax.legend()
     fig.tight_layout()
-    P.save_fig(fig, out, "regret_curve")
+    P.save_fig(fig, out, "policy_difference_curve")
 
 
 # ---------------------------------------------------------------------------
@@ -314,13 +365,15 @@ def fig_eval_distributions(run_dir: Path, out: Path, *, legacy_style: bool = Fal
     by = {p: df[df["policy"] == p].sort_values("episode") for p in policies}
     labels = [P.POLICY_LABELS[p] for p in policies]
     colors = [P.POLICY_COLORS[p] for p in policies]
+    metric = _primary_col(df)
+    metric_label = _outcome_label(metric)
 
     if legacy_style:
         fig, ax = P.plt.subplots()
-        means = [float(by[p]["return_undisc"].mean()) for p in policies]
-        errs = [float(by[p]["return_undisc"].std(ddof=1)) for p in policies]
+        means = [float(by[p][metric].mean()) for p in policies]
+        errs = [float(by[p][metric].std(ddof=1)) for p in policies]
         ax.bar(labels, means, yerr=errs, color=colors, capsize=4)
-        ax.set(ylabel="Mean undiscounted return", title="Evaluation returns (mean ± std)")
+        ax.set(ylabel=f"Mean {metric_label}", title="Evaluation outcome (mean ± std)")
         fig.tight_layout()
         P.save_fig(fig, out, "eval_distributions_bars")
         return
@@ -328,12 +381,12 @@ def fig_eval_distributions(run_dir: Path, out: Path, *, legacy_style: bool = Fal
     fig, axes = P.plt.subplots(1, 3, figsize=(13.0, 4.0))
 
     ax = axes[0]
-    data = [by[p]["return_undisc"].to_numpy(float) for p in policies]
+    data = [by[p][metric].to_numpy(float) for p in policies]
     parts = ax.violinplot(data, showmeans=True, showextrema=False)
     for body, c in zip(parts["bodies"], colors):
         body.set_facecolor(c); body.set_alpha(0.6)
     ax.set_xticks(range(1, len(labels) + 1)); ax.set_xticklabels(labels, rotation=20)
-    ax.set(ylabel="Undiscounted return", title="Return distribution")
+    ax.set(ylabel=metric_label, title="Primary-outcome distribution")
 
     ax = axes[1]
     learned = [p for p in policies if p not in ("initial", "as", "twap")]
@@ -342,12 +395,12 @@ def fig_eval_distributions(run_dir: Path, out: Path, *, legacy_style: bool = Fal
         for bench in ("as", "twap"):
             if bench in by:
                 m = by[p].merge(by[bench], on="episode", suffixes=("", "_b"))
-                diff_data.append((m["return_undisc"] - m["return_undisc_b"]).to_numpy(float))
+                diff_data.append((m[metric] - m[f"{metric}_b"]).to_numpy(float))
                 diff_labels.append(f"{P.POLICY_LABELS[p]}\n- {P.POLICY_LABELS[bench]}")
     if diff_data:
         ax.boxplot(diff_data, tick_labels=diff_labels, showmeans=True)
         ax.axhline(0.0, color="0.5", linewidth=0.8)
-    ax.set(ylabel="Paired return difference (CRN)", title="Paired differences")
+    ax.set(ylabel=f"Paired {metric_label} difference (CRN)", title="Paired differences")
 
     ax = axes[2]
     x = np.arange(len(policies))
@@ -376,12 +429,13 @@ def fig_algorithm_comparison(run_dirs, out: Path) -> None:
     fig, axes = P.plt.subplots(1, len(settings), figsize=(5.5 * len(settings), 4.0), squeeze=False)
     for col, setting in enumerate(settings):
         ax = axes[0][col]
+        sruns = [r for r in runs if r.setting == setting]
+        metric = _common_primary_col(r.records for r in sruns)
         # mean over tickers per algo (synthetic has a single group).
         algo_vals: dict[str, list[float]] = {}
-        for r in runs:
-            if r.setting != setting:
-                continue
-            learned = r.records[r.records["policy"] == "dqn"]["return_undisc"].to_numpy(float)
+        for r in sruns:
+            rows = r.records[r.records["policy"] == r.algo]
+            learned = rows[metric].to_numpy(float)
             if learned.size:
                 algo_vals.setdefault(r.algo, []).extend(learned.tolist())
         algos = [a for a in P.ALGO_ORDER if a in algo_vals]
@@ -391,14 +445,14 @@ def fig_algorithm_comparison(run_dirs, out: Path) -> None:
             means.append(pt); los.append(pt - lo); his.append(hi - pt)
             colors.append(P.POLICY_COLORS[a]); labels.append(P.POLICY_LABELS[a])
         ax.bar(labels, means, yerr=[los, his], color=colors, capsize=4)
-        ax.set(ylabel="Mean undiscounted return", title=setting)
-    fig.suptitle("Algorithm comparison (mean return, bootstrap 95% CI)")
+        ax.set(ylabel=f"Mean {_outcome_label(metric)}", title=setting)
+    fig.suptitle("Algorithm comparison (primary outcome, bootstrap 95% CI)")
     fig.tight_layout()
     P.save_fig(fig, out, "algorithm_comparison")
 
 
 # ---------------------------------------------------------------------------
-# (h) reward decomposition: CLOB / auction-fictive / terminal-realized
+# (h) shaped-return decomposition: CLOB / auction-fictive / terminal-shaped
 # ---------------------------------------------------------------------------
 
 # Setting labels for the paper-grade title parenthetical.
@@ -409,36 +463,35 @@ _SETTING_TITLE = {
 
 # The three additive reward components: (records.csv column, panel title).
 # Their sum equals ``return_undisc`` (verified). CLAUDE.md reward forms:
-# CLOB f_c (no clamp), per-step fictive auction f_a, terminal clearing + lambda|I|^2.
+# CLOB clamped f_c, per-step fictive auction f_a, and terminal clearing reward.
 _REWARD_COMPONENTS = [
     ("clob_reward_sum", "Limit-order (CLOB) phase"),
     ("auction_step_reward_sum", "Auction phase: fictive shaping reward"),
-    ("terminal_reward", "Auction clearing: realized terminal P&L"),
+    ("terminal_reward", "Terminal shaped reward (cash + utility penalties)"),
 ]
 
 
 def fig_reward_decomposition(run_dirs, out: Path) -> None:
     """Cross-seed reward decomposition, one figure per setting (multiseed).
 
-    Splits each method's undiscounted return into its three additive parts —
+    Splits each method's undiscounted shaped return into its three additive parts —
     the CLOB (limit-order) reward, the per-step *fictive* auction shaping
-    reward, and the *realized* terminal clearing P&L — to isolate where the RL
-    edge actually lives: it is overwhelmingly the fictive auction reward, while
-    the realized terminal P&L roughly ties the AS benchmark (AUDIT Sec. F).
+    reward, and the terminal shaped reward.  The latter is not P&L: it mixes
+    signed auction cash, wrong-side utility, and the inventory penalty.  The
+    risk-adjusted PnL is reported separately as the primary outcome.
 
     The sample for each (method, component) is the set of RUN-level means — one
     number per run, its mean component reward over the 100 eval episodes —
     aggregated across ALL runs of the setting (seeds, and tickers in the
     historical setting: the same 5x5 configurations as the convergence and
-    regret figures). Bars are the IQM across runs with a bootstrap 95% CI across
+    policy-difference figures). Bars are the IQM across runs with a bootstrap 95% CI across
     runs (the rliable convention, matching eval_summary/dqn_results_multiseed),
     so component bars roughly add up to the multiseed eval-table totals (exactly
     only up to IQM's non-additivity). Run-level aggregation also tames the
     heavy-tailed per-episode auction reward. A companion CSV records the plotted
     numbers. Emitted only with >= 2 runs. Reads eval/records.csv only.
 
-    The learned policy is always labelled ``"dqn"`` in records, so its identity
-    comes from each run's ``algo.name`` (plotting.py convention); benchmark rows
+    The learned policy is labelled with each run's ``algo.name``; benchmark rows
     (``as``/``twap``) are taken once per (ticker, seed) (identical across algos
     under CRN, so pooling per-algo would replicate them and shrink the CI).
     """
@@ -459,7 +512,7 @@ def fig_reward_decomposition(run_dirs, out: Path) -> None:
         pooled: dict[str, dict[str, list[float]]] = {}
         bench_seen: set = set()
         for r in sruns:
-            learned = r.records[r.records["policy"] == "dqn"]
+            learned = r.records[r.records["policy"] == r.algo]
             if not learned.empty:
                 _add_run(pooled, r.algo, learned)
             key = (r.symbol, r.seed)
@@ -510,7 +563,7 @@ def fig_reward_decomposition(run_dirs, out: Path) -> None:
 
 def fig_algorithm_comparison_multiseed(run_dirs, out: Path) -> None:
     """Cross-seed comparison (rliable-style): per algo, the IQM of the per-seed
-    mean returns with a bootstrap 95% CI over seeds; AS/TWAP IQM reference lines.
+    mean primary outcome with a bootstrap 95% CI over seeds; AS/TWAP IQM reference lines.
     One number per run (its 100-episode mean) is the seed-level sample. Emitted
     only when >= 2 seeds are present."""
     runs = [r for r in P.collect_runs(run_dirs) if r.records is not None and r.seed is not None]
@@ -520,13 +573,14 @@ def fig_algorithm_comparison_multiseed(run_dirs, out: Path) -> None:
     fig, axes = P.plt.subplots(1, len(settings), figsize=(5.5 * len(settings), 4.0), squeeze=False)
     for col, setting in enumerate(settings):
         ax = axes[0][col]
+        sruns = [r for r in runs if r.setting == setting]
+        metric = _common_primary_col(r.records for r in sruns)
         algo_vals: dict[str, list[float]] = {}
         bench_vals: dict[str, list[float]] = {"as": [], "twap": []}
         bench_seen: set = set()
-        for r in runs:
-            if r.setting != setting:
-                continue
-            learned = r.records[r.records["policy"] == "dqn"]["return_undisc"].to_numpy(float)
+        for r in sruns:
+            learned_rows = r.records[r.records["policy"] == r.algo]
+            learned = learned_rows[metric].to_numpy(float)
             if learned.size:
                 algo_vals.setdefault(r.algo, []).append(float(np.mean(learned)))
             # Benchmark per-run means are identical across the algo runs of a
@@ -536,7 +590,8 @@ def fig_algorithm_comparison_multiseed(run_dirs, out: Path) -> None:
             if key not in bench_seen:
                 bench_seen.add(key)
                 for b in ("as", "twap"):
-                    bv = r.records[r.records["policy"] == b]["return_undisc"].to_numpy(float)
+                    brows = r.records[r.records["policy"] == b]
+                    bv = brows[metric].to_numpy(float)
                     if bv.size:
                         bench_vals[b].append(float(np.mean(bv)))
         algos = [a for a in P.ALGO_ORDER if a in algo_vals]
@@ -553,7 +608,7 @@ def fig_algorithm_comparison_multiseed(run_dirs, out: Path) -> None:
         # When several settings share the figure, name them on the panels;
         # otherwise the setting goes in the suptitle (avoids a redundant title).
         title = _PRETTY_SETTING.get(setting, setting) if len(settings) > 1 else ""
-        ax.set(ylabel="Undiscounted return", title=title)
+        ax.set(ylabel=_outcome_label(metric), title=title)
         ax.legend(fontsize=7)
     if len(settings) == 1:
         fig.suptitle(f"Final performance ({_PRETTY_SETTING.get(settings[0], settings[0])})")
@@ -568,7 +623,7 @@ def fig_convergence_curves(run_dirs, out: Path) -> None:
     learned algorithm, aggregated across all runs of a single setting — seeds,
     and tickers in the historical setting):
 
-      (1) greedy evaluation return vs episode  -> policy convergence/plateau. A
+      (1) greedy validation outcome vs episode -> policy convergence/plateau. A
           star marks the across-run median ``best.pt`` (early-stopping) episode;
           faint AS/TWAP lines give the benchmark level.
       (2) auction critic loss vs episode (log-y) -> numerical stability
@@ -598,12 +653,16 @@ def fig_convergence_curves(run_dirs, out: Path) -> None:
     metrics_by_algo: dict[str, list] = {}
     for r in runs:
         df = P.read_metrics(r.run_dir)
-        if df is None or "eval_return_mean" not in df.columns:
+        supported = {col for _, col in _EVAL_OUTCOME_COLUMNS}
+        if df is None or not (supported & set(df.columns)):
             continue
         metrics_by_algo.setdefault(r.algo, []).append(df)
     algos = [a for a in P.ALGO_ORDER if a in metrics_by_algo]
     if not algos:
         return
+    metric, eval_col = _common_eval_col(
+        df for algo_dfs in metrics_by_algo.values() for df in algo_dfs
+    )
 
     def _aligned(dfs, col, *, window=1):
         """Per-episode matrix [n_episodes x n_runs] aligned on the episode
@@ -627,11 +686,11 @@ def fig_convergence_curves(run_dirs, out: Path) -> None:
 
     fig, axes = P.plt.subplots(1, 3, figsize=(13.0, 3.8))
 
-    # -- panel 1: evaluation return (policy convergence) --------------------
+    # -- panel 1: validation outcome (policy convergence) -------------------
     ax = axes[0]
     for a in algos:
         dfs = metrics_by_algo[a]
-        eps, mat = _aligned(dfs, "eval_return_mean")
+        eps, mat = _aligned(dfs, eval_col)
         if eps.size == 0:
             continue
         pts, los, his = [], [], []
@@ -643,8 +702,8 @@ def fig_convergence_curves(run_dirs, out: Path) -> None:
         ax.plot(eps, pts, color=c, marker="o", ms=3, label=P.POLICY_LABELS[a])
         ax.fill_between(eps, los, his, color=c, alpha=0.15, linewidth=0)
         # best.pt = across-run median argmax episode, snapped to the eval grid
-        best = [int(df.loc[df["eval_return_mean"].idxmax(), "episode"])
-                for df in dfs if df["eval_return_mean"].notna().any()]
+        best = [int(df.loc[df[eval_col].idxmax(), "episode"])
+                for df in dfs if df[eval_col].notna().any()]
         if best:
             j = int(np.argmin(np.abs(eps - int(np.median(best)))))
             ax.scatter([eps[j]], [pts[j]], marker="*", s=160, color=c,
@@ -654,14 +713,17 @@ def fig_convergence_curves(run_dirs, out: Path) -> None:
         if r.records is None:
             continue
         for b in bench:
-            bv = r.records[r.records["policy"] == b]["return_undisc"].to_numpy(float)
+            rows = r.records[r.records["policy"] == b]
+            if metric not in rows:
+                continue
+            bv = rows[metric].to_numpy(float)
             if bv.size:
                 bench[b].append(float(np.mean(bv)))
     for b, ls in (("as", "--"), ("twap", ":")):
         if bench[b]:
             ax.axhline(stats.iqm(np.asarray(bench[b])), ls=ls, color="0.4",
                        lw=1.0, label=P.POLICY_LABELS[b])
-    ax.set(xlabel="Episode", ylabel="Eval. return (undisc.)",
+    ax.set(xlabel="Episode", ylabel=f"Validation {_outcome_label(metric)}",
            title="Policy convergence")
     handles, _ = ax.get_legend_handles_labels()
     handles.append(mlines.Line2D([], [], marker="*", linestyle="none",
@@ -700,19 +762,18 @@ def fig_convergence_curves(run_dirs, out: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# (i) cross-seed regret curve (DQN; IQM + bootstrap 95% CI across seeds)
+# (i) cross-seed paired economic differences (DQN; IQM + bootstrap 95% CI)
 # ---------------------------------------------------------------------------
 
 
-def fig_regret_multiseed(run_dirs, out: Path, *, symbol: str | None = None) -> None:
-    """Cross-config cumulative-regret curve for the DQN policy, one figure per
-    setting. For each run, PRegret accumulates the per-episode discounted V0 gap
-    ``v_benchmark - v_dqn`` (paper sec:learning; CRN holds within each run,
-    asserted by equal per-episode env seeds). The runs' cumulative-regret curves
+def fig_policy_difference_multiseed(run_dirs, out: Path, *, symbol: str | None = None) -> None:
+    """Cross-config cumulative risk-adjusted-PnL difference for DQN.
+
+    Each run accumulates ``DQN - benchmark`` under CRN. Curves
     are aligned by eval-episode index; the central line is the IQM across runs at
     each episode and the band is a percentile bootstrap 95% CI across runs (same
     construction as the convergence figure's eval panel). Two curves per figure:
-    vs AS and vs TWAP; negative => DQN beats the benchmark.
+    vs AS and vs TWAP; positive means DQN outperforms the benchmark.
 
     Aggregates over ALL runs of a setting — seeds, and tickers in the historical
     setting (the same 5x5 configurations as the convergence figure). Pass
@@ -736,20 +797,22 @@ def fig_regret_multiseed(run_dirs, out: Path, *, symbol: str | None = None) -> N
             continue
         n_seeds = len({s for _, s in cfgs})
         n_tickers = len({t for t, _ in cfgs})
-
         fig, ax = P.plt.subplots()
         drawn = False
         for bench in ("as", "twap"):
             curves = []
             for k in cfgs:
                 df = by_cfg[k].records
-                p = df[df["policy"] == "dqn"][["episode", "env_seed", "return_disc"]]
-                b = df[df["policy"] == bench][["episode", "env_seed", "return_disc"]]
+                p = df[df["policy"] == "dqn"][["episode", "env_seed", _PRIMARY_COL]]
+                b = df[df["policy"] == bench][["episode", "env_seed", _PRIMARY_COL]]
                 m = p.merge(b, on="episode", suffixes=("_p", "_b")).sort_values("episode")
                 if m.empty or (m["env_seed_p"].to_numpy() != m["env_seed_b"].to_numpy()).any():
-                    continue  # CRN guard: paper regret needs the shared env seed
-                reg = m["return_disc_b"].to_numpy(float) - m["return_disc_p"].to_numpy(float)
-                curves.append(np.cumsum(reg))
+                    continue  # CRN guard: paired outcome gaps need the shared env seed
+                differences = (
+                    m[f"{_PRIMARY_COL}_p"].to_numpy(float)
+                    - m[f"{_PRIMARY_COL}_b"].to_numpy(float)
+                )
+                curves.append(np.cumsum(differences))
             if len(curves) < 2:
                 continue
             length = min(c.size for c in curves)
@@ -769,20 +832,24 @@ def fig_regret_multiseed(run_dirs, out: Path, *, symbol: str | None = None) -> N
         ax.axhline(0.0, color="0.5", linewidth=0.8)
         base = _SETTING_TITLE.get(setting, setting)
         if not is_hist:
-            title = f"DQN cumulative regret across {n_seeds} seeds ({base})"
+            title = f"DQN paired differences across {n_seeds} seeds ({base})"
         elif symbol:
-            title = f"DQN cumulative regret across {n_seeds} seeds ({base}, {symbol})"
+            title = f"DQN paired differences across {n_seeds} seeds ({base}, {symbol})"
         else:
-            title = (f"DQN cumulative regret across {len(cfgs)} runs "
+            title = (f"DQN paired differences across {len(cfgs)} runs "
                      f"({base}, {n_tickers} tickers × {n_seeds} seeds)")
         ax.set(
             xlabel="Eval episode",
-            ylabel="Cumulative regret " r"$\mathrm{PRegret}$" "\n(IQM, 95% CI across runs)",
+            ylabel="Cumulative DQN minus benchmark $\\Pi_\\lambda$\n(IQM, 95% CI)",
             title=title,
         )
         ax.legend()
         fig.tight_layout()
-        name = f"regret_multiseed_{symbol}" if (is_hist and symbol) else "regret_multiseed"
+        name = (
+            f"policy_difference_multiseed_{symbol}"
+            if (is_hist and symbol)
+            else "policy_difference_multiseed"
+        )
         P.save_fig(fig, out, name)
 
 
@@ -800,15 +867,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--out", default=None, help="output dir (default: <run>/figures)")
     parser.add_argument("--legacy-style", action="store_true",
                         help="bar-chart variant of the evaluation-distribution figure")
-    parser.add_argument("--policy", default="dqn", help="policy for the episode-anatomy figure")
+    parser.add_argument("--policy", default=None, help="policy for the episode-anatomy figure")
     parser.add_argument("--episode", type=int, default=0, help="traced episode index to plot")
     parser.add_argument(
         "--multiseed", action="store_true",
         help="build ONLY the cross-seed IQM/CI figures (run dirs spanning >= 2 seeds)",
     )
     parser.add_argument(
-        "--regret-symbol", default=None,
-        help="restrict the historical cross-config DQN regret figure to one ticker "
+        "--difference-symbol", default=None,
+        help="restrict the historical cross-config DQN difference figure to one ticker "
              "(default: all tickers × seeds, like the convergence figure)",
     )
     return parser
@@ -819,6 +886,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     P.apply_style()
     run_dirs = [Path(d) for d in args.run_dir]
     primary = run_dirs[0]
+    primary_cfg = P.read_config(primary)
+    learned_policy = (
+        args.policy
+        if args.policy is not None
+        else (primary_cfg.algo.name if primary_cfg.algo is not None else "dqn")
+    )
     out = Path(args.out) if args.out else primary / "figures"
     out.mkdir(parents=True, exist_ok=True)
 
@@ -828,20 +901,26 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
              lambda: fig_algorithm_comparison_multiseed(run_dirs, out)),
             ("convergence_curves",
              lambda: fig_convergence_curves(run_dirs, out)),
-            ("regret_multiseed",
-             lambda: fig_regret_multiseed(run_dirs, out, symbol=args.regret_symbol)),
+            ("policy_difference_multiseed",
+             lambda: fig_policy_difference_multiseed(
+                 run_dirs, out, symbol=args.difference_symbol
+             )),
             ("reward_decomposition",
              lambda: fig_reward_decomposition(run_dirs, out)),
         ]
     else:
         funcs = [
             ("training_diagnostics", lambda: fig_training_diagnostics(primary, out)),
-            ("regret_curve", lambda: fig_regret_curve(primary, out)),
+            ("policy_difference_curve", lambda: fig_policy_difference_curve(primary, out)),
             ("episode_anatomy",
-             lambda: fig_episode_anatomy(primary, out, policy=args.policy, episode=args.episode)),
+             lambda: fig_episode_anatomy(
+                 primary, out, policy=learned_policy, episode=args.episode
+             )),
             ("benchmark_anatomy", lambda: fig_benchmark_anatomy(primary, out, episode=args.episode)),
             ("cancellation_strategy",
-             lambda: fig_cancellation_strategy(primary, out, policy=args.policy, episode=args.episode)),
+             lambda: fig_cancellation_strategy(
+                 primary, out, policy=learned_policy, episode=args.episode
+             )),
             ("eval_distributions",
              lambda: fig_eval_distributions(primary, out, legacy_style=args.legacy_style)),
             ("algorithm_comparison", lambda: fig_algorithm_comparison(run_dirs, out)),

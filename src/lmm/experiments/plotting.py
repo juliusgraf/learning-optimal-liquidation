@@ -6,8 +6,7 @@ PDF (LaTeX) and PNG, and thin readers for the saved run-directory artifacts
 (``make_figures`` / ``make_tables`` regenerate from these only — no env
 stepping). ``collect_runs`` aggregates several run dirs for the cross-algorithm
 figure/tables, keying the learned policy by each run's ``algo.name`` (the
-records always label the learned policy ``"dqn"``, so identity MUST come from
-the resolved config).
+records label the learned policy with the resolved ``algo.name``).
 """
 
 from __future__ import annotations
@@ -24,6 +23,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 import pandas as pd  # noqa: E402
 import yaml  # noqa: E402
 
+from lmm.agents.base import ENVIRONMENT_CONTRACT
 from lmm.config import ExperimentConfig, load_config
 
 __all__ = [
@@ -36,7 +36,7 @@ __all__ = [
     "ALGO_ORDER",
     "read_metrics",
     "read_records",
-    "read_regret",
+    "read_policy_difference",
     "read_trace",
     "read_metadata",
     "read_config",
@@ -116,8 +116,8 @@ def read_records(run_dir: str | Path) -> Optional[pd.DataFrame]:
     return _read_csv(Path(run_dir) / "eval" / "records.csv")
 
 
-def read_regret(run_dir: str | Path, benchmark: str) -> Optional[pd.DataFrame]:
-    return _read_csv(Path(run_dir) / "eval" / f"regret_{benchmark}.csv")
+def read_policy_difference(run_dir: str | Path, benchmark: str) -> Optional[pd.DataFrame]:
+    return _read_csv(Path(run_dir) / "eval" / f"policy_difference_{benchmark}.csv")
 
 
 def read_trace(run_dir: str | Path, policy: str, episode: int = 0) -> Optional[pd.DataFrame]:
@@ -164,6 +164,11 @@ def collect_runs(run_dirs) -> list[RunInfo]:
             continue
         cfg = load_config(cfg_path)
         meta = read_metadata(rd)
+        if meta.get("environment_contract") != ENVIRONMENT_CONTRACT:
+            raise ValueError(
+                f"{rd}: result artifact does not match {ENVIRONMENT_CONTRACT!r}; "
+                "old result files are not accepted by the revised pipeline"
+            )
         algo = cfg.algo.name if cfg.algo is not None else "unknown"
         seed_file = rd / "seed.txt"
         seed = int(seed_file.read_text().strip()) if seed_file.exists() else None

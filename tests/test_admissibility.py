@@ -48,9 +48,12 @@ def test_clob_mask_counts_volume_constraint(synthetic_cfg):
 def test_env_rejects_inadmissible_clob_actions(synthetic_cfg):
     env = new_env(synthetic_cfg)
     env.reset(seed=0)
-    with pytest.raises(ValueError, match="volume .* > inventory"):
-        env.step(ClobAction(synthetic_cfg.grid.I0 + 1.0, 2))
-    with pytest.raises(ValueError, match="delta must be >= 0"):
+    env._inventory = 5.0
+    with pytest.raises(ValueError, match="inadmissible CLOB volume"):
+        env.step(ClobAction(6.0, 2))
+    with pytest.raises(ValueError, match="inadmissible CLOB volume"):
+        env.step(ClobAction(synthetic_cfg.actions.clob_volume_max + 1.0, 2))
+    with pytest.raises(ValueError, match="CLOB offset must be"):
         env.step(ClobAction(1.0, -1))
     with pytest.raises(TypeError):
         env.step("not an action")
@@ -67,6 +70,7 @@ def assert_cancel_admissible(env, expected: bool):
     assert mask[cancel_rows].any() == expected
     assert mask[~cancel_rows].all()  # c = 0 actions always admissible
     assert env._ledger.cancel_admissible() == expected
+    assert env.cancel_admissible == expected
     assert (C_of_paper_state(env.paper_state()) > 0) == expected
 
 
@@ -76,7 +80,9 @@ def test_cancel_forbidden_at_auction_open_and_after_abstain(synthetic_cfg):
     env = new_env(synthetic_cfg)
     drive_to_auction(env, seed=2)
     assert_cancel_admissible(env, False)  # t = n+1: c_{t_{n+1}} = 0 forced
-    with pytest.raises(ValueError, match="cancel-all with no live prior"):
+    assert len(env.auction_grid) == 1022
+    assert env.action_mask().sum() == 511
+    with pytest.raises(ValueError, match="cancel-all is ineligible"):
         env.step(AuctionAction(2.0, 2, 1))
 
     env.step(NOOP_AUCTION)  # abstain (K^a = 0)
@@ -90,6 +96,7 @@ def test_cancel_allowed_after_live_submission_then_forbidden_again(synthetic_cfg
     drive_to_auction(env, seed=2)
     env.step(AuctionAction(2.0, 1, 0))  # live prior order with K^a > 0
     assert_cancel_admissible(env, True)
+    assert env.action_mask().sum() == 1022
 
     # Cancel-all WITHOUT a new submission: ledger empty again afterwards.
     env.step(AuctionAction(0.0, 0, 1))
@@ -101,6 +108,15 @@ def test_cancel_allowed_after_live_submission_then_forbidden_again(synthetic_cfg
     assert_cancel_admissible(env, True)
     env.step(AuctionAction(1.0, 0, 1))
     assert_cancel_admissible(env, True)  # the just-submitted K=1 order lives
+
+
+def test_cancel_admissibility_is_in_the_auction_observation(synthetic_cfg):
+    env = new_env(synthetic_cfg)
+    drive_to_auction(env, seed=2)
+    idx = synthetic_cfg.features.auction.index("cancel_admissible")
+    assert env.features.auction_features(env)[idx] == 0.0
+    obs, *_ = env.step(AuctionAction(2.0, 1, 0))
+    assert obs[idx] == 1.0
 
 
 def test_clob_phase_has_no_cancel_concept_and_C_is_zero(synthetic_cfg):
@@ -117,9 +133,9 @@ def test_clob_phase_has_no_cancel_concept_and_C_is_zero(synthetic_cfg):
 def test_env_rejects_inadmissible_auction_actions(synthetic_cfg):
     env = new_env(synthetic_cfg)
     drive_to_auction(env, seed=3)
-    with pytest.raises(ValueError, match="K\\^a must be >= 0"):
+    with pytest.raises(ValueError, match="K\\^a must be finite and nonnegative"):
         env.step(AuctionAction(-1.0, 0, 0))
-    with pytest.raises(ValueError, match="c_t must be 0 or 1"):
+    with pytest.raises(ValueError, match="cancel must be 0 or 1"):
         env.step(AuctionAction(1.0, 0, 2))
     with pytest.raises(TypeError):
         env.step(ClobAction(1.0, 2))  # wrong phase's action type
@@ -148,7 +164,8 @@ def test_ledger_mask_agrees_with_C_on_paper_state_throughout(synthetic_cfg):
 
         K = float(rng.choice([0.0, 0.0, 2.0, 5.0]))  # abstain half the time
         cancel = int(admissible and rng.random() < 0.4)
-        _, _, term, _, _ = env.step(AuctionAction(K, int(rng.integers(-3, 4)), cancel))
+        offset = 0 if K == 0.0 else int(rng.integers(-3, 4))
+        _, _, term, _, _ = env.step(AuctionAction(K, offset, cancel))
         if term:
             break
     assert checked == env.grid.tau_cl - env.grid.tau_op  # every auction step

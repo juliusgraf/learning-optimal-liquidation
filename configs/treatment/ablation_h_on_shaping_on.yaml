@@ -1,0 +1,8 @@
+# Matched 2x2 baseline arm: projected-clearing information and shaping present.
+experiment:
+  ablation_label: H_on__shaping_on__auction_on
+rl:
+  h_cl_feature_enabled: true
+reward:
+  shaping_enabled: true
+

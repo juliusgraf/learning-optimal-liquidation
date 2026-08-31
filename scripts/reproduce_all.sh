@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Reproduce every reported result from scratch: train + evaluate + regret for
+# Reproduce every reported result from scratch: train + evaluate + paired
+# fixed-policy differences for
 # all algorithms in both settings, then regenerate all figures/tables.
 #
 # Usage:

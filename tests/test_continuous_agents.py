@@ -23,6 +23,7 @@ from lmm.agents.ddpg import DDPGAgent
 from lmm.agents.sac import SACAgent
 from lmm.agents.td3 import TD3Agent
 from lmm.experiments import train as train_mod
+from lmm.env.features import FeatureNormalizer
 from lmm.rl.continuous_replay import ContinuousReplayBuffer
 from lmm.rl.loops import SEED_COMPONENTS
 from lmm.utils.seeding import seed_everything
@@ -31,6 +32,13 @@ from lmm.utils.seeding import seed_everything
 def make_cont_agent(cfg, cls, master_seed: int = 1234):
     seeds = seed_everything(master_seed, SEED_COMPONENTS, seed_torch=True)
     return cls(cfg, seeds)
+
+
+def test_shared_no_cancel_mode_changes_sac_action_dim_and_target_entropy():
+    cfg = load_sac_cfg("actions.auction_cancel_mode=never")
+    agent = make_cont_agent(cfg, SACAgent)
+    assert agent._act_dim["auction"] == 2
+    assert agent.target_entropy["auction"] == -3.0
 
 
 def constant_critic(critic, value: float) -> None:
@@ -70,7 +78,6 @@ def cont_batch(obs_dim, act_dim, next_obs_dim, rows):
 def test_ddpg_target_single_critic_and_junction():
     cfg = load_ddpg_cfg()
     agent = make_cont_agent(cfg, DDPGAgent)
-    chi = cfg.rl.chi
     clob_dim, auc_dim = len(cfg.features.clob), len(cfg.features.auction)
     A, B = 3.0, -2.0  # constant CLOB-target / auction-target Q values
     for c in agent.critic_targets["clob"]:
@@ -86,15 +93,14 @@ def test_ddpg_target_single_critic_and_junction():
         ],
     )
     y = agent.compute_targets("clob", batch).cpu().numpy()
-    assert y[0] == pytest.approx(1.0 + chi * A, abs=1e-5)
-    assert y[1] == pytest.approx(0.5 + chi * B, abs=1e-5)
+    assert y[0] == pytest.approx(1.0 + A, abs=1e-5)
+    assert y[1] == pytest.approx(0.5 + B, abs=1e-5)
     assert y[2] == pytest.approx(-3.0, abs=1e-6)
 
 
 def test_td3_target_uses_min_of_twin_critics():
     cfg = load_td3_cfg()
     agent = make_cont_agent(cfg, TD3Agent)
-    chi = cfg.rl.chi
     assert agent.n_critics == 2
     clob_dim, auc_dim = len(cfg.features.clob), len(cfg.features.auction)
     constant_critic(agent.critic_targets["clob"][0], 5.0)
@@ -110,15 +116,14 @@ def test_td3_target_uses_min_of_twin_critics():
         ],
     )
     y = agent.compute_targets("clob", batch).cpu().numpy()
-    assert y[0] == pytest.approx(1.0 + chi * 2.0, abs=1e-5)
-    assert y[1] == pytest.approx(0.0 + chi * (-1.0), abs=1e-5)
+    assert y[0] == pytest.approx(3.0, abs=1e-5)
+    assert y[1] == pytest.approx(-1.0, abs=1e-5)
     assert y[2] == pytest.approx(7.0, abs=1e-6)
 
 
 def test_sac_target_min_twin_plus_entropy_term():
     cfg = load_sac_cfg()
     agent = make_cont_agent(cfg, SACAgent)
-    chi = cfg.rl.chi
     auc_dim = len(cfg.features.auction)
     c1, c2 = 1.0, 0.5  # min = 0.5
     constant_critic(agent.critic_targets["auction"][0], c1)
@@ -138,7 +143,7 @@ def test_sac_target_min_twin_plus_entropy_term():
     torch.manual_seed(123)
     nobs = torch.as_tensor(batch.next_obs[[0, 1], :auc_dim], dtype=torch.float32)
     _, logp = agent.actor["auction"](nobs)
-    expected = batch.reward[[0, 1]] + chi * (min(c1, c2) - alpha * logp.detach().numpy())
+    expected = batch.reward[[0, 1]] + min(c1, c2) - alpha * logp.detach().numpy()
     assert np.allclose(y[[0, 1]], expected, atol=1e-5)
     assert y[2] == pytest.approx(9.0, abs=1e-6)
 
@@ -146,9 +151,7 @@ def test_sac_target_min_twin_plus_entropy_term():
 def test_sac_temperature_loss_and_target_entropy():
     cfg = load_sac_cfg()
     agent = make_cont_agent(cfg, SACAgent)
-    # target entropy = -dim(A) per phase.
-    assert agent.target_entropy["clob"] == pytest.approx(-float(agent._act_dim["clob"]))
-    assert agent.target_entropy["auction"] == pytest.approx(-float(agent._act_dim["auction"]))
+    assert agent.target_entropy == {"clob": -2.0, "auction": -3.0}
 
     auc_dim = len(cfg.features.auction)
     log_alpha0 = 0.5
@@ -168,16 +171,15 @@ def test_sac_temperature_loss_and_target_entropy():
     assert out["entropy"] == pytest.approx(expected_entropy, abs=1e-5)
 
 
-def test_cancel_clamp_forces_no_cancel_when_inadmissible():
+def test_target_cancel_coordinate_is_common_proposal_not_algorithm_specific_clamp():
     cfg = load_ddpg_cfg()
     agent = make_cont_agent(cfg, DDPGAgent)
-    a = torch.tensor([[2.0, 3.0, 0.9], [2.0, 3.0, 0.9]])
+    obs = torch.zeros((2, len(cfg.features.auction)))
     cadm = np.array([True, False])
-    out = agent._clamp_cancel("auction", a, cadm)
-    assert out[0, 2].item() == pytest.approx(0.9)  # admissible: unchanged
-    assert out[1, 2].item() == 0.0  # inadmissible: forced to the no-cancel region
-    # CLOB phase: no-op.
-    assert torch.equal(agent._clamp_cancel("clob", a.clone(), cadm), a)
+    out, _ = agent._target_next_action("auction", obs, cadm)
+    # Actor/critic/replay use proposal u. Gamma_x, shared by every continuous
+    # algorithm, applies the executable cancellation mask.
+    assert torch.equal(out[0], out[1])
 
 
 # -- continuous replay + checkpointing ----------------------------------------
@@ -188,7 +190,7 @@ def test_continuous_replay_round_trip_restores_stream():
     for i in range(6):
         buf.add(
             obs=np.full(7, float(i)),
-            action=np.array([i, i, i], dtype=float),
+            action=np.full(3, -1.0 + 0.4 * i, dtype=float),
             reward=float(i),
             next_obs=np.full(7, float(i + 1)),
             done=False,
@@ -210,13 +212,17 @@ def test_continuous_replay_round_trip_restores_stream():
 def test_checkpoint_round_trip(algo, cls, tmp_path):
     cfg = load_algo_cfg(algo, "algo.hyperparams.min_buffer=8", "algo.hyperparams.batch_size=8")
     agent = make_cont_agent(cfg, cls, master_seed=5)
+    normalizer = FeatureNormalizer(cfg.grid.tau_cl).fit(
+        np.vstack([np.zeros(18), np.ones(18)])
+    )
+    agent.set_feature_normalizer(normalizer)
     rng = np.random.default_rng(0)
     clob_dim, ad = len(cfg.features.clob), agent._act_dim["clob"]
     for i in range(40):
         agent.observe(
             Transition(
                 obs=rng.normal(size=clob_dim),
-                action=rng.normal(size=ad),
+                action=np.clip(rng.normal(size=ad), -1.0, 1.0),
                 reward=float(rng.normal()),
                 next_obs=rng.normal(size=clob_dim),
                 done=False,
@@ -255,8 +261,11 @@ def _train(tmp_path, algo: str, run_name: str) -> str:
         "--run-name", run_name,
         "-o", f"experiment.results_root={tmp_path}",
         "-o", "experiment.episodes=4",
-        "-o", "algo.hyperparams.eval_interval_episodes=2",
-        "-o", "algo.hyperparams.eval_n_seeds=2",
+        "-o", "rl.normalizer_fit_episodes=1",
+        "-o", "rl.validation_frequency_episodes=2",
+        "-o", "rl.validation_size=2",
+        "-o", "rl.validation_patience_evals=10",
+        "-o", "rl.test_size=2",
         "-o", "algo.hyperparams.checkpoint_interval_episodes=4",
         "-o", "algo.hyperparams.min_buffer=150",
         "-o", "algo.hyperparams.batch_size=32",

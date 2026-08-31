@@ -23,20 +23,8 @@ algo:
                                 # O(1e3-1e6); 1.0 diverged the MSE critic (loss
                                 # ~1e26, grad inf). 1e-3 keeps targets O(1-100)
                                 # and rebalances the entropy temperature.
-    reward_clip: 8.0            # symmetric clip on the SCALED replay reward,
-                                # calibrated to the honest terminal envelope (~5.5
-                                # scaled); see configs/algo/ddpg.yaml. Sits just above
-                                # legitimate rewards, bounds the critic target to the
-                                # honest scale (kills the 1e9-1e11 divergence); the old
-                                # 25.0 was ~4.5x a legit terminal (too loose).
     activation: relu
     device: cpu
-    continuous_cancel: threshold  # threshold (default) | never
-    eval_interval_episodes: 100
-    eval_n_seeds: 24           # WIDENED from 8 (2026-06-15): best.pt early-stopping
-                               # selection (env_eval, disjoint from the test seeds);
-                               # matches the other algos for consistent selection.
-    final_eval_n_seeds: 100
     checkpoint_interval_episodes: 100
     # -- SAC-specific ---------------------------------------------------------
     actor_lr: 3.0e-4
@@ -45,13 +33,3 @@ algo:
     alpha_lr: 3.0e-4            # temperature Adam lr
     auto_alpha: true           # auto-tune entropy temperature
     target_entropy: auto       # "auto" => -dim(A) per phase
-
-# Continuous agents normalize the raw price features (see configs/algo/ddpg.yaml);
-# the discrete DQN keeps the legacy raw h_cl/s_mid. Mirrors base.yaml exactly
-# (only h_cl->h_cl_norm, s_mid->s_mid_norm).
-features:
-  clob:
-    [inv_norm, h_cl_norm, s_mid_norm, depth_ask_norm, depth_bid_norm,
-     top_ask_norm, top_bid_norm, t_norm]
-  auction:
-    [inv_norm, h_cl_norm, s_mid_norm, n_mm_norm, n_buy_norm, n_sell_norm, t_norm]

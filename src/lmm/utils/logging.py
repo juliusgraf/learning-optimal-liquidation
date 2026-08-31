@@ -1,6 +1,6 @@
 """Run-directory creation and experiment metadata dumping (fully functional).
 
-Every run writes ``results/<experiment_name>/<run_name>/`` containing
+Every revised run writes ``results/revision_v2/<experiment_name>/<run_name>/`` containing
 ``config_resolved.yaml``, ``seed.txt``, ``git_sha.txt``, ``metrics.csv``,
 ``eval/``, ``checkpoints/``, ``logs/run.log``, ``figures/``, ``tables/``
 (engineering conventions, CLAUDE.md). Figures and tables are always
@@ -10,11 +10,16 @@ regenerated from saved outputs by separate scripts.
 from __future__ import annotations
 
 import logging
+import json
+import platform
 import subprocess
+import sys
+from importlib import metadata
 from dataclasses import dataclass
 from pathlib import Path
 
 from lmm.config import ExperimentConfig, save_resolved
+from lmm.agents.base import ENVIRONMENT_CONTRACT
 
 __all__ = ["RunPaths", "create_run_dir", "write_run_metadata", "get_run_logger"]
 
@@ -80,10 +85,44 @@ def _git_sha() -> str:
 
 
 def write_run_metadata(paths: RunPaths, cfg: ExperimentConfig, master_seed: int) -> None:
-    """Dump config_resolved.yaml, seed.txt and git_sha.txt into the run dir."""
+    """Dump complete static provenance into the run directory."""
     save_resolved(cfg, paths.config_resolved)
     paths.seed_txt.write_text(f"{master_seed}\n")
     paths.git_sha_txt.write_text(f"{_git_sha()}\n")
+    historical = cfg.midprice.historical
+    if historical is not None and not historical.split_id.startswith("legacy_"):
+        from lmm.data.load_yfinance_data import validate_historical_artifact
+
+        data_manifest = validate_historical_artifact(
+            historical,
+            Path.cwd(),
+            horizon=cfg.grid.tau_op,
+        )
+        (paths.run_dir / "historical_data_manifest.json").write_text(
+            json.dumps(data_manifest, indent=2, sort_keys=True) + "\n"
+        )
+    packages: dict[str, str] = {}
+    for package in ("numpy", "pandas", "torch", "gymnasium", "PyYAML", "yfinance"):
+        try:
+            packages[package] = metadata.version(package)
+        except metadata.PackageNotFoundError:
+            packages[package] = "not-installed"
+    (paths.run_dir / "runtime_versions.json").write_text(
+        json.dumps(
+            {
+                "python": sys.version,
+                "platform": platform.platform(),
+                "packages": packages,
+                "artifact_schema_version": cfg.experiment.artifact_schema_version,
+                "environment_contract": ENVIRONMENT_CONTRACT,
+                "ablation_label": cfg.experiment.ablation_label,
+                "dqn_equal_q_tie_breaking": "first action in lexicographic grid order",
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n"
+    )
 
 
 def get_run_logger(paths: RunPaths, name: str = "lmm") -> logging.Logger:

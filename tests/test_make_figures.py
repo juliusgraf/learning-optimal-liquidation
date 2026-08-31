@@ -9,7 +9,7 @@ from lmm.experiments import make_figures
 
 PER_RUN_FIGURES = [
     "training_diagnostics",
-    "regret_curve",
+    "policy_difference_curve",
     "episode_anatomy",
     "benchmark_anatomy",
     "cancellation_strategy",
@@ -59,8 +59,8 @@ def test_convergence_curves_multiseed(fixture_run_dir, tmp_path):
     rc = make_figures.main(["--multiseed", "--run-dir", *run_dirs, "--out", str(out)])
     assert rc == 0
     _assert_pdf_png(out, "convergence_curves")
-    # Cross-seed DQN regret curve (synthetic fixture => no ticker suffix).
-    _assert_pdf_png(out, "regret_multiseed")
+    # Cross-seed DQN fixed-policy difference curve.
+    _assert_pdf_png(out, "policy_difference_multiseed")
     # Run-level reward decomposition across the two seeds, with companion CSV.
     _assert_pdf_png(out, "reward_decomposition")
     csv_path = out / "reward_decomposition.csv"

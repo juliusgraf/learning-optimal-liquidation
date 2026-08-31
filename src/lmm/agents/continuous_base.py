@@ -1,4 +1,4 @@
-"""Shared scaffolding for the continuous-action agents (Phase 5; ruling D9).
+"""Shared scaffolding for projected continuous-control agents.
 
 ``ContinuousActorCriticAgent`` implements the per-phase actor/critic training
 common to DDPG, TD3 and SAC; the three differ only in a handful of overridable
@@ -10,11 +10,13 @@ Design mirrors the DQN (docs/rl_design.md):
 - TWO phase networks (CLOB and auction) with their own actor/critic(s), target
   networks, optimizers and replay buffer — a documented design choice.
 - Cross-phase junction: a CLOB transition whose next state is the auction open
-  bootstraps from the AUCTION target networks; the terminal tau_cl reward is
-  the known absorbing-state value, carried in ``terminal_value`` and
-  bootstrapped as y = r_step + chi*r_tau_cl (item 1, no fold).
-- Per-env-step updates gated on ``update_every`` / ``min_buffer``; Polyak
-  target updates (``target_soft_tau``); reward scaled inside replay only.
+  bootstraps from the AUCTION networks; a terminal row adds its known terminal
+  value exactly once and never bootstraps from a network.
+- Exactly one eligible optimizer update is sampled from the current phase;
+  phase-local Polyak updates occur only after the corresponding update.
+- Actors, behavior noise, critics, replay, and target smoothing all use raw
+  normalized proposals in ``[-1, 1]``.  The environment adapter alone applies
+  the state-dependent market-action projection.
 - Seeding (D10): exploration noise from the numpy ``exploration`` generator,
   replay sampling from ``replay_clob`` / ``replay_auction``, networks + any
   reparameterized sampling from the seeded torch global RNG. No global numpy.
@@ -22,16 +24,21 @@ Design mirrors the DQN (docs/rl_design.md):
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from lmm.agents.base import Agent, Transition
+from lmm.agents.base import (
+    BELLMAN_FACTOR,
+    ENVIRONMENT_CONTRACT,
+    REWARD_SCALE,
+    Agent,
+    Transition,
+)
 from lmm.config import ExperimentConfig
 from lmm.env.action_spaces import continuous_action_specs
 from lmm.rl.continuous_replay import ContinuousReplayBatch, ContinuousReplayBuffer
@@ -61,20 +68,7 @@ class ContinuousHyperparams:
     reward_scale: float
     activation: str
     device: str
-    continuous_cancel: str  # "threshold" | "never"
-    eval_interval_episodes: int
-    eval_n_seeds: int
-    final_eval_n_seeds: int
     checkpoint_interval_episodes: int
-    # Optional symmetric clip on the SCALED reward stored in replay (None =
-    # off). The paper's per-step fictive auction reward is unbounded; the
-    # deterministic/gradient actors exploit it, so the MSE critic targets blow
-    # up even after reward_scale. Clipping bounds the regression target
-    # (replay-only; reported metrics stay in paper units). kw_only so the
-    # default does not collide with subclasses' required positional fields
-    # (DDPG/TD3/SAC add their own); the default keeps frozen fixture configs
-    # (which predate this knob) loading.
-    reward_clip: Optional[float] = field(default=None, kw_only=True)
 
 
 class ContinuousActorCriticAgent(Agent):
@@ -89,15 +83,34 @@ class ContinuousActorCriticAgent(Agent):
     def __init__(self, cfg: ExperimentConfig, seeds: SeedBundle, hp: ContinuousHyperparams) -> None:
         self.cfg = cfg
         self.hp = hp
-        self.chi = cfg.rl.chi
+        self.artifact_schema_version = int(cfg.experiment.artifact_schema_version)
+        self.chi = BELLMAN_FACTOR  # public compatibility; intentionally ignores cfg.rl.chi
+        if not np.isclose(hp.reward_scale, REWARD_SCALE, rtol=0.0, atol=1e-15):
+            raise ValueError(
+                f"revised continuous agents require reward_scale={REWARD_SCALE:g}, "
+                f"got {hp.reward_scale:g}"
+            )
+        if hp.update_every != 1 or hp.updates_per_env_step != 1:
+            raise ValueError(
+                "revised continuous agents perform exactly one eligible update per environment step"
+            )
         self.device = torch.device(hp.device)
-        self.continuous_cancel = hp.continuous_cancel
-        self.specs = continuous_action_specs(cfg, hp.continuous_cancel)
+        self.specs = continuous_action_specs(cfg)
+        self.continuous_cancel = (
+            "threshold" if self.specs["auction"].dim == 3 else "never"
+        )
         self._obs_dim = {"clob": len(cfg.features.clob), "auction": len(cfg.features.auction)}
         self._act_dim = {p: self.specs[p].dim for p in self.PHASES}
-        # Box bounds as device tensors (for clamping target actions).
-        self._low = {p: torch.as_tensor(self.specs[p].low, dtype=torch.float32, device=self.device) for p in self.PHASES}
-        self._high = {p: torch.as_tensor(self.specs[p].high, dtype=torch.float32, device=self.device) for p in self.PHASES}
+        # Every learning-side action is the raw normalized proposal.  Physical
+        # action bounds live exclusively in the environment adapter.
+        self._low = {
+            p: -torch.ones(self._act_dim[p], dtype=torch.float32, device=self.device)
+            for p in self.PHASES
+        }
+        self._high = {
+            p: torch.ones(self._act_dim[p], dtype=torch.float32, device=self.device)
+            for p in self.PHASES
+        }
 
         self._setup_networks()
 
@@ -116,6 +129,7 @@ class ContinuousActorCriticAgent(Agent):
         self._episode = 0
         self._env_steps = 0
         self._update_count = {p: 0 for p in self.PHASES}
+        self._pending_update_phase: str | None = None
         self._ou_state: dict[str, np.ndarray] = {}
         self._training = True
         self._exploration_scale = 0.0  # reported as the "epsilon" metric; subclass sets it
@@ -125,8 +139,14 @@ class ContinuousActorCriticAgent(Agent):
 
     def _make_actor(self, phase: str, obs_dim: int, hidden, act_cls) -> nn.Module:
         """Default deterministic actor (DDPG/TD3); SAC overrides."""
-        spec = self.specs[phase]
-        return DeterministicActor(obs_dim, spec.low, spec.high, hidden, act_cls)
+        dim = self._act_dim[phase]
+        return DeterministicActor(
+            obs_dim,
+            -np.ones(dim, dtype=np.float32),
+            np.ones(dim, dtype=np.float32),
+            hidden,
+            act_cls,
+        )
 
     def _setup_networks(self) -> None:
         hidden = self.hp.hidden_layers
@@ -180,33 +200,40 @@ class ContinuousActorCriticAgent(Agent):
     # -- acting ---------------------------------------------------------------
 
     def act(self, obs: np.ndarray, mask: np.ndarray, phase: str, *, eval_mode: bool = False) -> np.ndarray:
-        """Return a continuous action in the phase's Box (the adapter then
-        projects/snaps it). ``mask`` is ignored for selection: admissibility is
-        enforced by the adapter's projection (volume, tick) and cancel mask."""
+        """Return a raw normalized proposal in ``[-1, 1]``.
+
+        ``mask`` is ignored for selection: the adapter is solely responsible
+        for the state-dependent projection and executable market action.
+        """
         greedy = eval_mode or not self._training
         obs_t = torch.as_tensor(np.asarray(obs), dtype=torch.float32, device=self.device).unsqueeze(0)
         with torch.no_grad():
             return self._select_action(phase, obs_t, greedy=greedy)
 
     def _select_action(self, phase: str, obs_t: torch.Tensor, *, greedy: bool) -> np.ndarray:
-        """Deterministic actor + exploration noise (DDPG/TD3); SAC overrides."""
+        """Deterministic actor plus normalized-coordinate exploration noise.
+
+        The adapter performs and logs the final box clipping.  Keeping the
+        pre-clip noisy proposal until that boundary is what makes clipping and
+        saturation diagnostics observable without changing the replay action:
+        replay still receives the adapter's committed ``[-1,1]`` proposal.
+        """
         a = self.actor[phase](obs_t).squeeze(0).cpu().numpy()
         if not greedy:
             a = a + self._sample_noise(phase)
-        spec = self.specs[phase]
-        return np.clip(a, spec.low, spec.high).astype(np.float32)
+        return np.asarray(a, dtype=np.float32)
 
     def _sample_noise(self, phase: str) -> np.ndarray:
         """Action-space exploration noise from the seeded numpy generator.
         DDPG/TD3 set ``exploration_noise`` / ``exploration_noise_std``."""
-        spec = self.specs[phase]
-        scale = float(getattr(self.hp, "exploration_noise_std", 0.0)) * (spec.high - spec.low) / 2.0
+        dim = self._act_dim[phase]
+        scale = float(getattr(self.hp, "exploration_noise_std", 0.0))
         kind = getattr(self.hp, "exploration_noise", "gaussian")
         if kind == "gaussian":
-            return self._explore_rng.normal(0.0, 1.0, size=spec.dim) * scale
+            return self._explore_rng.normal(0.0, scale, size=dim)
         if kind == "ou":
-            ou = self._ou_state.get(phase, np.zeros(spec.dim))
-            ou = ou - _OU_THETA * ou + scale * self._explore_rng.normal(0.0, 1.0, size=spec.dim)
+            ou = self._ou_state.get(phase, np.zeros(dim))
+            ou = ou - _OU_THETA * ou + self._explore_rng.normal(0.0, scale, size=dim)
             self._ou_state[phase] = ou
             return ou
         raise ValueError(f"exploration_noise must be 'gaussian' or 'ou', got {kind!r}")
@@ -218,18 +245,25 @@ class ContinuousActorCriticAgent(Agent):
             return
         tr = transition
         junction = tr.phase == "clob" and tr.next_phase == "auction"
-        if tr.info is not None and "executed_action_vec" in tr.info:
+        if tr.info is not None and "proposal_action_vec" in tr.info:
+            action_vec = np.asarray(tr.info["proposal_action_vec"], dtype=np.float32)
+        elif tr.info is not None and "executed_action_vec" in tr.info:
+            # Name compatibility only; revised adapters store the raw
+            # normalized proposal under either key.
             action_vec = np.asarray(tr.info["executed_action_vec"], dtype=np.float32)
         else:
             action_vec = np.asarray(tr.action, dtype=np.float32)
         # next_cancel_admissible: C(x') > 0 when x' is an auction state. The
         # adapter's mask is all-True iff a cancel-all is admissible there.
         next_cancel_adm = False
-        if not tr.done and tr.next_phase == "auction" and tr.next_mask is not None:
+        if (
+            self.continuous_cancel == "threshold"
+            and not tr.done
+            and tr.next_phase == "auction"
+            and tr.next_mask is not None
+        ):
             next_cancel_adm = bool(np.asarray(tr.next_mask).all())
-        # Item 1 (no fold): un-fold the terminal clearing reward, storing the
-        # step reward and carrying g = r_tau_cl in ``terminal_value`` for a
-        # one-chi bootstrap. reward_scale + reward_clip apply to both pieces.
+        # Un-fold the terminal clearing reward and scale both components once.
         step_reward = float(tr.reward)
         terminal_value = 0.0
         if tr.done and tr.info is not None and "terminal_reward" in tr.info:
@@ -238,9 +272,6 @@ class ContinuousActorCriticAgent(Agent):
             terminal_value = r_term
         reward = step_reward * self.hp.reward_scale
         tv = terminal_value * self.hp.reward_scale
-        if self.hp.reward_clip is not None:
-            reward = float(np.clip(reward, -self.hp.reward_clip, self.hp.reward_clip))
-            tv = float(np.clip(tv, -self.hp.reward_clip, self.hp.reward_clip))
         self.replay[tr.phase].add(
             obs=np.asarray(tr.obs, dtype=np.float32),
             action=action_vec,
@@ -250,26 +281,35 @@ class ContinuousActorCriticAgent(Agent):
             junction=junction,
             next_cancel_admissible=next_cancel_adm,
             terminal_value=tv,
+            discount=BELLMAN_FACTOR,
         )
         self._env_steps += 1
+        self._pending_update_phase = tr.phase
 
     # -- learning -------------------------------------------------------------
 
-    def update(self) -> dict[str, float]:
+    def update(self, phase: str | None = None) -> dict[str, float]:
         if not self._training or self._env_steps == 0:
             return {}
-        if self._env_steps % self.hp.update_every != 0:
+        pending = self._pending_update_phase
+        if pending is None:
+            # One transition grants at most one optimizer step.  An explicit
+            # phase argument cannot reopen an already-consumed opportunity.
             return {}
-        diag: dict[str, float] = {}
-        for phase in self.PHASES:
-            if len(self.replay[phase]) < self.hp.min_buffer:
-                continue
-            for _ in range(self.hp.updates_per_env_step):
-                stats = self._gradient_step(phase, self.replay[phase].sample(self.hp.batch_size))
-                for k, v in stats.items():
-                    diag[f"{k}_{phase}"] = v
-                diag[f"n_grad_steps_{phase}"] = diag.get(f"n_grad_steps_{phase}", 0.0) + 1.0
-        return diag
+        if phase is None:
+            phase = pending
+        elif phase != pending:
+            raise ValueError(f"update phase {phase!r} does not match observed phase {pending!r}")
+        self._pending_update_phase = None
+        if phase not in self.replay:
+            raise ValueError(f"unknown phase {phase!r}")
+        if len(self.replay[phase]) < self.hp.min_buffer:
+            return {}
+        stats = self._gradient_step(phase, self.replay[phase].sample(self.hp.batch_size))
+        return {
+            **{f"{k}_{phase}": v for k, v in stats.items()},
+            f"n_grad_steps_{phase}": 1.0,
+        }
 
     def _gradient_step(self, phase: str, batch: ContinuousReplayBatch) -> dict[str, float]:
         obs = torch.as_tensor(batch.obs, dtype=torch.float32, device=self.device)
@@ -284,11 +324,12 @@ class ContinuousActorCriticAgent(Agent):
         return out
 
     def compute_targets(self, phase: str, batch: ContinuousReplayBatch) -> torch.Tensor:
-        """Bellman targets with the cross-phase junction rule (the target
-        networks are chosen by the PHASE of x'); done rows bootstrap from the
-        known absorbing-state value g = r_tau_cl in ``batch.terminal_value``,
-        y = r_step + chi*g (item 1, no fold). Exposed for the hand-computed
-        unit tests."""
+        """Undiscounted targets with the cross-phase junction rule.
+
+        Target networks are chosen by the phase of the next state. Terminal
+        rows add their known terminal value exactly once and never use a
+        network bootstrap.
+        """
         y = torch.as_tensor(batch.reward, dtype=torch.float32, device=self.device).clone()
         done = batch.done
         junction = batch.junction
@@ -312,12 +353,11 @@ class ContinuousActorCriticAgent(Agent):
                 if logp_next is not None:  # SAC entropy term
                     q_next = q_next - self._alpha(next_phase) * logp_next
                 idx = torch.as_tensor(rows, dtype=torch.int64, device=self.device)
-                y[idx] = y[idx] + self.chi * q_next
-        # Terminal bootstrap from the known absorbing-state value (item 1):
-        # g nonzero only on done rows; None on legacy hand-built batches => skip.
+                y[idx] = y[idx] + q_next
         if batch.terminal_value is not None:
             g = torch.as_tensor(batch.terminal_value, dtype=torch.float32, device=self.device)
-            y = y + self.chi * g
+            done_t = torch.as_tensor(done, dtype=torch.bool, device=self.device)
+            y[done_t] = y[done_t] + g[done_t]
         return y
 
     # -- algorithm hooks (overridable) ----------------------------------------
@@ -328,10 +368,10 @@ class ContinuousActorCriticAgent(Agent):
 
     def _target_next_action(self, phase: str, next_obs: torch.Tensor, cadm: np.ndarray):
         """Deterministic target action (DDPG); TD3 adds smoothing, SAC samples.
-        Returns (action, logp or None). Clamps the cancel coordinate at states
-        that cannot cancel (matches the env mask)."""
+        Returns (action, logp or None).  The action remains a normalized proposal;
+        the environment map Gamma_x applies cancellation admissibility, just
+        as it does for behavior/replay actions."""
         a = self.actor_target[phase](next_obs)
-        a = self._clamp_cancel(phase, a, cadm)
         return a, None
 
     def _target_q(self, phase: str, obs: torch.Tensor, action: torch.Tensor) -> torch.Tensor:
@@ -377,17 +417,6 @@ class ContinuousActorCriticAgent(Agent):
 
     # -- helpers --------------------------------------------------------------
 
-    def _clamp_cancel(self, phase: str, action: torch.Tensor, cadm: np.ndarray) -> torch.Tensor:
-        """Force the cancel logit to the no-cancel region (< 0.5) at auction
-        next states that cannot cancel (threshold mode only). Matches the env's
-        admissibility mask; no-op in 'never' mode or for non-auction phases."""
-        if phase != "auction" or self.continuous_cancel != "threshold":
-            return action
-        cadm_t = torch.as_tensor(cadm, dtype=torch.bool, device=self.device)
-        action = action.clone()
-        action[:, 2] = torch.where(cadm_t, action[:, 2], torch.zeros_like(action[:, 2]))
-        return action
-
     def _soft_update_targets(self, phase: str) -> None:
         tau = self.hp.target_soft_tau
         with torch.no_grad():
@@ -405,10 +434,14 @@ class ContinuousActorCriticAgent(Agent):
 
     def save(self, path: str | Path, *, include_replay: bool = False) -> None:
         state = {
+            "artifact_schema_version": self.artifact_schema_version,
+            "environment_contract": ENVIRONMENT_CONTRACT,
+            "feature_normalizer": self._feature_normalizer_state(),
             "hyperparams": self.hp.__dict__,
             "episode": self._episode,
             "env_steps": self._env_steps,
             "update_count": dict(self._update_count),
+            "pending_update_phase": self._pending_update_phase,
             "actor": {p: self.actor[p].state_dict() for p in self.PHASES},
             "actor_optim": {p: self.actor_optim[p].state_dict() for p in self.PHASES},
             "critics": {p: [c.state_dict() for c in self.critics[p]] for p in self.PHASES},
@@ -427,9 +460,31 @@ class ContinuousActorCriticAgent(Agent):
 
     def load(self, path: str | Path) -> None:
         state = torch.load(Path(path), map_location=self.device, weights_only=False)
+        saved_schema = state.get("artifact_schema_version")
+        if saved_schema is None:
+            raise ValueError(
+                "checkpoint is missing artifact_schema_version; old checkpoints "
+                "cannot be loaded into the revised continuous-control agent"
+            )
+        if int(saved_schema) != self.artifact_schema_version:
+            raise ValueError(
+                "checkpoint artifact_schema_version mismatch: "
+                f"expected {self.artifact_schema_version}, got {saved_schema}"
+            )
+        if state.get("environment_contract") != ENVIRONMENT_CONTRACT:
+            raise ValueError(
+                "checkpoint environment contract mismatch; old auction/grid "
+                "checkpoints cannot be loaded by the revised pipeline"
+            )
+        if state.get("feature_normalizer") is None:
+            raise ValueError(
+                "checkpoint predates the frozen feature-normalization contract"
+            )
+        self._load_feature_normalizer_state(state["feature_normalizer"])
         self._episode = int(state["episode"])
         self._env_steps = int(state["env_steps"])
         self._update_count = dict(state["update_count"])
+        self._pending_update_phase = state.get("pending_update_phase")
         for p in self.PHASES:
             self.actor[p].load_state_dict(state["actor"][p])
             self.actor_optim[p].load_state_dict(state["actor_optim"][p])

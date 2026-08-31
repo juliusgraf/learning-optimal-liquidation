@@ -26,7 +26,7 @@ lmm-train = "lmm.experiments.train:main"
 lmm-evaluate = "lmm.experiments.evaluate:main"
 lmm-make-figures = "lmm.experiments.make_figures:main"
 lmm-make-tables = "lmm.experiments.make_tables:main"
-lmm-regret = "lmm.experiments.regret:main"
+lmm-policy-differences = "lmm.experiments.policy_differences:main"
 lmm-load-data = "lmm.data.load_yfinance_data:main"
 
 [tool.setuptools.packages.find]

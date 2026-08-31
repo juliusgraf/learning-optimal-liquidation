@@ -1,0 +1,8 @@
+# Matched 2x2 arm: projected-clearing information absent, shaping present.
+experiment:
+  ablation_label: H_off__shaping_on__auction_on
+rl:
+  h_cl_feature_enabled: false
+reward:
+  shaping_enabled: true
+

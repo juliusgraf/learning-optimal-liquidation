@@ -47,7 +47,7 @@ ALL_MODULES = [
     "lmm.data.load_yfinance_data",
     "lmm.experiments.train",
     "lmm.experiments.evaluate",
-    "lmm.experiments.regret",
+    "lmm.experiments.policy_differences",
     "lmm.experiments.make_figures",
     "lmm.experiments.make_tables",
 ]
@@ -74,18 +74,22 @@ def _load_synthetic(**kw):
 
 def test_config_binding_values_synthetic() -> None:
     cfg = _load_synthetic()
-    # Rulings D6/D7/D15 spot checks (audit/PARAMS_FROM_CODE.md).
+    # Rulings D6/D7/D15/D21 spot checks (audit/PARAMS_FROM_CODE.md + AUDIT F.2).
+    assert (cfg.auction_flow.p1, cfg.auction_flow.p2) == (1.0, 0.0)  # D21: positive slope
     assert cfg.auction_flow.p4 == 0.05  # D7: effective rate, single Bernoulli
     assert cfg.algo1.tau == 0.95  # D15: smoothing, both settings
-    assert cfg.rl.chi == 0.99  # D15: discount
+    assert cfg.rl.chi == 1.0
+    assert cfg.rl.checkpoint_metric == "risk_adjusted_pnl"
     assert cfg.reward.d == 0.1 and cfg.reward.lambda_inv == 0.5 and cfg.reward.q == 1.0
     assert cfg.reward.k_star == 1000 and cfg.grid.alpha == 0.01  # kappa=0.1 <=> k*alpha=10
     assert cfg.reward.numerical_guard is False  # D8: default OFF
     assert cfg.clob_flow.lambda0 == 1.0 and cfg.experiment.episodes == 1000  # tuned 2026-06-15 (was 2000)
     assert cfg.midprice.model == "rough_heston"
     rh = cfg.midprice.rough_heston
-    assert rh is not None and (rh.H, rh.rho, rh.v0, rh.theta) == (0.1, -0.7, 0.02, 0.04)
-    assert len(cfg.features.clob) == 8 and len(cfg.features.auction) == 7  # AUDIT A.7
+    assert rh is not None and (rh.H, rh.rho, rh.v0, rh.theta) == (0.1, -0.7, 0.02, 0.02)
+    assert len(cfg.features.clob) == 18 and len(cfg.features.auction) == 18
+    assert cfg.features.auction[12] == "cancel_admissible"
+    assert cfg.actions.auction_cancel_mode == "enabled"
     assert cfg.algo is not None and cfg.algo.name == "dqn"
     assert cfg.algo.hyperparams["batch_size"] == 128
 
@@ -97,9 +101,14 @@ def test_config_binding_values_historical() -> None:
     assert cfg.midprice.model == "historical"
     hist = cfg.midprice.historical
     assert hist is not None
-    assert hist.csv_path == Path("legacy/data.csv")  # frozen input (D13)
+    assert hist.csv_path == Path("data/historical_sp500_1m.csv")
+    assert hist.path_policy == "split_pool"
+    assert hist.split_id == "sp500_1m_2026-08_v1"
+    assert hist.train_date_range == ("2026-08-03", "2026-08-14")
+    assert hist.validation_date_range == ("2026-08-17", "2026-08-21")
+    assert hist.test_date_range == ("2026-08-24", "2026-08-28")
     assert hist.symbols == ("MSFT", "JPM", "PG", "GOOGL", "CAT")
-    assert cfg.benchmark.as_sigma_rule == "single_path"
+    assert cfg.benchmark.as_sigma_rule == "pooled_paths"
     assert cfg.algo is None  # no algo overlay given
 
 

@@ -1,10 +1,8 @@
-# Historical setting: S&P 500 fixed mid path (legacy data.py experiment).
-# Overlay on base.yaml; values from data.py:1386-1398, 1651-1679
-# (audit/PARAMS_FROM_CODE.md, rulings D6, D13, D15).
-#
-# NOTE (ruling D15): algo1.tau stays 0.95 here — the legacy historical run's
-# smoothing of 0.99 was an accidental reuse of the RL discount (data.py:1391)
-# and is intentionally NOT reproduced; regenerated results differ on this axis.
+# Historical-midprice setting.  The frozen local dataset contains 20 complete
+# one-minute sessions for the manuscript's five S&P 500 assets, partitioned
+# chronologically into 10 training, 5 validation, and 5 test sessions.  The
+# sidecar digest and split contract are verified whenever an environment or run
+# is created.
 
 experiment:
   name: historical_sp500
@@ -21,16 +19,19 @@ clob_flow:
 midprice:
   model: historical
   historical:
-    csv_path: legacy/data.csv   # frozen experimental input (ruling D13): S&P 500
-                                # 1-min mids, Dec 31 2025, 2:30-5:00 pm EST,
-                                # pre-normalized to 100 at session start
-    symbols: [MSFT, JPM, PG, GOOGL, CAT]   # data.py:1651
-    normalize_first: 100.0      # loader rule --normalize first=100 (D13)
-    n_rows: 120                 # rows 0..119 consumed (= tau_op); data.py:1654
-    date: "2025-12-31"          # session date provenance (Phase 6); the loader
-                                # (lmm.data.load_yfinance_data) regenerates this CSV
-    path_policy: fixed          # same realized path every episode (legacy/paper)
+    csv_path: data/historical_sp500_1m.csv
+    symbols: [MSFT, JPM, PG, GOOGL, CAT]
+    normalize_first: 100.0
+    n_rows: 121                 # observations at minutes 0..tau_op inclusive
+    date: "2026-08-03..2026-08-28"
+    path_policy: split_pool
+    timezone: America/New_York
+    missing_data_treatment: ffill  # source gaps were forward-filled per session
+                                   # and are enumerated in the sidecar
+    split_id: sp500_1m_2026-08_v1
+    train_date_range: ["2026-08-03", "2026-08-14"]
+    validation_date_range: ["2026-08-17", "2026-08-21"]
+    test_date_range: ["2026-08-24", "2026-08-28"]
 
 benchmark:
-  as_sigma_rule: single_path    # std of log-returns of the single fixed path;
-                                # data.py:1557-1559
+  as_sigma_rule: pooled_paths   # fitted only from the training-session pool

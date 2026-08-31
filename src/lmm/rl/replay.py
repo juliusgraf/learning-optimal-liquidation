@@ -25,14 +25,16 @@ class ReplayBatch:
     action: np.ndarray  # (B,) int64 grid indices
     reward: np.ndarray  # (B,)
     next_obs: np.ndarray  # (B, next_obs_dim), zero-padded on junction rows
-    done: np.ndarray  # (B,) bool; True => bootstrap from terminal_value (item 1)
+    done: np.ndarray  # (B,) bool; True => add terminal_value, never a network value
     junction: np.ndarray  # (B,) bool; True => bootstrap from the OTHER phase
     next_mask: np.ndarray  # (B, mask_dim) bool admissibility of x' (Adm(x'))
     # (B,) the KNOWN value of the absorbing tau_cl state, g = r_tau_cl (already
-    # reward_scale'd), nonzero only on done rows; the target bootstraps it as
-    # y = r_step + chi * g (item 1, no fold). None on hand-built batches that
+    # reward_scale'd), nonzero only on done rows; the target adds it exactly once
+    # as y = r_step + g. None on hand-built batches that
     # predate the field => treated as zero (legacy zero-bootstrap behavior).
     terminal_value: np.ndarray | None = None
+    # Deprecated compatibility field. Learners ignore it and replay emits ones.
+    discount: np.ndarray | None = None
 
 
 class ReplayBuffer:
@@ -66,6 +68,7 @@ class ReplayBuffer:
         self._junction = np.zeros(capacity, dtype=bool)
         self._next_mask = np.zeros((capacity, mask_dim), dtype=bool)
         self._terminal_value = np.zeros(capacity, dtype=np.float32)
+        self._discount = np.ones(capacity, dtype=np.float32)  # checkpoint compatibility only
         self._pos = 0
         self._size = 0
 
@@ -79,6 +82,7 @@ class ReplayBuffer:
         junction: bool,
         next_mask: np.ndarray | None,
         terminal_value: float = 0.0,
+        discount: float = 1.0,
     ) -> None:
         """Append one transition, evicting FIFO at capacity.
 
@@ -94,6 +98,10 @@ class ReplayBuffer:
         self._action[i] = int(action)
         self._reward[i] = float(reward)
         self._terminal_value[i] = float(terminal_value)
+        # ``discount`` used to carry elapsed-time/per-transition factors.  The
+        # revised problem is undiscounted, so normalize every row to one while
+        # retaining the keyword for source compatibility.
+        self._discount[i] = 1.0
         self._next_obs[i] = 0.0
         self._next_mask[i] = False
         if next_obs is not None:
@@ -120,6 +128,7 @@ class ReplayBuffer:
             junction=self._junction[idx].copy(),
             next_mask=self._next_mask[idx].copy(),
             terminal_value=self._terminal_value[idx].copy(),
+            discount=self._discount[idx].copy(),
         )
 
     def __len__(self) -> int:
@@ -138,6 +147,7 @@ class ReplayBuffer:
             "junction": self._junction.copy(),
             "next_mask": self._next_mask.copy(),
             "terminal_value": self._terminal_value.copy(),
+            "discount": np.ones_like(self._discount),
             "pos": self._pos,
             "size": self._size,
             "rng_state": self.rng.bit_generator.state,
@@ -157,6 +167,9 @@ class ReplayBuffer:
         self._next_mask[:] = state["next_mask"]
         if "terminal_value" in state:  # robust to pre-item-1 checkpoints
             self._terminal_value[:] = state["terminal_value"]
+        # Old checkpoints may contain non-unit transition discounts.  They are
+        # intentionally discarded under the revised undiscounted convention.
+        self._discount.fill(1.0)
         self._pos = int(state["pos"])
         self._size = int(state["size"])
         self.rng.bit_generator.state = state["rng_state"]

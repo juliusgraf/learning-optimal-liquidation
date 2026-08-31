@@ -1,20 +1,18 @@
-"""ContinuousActionAdapter tests (Phase 5; docs/continuous_action_extension.md).
-
-The headline guarantee: a continuous action equal to a discrete grid point
-produces EXACTLY the same transition and reward as the raw (discrete) env on
-the same seed — i.e. the relaxation only changes the policy class, not the env
-dynamics. Plus targeted projection/snapping unit checks.
-"""
+"""Projection and discrete-grid equivalence for continuous-control actions."""
 
 from __future__ import annotations
 
-import math
-
+import gymnasium
 import numpy as np
 import pytest
 
 from helpers import load_synthetic_cfg, new_env
-from lmm.env.action_spaces import AuctionAction, ClobAction, ContinuousActionAdapter, continuous_action_specs
+from lmm.env.action_spaces import (
+    AuctionAction,
+    ClobAction,
+    ContinuousActionAdapter,
+    continuous_action_specs,
+)
 
 
 @pytest.fixture(scope="module")
@@ -22,128 +20,152 @@ def cfg():
     return load_synthetic_cfg()
 
 
-def _continuous_for(order):
-    """The continuous vector equal to a discrete action object's coordinates."""
+def normalized_for(order, cfg):
     if isinstance(order, ClobAction):
-        return np.array([order.volume, float(order.delta)], dtype=np.float64)
-    return np.array([order.K_a, float(order.offset), 0.9 if order.cancel else 0.1])
+        return np.array(
+            [
+                2.0 * order.volume / cfg.actions.V_max - 1.0,
+                2.0 * order.delta / cfg.actions.L_max - 1.0,
+            ],
+            dtype=np.float32,
+        )
+    return np.array(
+        [
+            2.0 * order.K_a / cfg.actions.auction_K_grid_max - 1.0,
+            order.offset / cfg.actions.B_max,
+            1.0 if order.cancel else -1.0,
+        ],
+        dtype=np.float32,
+    )
 
 
-# -- grid-point equivalence (the headline guarantee) --------------------------
-
-
-def test_continuous_grid_point_matches_discrete_transition_exactly(cfg):
-    """Drive a raw env and an adapter-wrapped env in lockstep with the SAME
-    admissible grid actions (continuous coordinates = the grid point); assert
-    bit-identical obs, reward and terminal clearing for a full episode,
-    including a cancel-all after a live auction order."""
-    env_d = new_env(cfg)
-    env_c = ContinuousActionAdapter(new_env(cfg), continuous_cancel="threshold")
-    obs_d, _ = env_d.reset(seed=4242)
-    obs_c, _ = env_c.reset(seed=4242)
-    assert np.array_equal(obs_d, obs_c)
-
-    done = False
-    step = 0
-    info_d = info_c = None
-    while not done:
-        if env_d.phase == "clob":
-            # Admissible grid action (guard against late-episode low inventory).
-            v = 4.0 if env_d.inventory >= 4.0 else 0.0
-            order = ClobAction(v, 3)
-        else:
-            cancel = 0 if step % 4 == 0 else (1 if env_d.action_mask().all() else 0)
-            order = AuctionAction(2.0, 3, cancel)
-        obs_d, r_d, term_d, _, info_d = env_d.step(order)
-        obs_c, r_c, term_c, _, info_c = env_c.step(_continuous_for(order))
-        assert np.array_equal(obs_d, obs_c), f"obs differ at step {step}"
-        assert r_d == r_c, f"reward differ at step {step}: {r_d!r} vs {r_c!r}"
-        assert term_d == term_c
-        done = term_d
-        step += 1
-
-    assert info_d["S_cl"] == info_c["S_cl"]
-    assert info_d["Z"] == info_c["Z"]
-    assert info_d["I_final"] == info_c["I_final"]
-    assert info_d["terminal_reward"] == info_c["terminal_reward"]
-
-
-# -- CLOB projection / snapping ------------------------------------------------
-
-
-def test_clob_projection_and_delta_snapping(cfg):
-    env = ContinuousActionAdapter(new_env(cfg))
-    env.reset(seed=1)
-    inv = env.inventory
-    # volume projected to [0, min(V, inv)]; delta snapped by rounding, clipped.
-    order, committed = env._project_clob(np.array([1000.0, 3.4]))
-    assert order.volume == pytest.approx(min(cfg.actions.clob_volume_max, inv))
-    assert order.delta == 3  # round(3.4)
-    assert committed[0] == pytest.approx(order.volume)
-    assert committed[1] == pytest.approx(3.4)  # committed stores the UNSNAPPED delta
-
-    order, committed = env._project_clob(np.array([-5.0, 2.6]))
-    assert order.volume == 0.0  # clipped at 0
-    assert order.delta == 3  # round(2.6)
-    # delta below the grid min is clipped up to delta_min in BOTH order and committed
-    order, committed = env._project_clob(np.array([2.0, -7.0]))
-    assert order.delta == cfg.actions.clob_delta_min
-    assert committed[1] == pytest.approx(float(cfg.actions.clob_delta_min))
-
-
-# -- auction projection / snapping --------------------------------------------
-
-
-def _drive_to_auction(env, seed=7):
+def drive_to_auction(env, seed=7):
     env.reset(seed=seed)
     while env.phase == "clob":
-        env.step(np.array([0.0, 1.0]))  # NOOP CLOB through the adapter
+        env.step(np.array([-1.0, -1.0], dtype=np.float32))
 
 
-def test_auction_K_continuous_offset_snapped_cancel_threshold(cfg):
-    env = ContinuousActionAdapter(new_env(cfg), continuous_cancel="threshold")
-    _drive_to_auction(env)
-    # K is continuous (not snapped); offset snapped; cancel inadmissible at open.
-    order, committed = env._project_auction(np.array([1.234, 2.6, 0.9]))
-    assert order.K_a == pytest.approx(1.234)  # NOT snapped to the grid
-    assert order.offset == 3  # round(2.6)
-    assert order.cancel == 0  # c_logit > 0.5 but cancel inadmissible at the open
-    assert committed.shape == (3,)
-    assert committed[0] == pytest.approx(1.234) and committed[2] == pytest.approx(0.9)
-    # K clipped to [0, K_max]
-    order, _ = env._project_auction(np.array([-1.0, 0.0, 0.0]))
-    assert order.K_a == 0.0
-    order, _ = env._project_auction(np.array([1e9, 0.0, 0.0]))
-    assert order.K_a == pytest.approx(cfg.actions.auction_K_grid_max)
+def test_phase_specific_spaces_use_common_18_coordinate_observation(cfg):
+    raw = new_env(cfg)
+    obs, _ = raw.reset(seed=260828)
+    assert isinstance(raw.observation_space, gymnasium.spaces.Box)
+    assert obs.dtype == np.float32 and obs.shape == (18,)
+    assert isinstance(raw.action_space, gymnasium.spaces.Discrete)
+
+    relaxed = ContinuousActionAdapter(new_env(cfg))
+    obs, _ = relaxed.reset(seed=260828)
+    assert obs.shape == (18,)
+    assert relaxed.action_space.shape == (2,)
+    while relaxed.phase == "clob":
+        obs, _, _, _, _ = relaxed.step(np.array([-1.0, -1.0]))
+    assert obs.shape == (18,)
+    assert relaxed.action_space.shape == (3,)
 
 
-def test_auction_cancel_threshold_admissible_after_live_order(cfg):
-    env = ContinuousActionAdapter(new_env(cfg), continuous_cancel="threshold")
-    _drive_to_auction(env)
-    env.step(np.array([2.0, 3.0, 0.1]))  # submit a live K>0 order (no cancel)
-    # now a cancel-all is admissible: c_logit > 0.5 -> cancel = 1
-    order, _ = env._project_auction(np.array([2.0, 3.0, 0.9]))
+def test_discrete_grid_points_produce_identical_full_episode(cfg):
+    discrete = new_env(cfg)
+    relaxed = ContinuousActionAdapter(new_env(cfg))
+    obs_d, _ = discrete.reset(seed=4242)
+    obs_c, _ = relaxed.reset(seed=4242)
+    np.testing.assert_array_equal(obs_d, obs_c)
+
+    step = 0
+    while True:
+        if discrete.phase == "clob":
+            volume = 4.0 if discrete.inventory >= 4.0 else 0.0
+            order = ClobAction(volume, 3 if volume else 0)
+        else:
+            cancel = int(step % 4 and discrete.cancel_admissible)
+            order = AuctionAction(2.0 * cfg.actions.beta, 3, cancel)
+        obs_d, reward_d, done_d, _, info_d = discrete.step(order)
+        obs_c, reward_c, done_c, _, info_c = relaxed.step(normalized_for(order, cfg))
+        np.testing.assert_array_equal(obs_d, obs_c)
+        assert reward_d == reward_c
+        assert done_d == done_c
+        if done_d:
+            assert info_d["S_cl"] == info_c["S_cl"]
+            assert info_d["Z"] == info_c["Z"]
+            assert info_d["I_final"] == info_c["I_final"]
+            break
+        step += 1
+
+
+def test_clob_projection_snaps_and_logs_inventory_projection(cfg):
+    env = ContinuousActionAdapter(new_env(cfg))
+    env.reset(seed=1)
+    env.env._inventory = 2.5
+    order, committed, diagnostics = env._project_clob(np.array([1.5, 0.1]))
+    assert order.volume == 2.0  # floor(inventory), after nearest-integer proposal
+    assert order.delta == 7
+    np.testing.assert_allclose(committed, [1.0, 0.1], rtol=0.0, atol=2e-8)
+    assert diagnostics["input_clipped"]
+    assert diagnostics["inventory_projection"]
+
+    order, committed, diagnostics = env._project_clob(np.array([-1.0, 1.0]))
+    assert order == ClobAction(0.0, 0)  # canonical no-order delta
+    assert not diagnostics["input_clipped"]
+
+
+def test_auction_projection_snaps_slope_offset_and_cancel(cfg):
+    env = ContinuousActionAdapter(new_env(cfg))
+    drive_to_auction(env)
+    order, committed, diagnostics = env._project_auction(np.array([0.0, 0.1, 1.0]))
+    assert order.K_a == pytest.approx(5 * cfg.actions.beta)
+    assert order.offset == 3
+    assert order.cancel == 0  # threshold positive, but cancellation is not admissible yet
+    assert diagnostics["cancel_threshold_positive"]
+    assert not diagnostics["cancel_executed"]
+    np.testing.assert_allclose(committed, [0.0, 0.1, 1.0], rtol=0.0, atol=2e-8)
+
+    env.step(np.array([0.0, 0.0, -1.0]))
+    order, _, diagnostics = env._project_auction(np.array([0.0, 0.0, 0.0]))
     assert order.cancel == 1
-    order, _ = env._project_auction(np.array([2.0, 3.0, 0.3]))
-    assert order.cancel == 0  # below threshold
+    assert diagnostics["cancel_executed"]
 
 
-def test_continuous_cancel_never_drops_cancel_dim(cfg):
-    specs = continuous_action_specs(cfg, "never")
-    assert specs["auction"].dim == 2 and specs["clob"].dim == 2
-    env = ContinuousActionAdapter(new_env(cfg), continuous_cancel="never")
-    _drive_to_auction(env)
-    env.step(np.array([2.0, 3.0]))  # live order; cancel never available
-    order, committed = env._project_auction(np.array([5.0, 1.0]))
+def test_zero_slope_has_canonical_zero_offset(cfg):
+    env = ContinuousActionAdapter(new_env(cfg))
+    drive_to_auction(env)
+    order, _, _ = env._project_auction(np.array([-1.0, 1.0, -1.0]))
+    assert order == AuctionAction(0.0, 0, 0)
+
+
+def test_no_cancel_treatment_uses_two_dimensional_auction_proposal():
+    cfg = load_synthetic_cfg("actions.auction_cancel_mode=never")
+    specs = continuous_action_specs(cfg)
+    assert specs["clob"].dim == 2 and specs["auction"].dim == 2
+    env = ContinuousActionAdapter(new_env(cfg))
+    drive_to_auction(env)
+    order, committed, diagnostics = env._project_auction(np.array([0.0, 0.0]))
     assert order.cancel == 0 and committed.shape == (2,)
+    assert not diagnostics["cancel_threshold_positive"]
+
+
+def test_no_auction_treatment_can_terminate_from_clob_phase():
+    cfg = load_synthetic_cfg("experiment.auction_enabled=false")
+    env = ContinuousActionAdapter(new_env(cfg))
+    env.reset(seed=260831)
+
+    terminated = False
+    while not terminated:
+        assert env.phase == "clob"
+        _, _, terminated, truncated, _ = env.step(
+            np.array([-1.0, -1.0], dtype=np.float32)
+        )
+        assert not truncated
+
+    assert env.phase == "terminal"
+    # A terminal state has no next action; retaining the last active box keeps
+    # the Gym interface well-defined without inventing a terminal action space.
     assert env.action_space.shape == (2,)
 
 
-def test_offset_snapping_anchors_on_frozen_mid(cfg):
-    """The executed quote S^a = alpha*(floor(S_mid_frozen/alpha) + round(off))
-    matches the raw env's tick-snapping on the same offset."""
-    env = ContinuousActionAdapter(new_env(cfg), continuous_cancel="threshold")
-    _drive_to_auction(env)
-    k_bar = math.floor(env.s_mid / cfg.grid.alpha)  # adapter delegates s_mid
-    _, _, _, _, info = env.step(np.array([2.0, 4.3, 0.1]))
-    assert info["S_a"] == pytest.approx(cfg.grid.alpha * (k_bar + 4))  # round(4.3) = 4
+def test_adapter_step_records_raw_committed_and_projected_actions(cfg):
+    env = ContinuousActionAdapter(new_env(cfg))
+    env.reset(seed=2)
+    proposal = np.array([2.0, 0.25], dtype=np.float32)
+    _, _, _, _, info = env.step(proposal)
+    np.testing.assert_array_equal(info["raw_action_vec"], proposal)
+    np.testing.assert_array_equal(info["proposal_action_vec"], [1.0, 0.25])
+    assert len(info["projected_action_five"]) == 5
+    assert info["projection_diagnostics"]["input_clipped"]

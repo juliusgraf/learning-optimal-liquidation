@@ -1,21 +1,17 @@
-"""Exploration schedules (ruling D9; Phase 4).
-
-Default: exponential epsilon decay 1.0 -> 0.01 with a warmup, parameters from
-configs/algo/dqn.yaml (legacy schedule recorded in AUDIT C.1).
-"""
+"""Exploration schedules for the revised DQN specification."""
 
 from __future__ import annotations
 
-import math
-
-__all__ = ["ExponentialEpsilonSchedule"]
+__all__ = ["LinearEpsilonSchedule", "ExponentialEpsilonSchedule"]
 
 
-class ExponentialEpsilonSchedule:
-    """epsilon(e) = start * exp(-rate * (e - warmup)) for e >= warmup with
-    rate = -ln(end / start) / decay_episodes, epsilon = start during warmup;
-    clipped to [end, start] (epsilon reaches ``end`` exactly at
-    e = warmup + decay_episodes and stays there)."""
+class LinearEpsilonSchedule:
+    """Warm-up followed by an exact linear decay.
+
+    With the manuscript values, episodes 0--99 use epsilon 1, episode 100
+    starts the linear schedule, and episode 700 reaches 0.01 exactly.  Values
+    thereafter remain at the endpoint.
+    """
 
     def __init__(self, start: float, end: float, decay_episodes: float, warmup_episodes: int) -> None:
         if not 0.0 < end <= start:
@@ -26,10 +22,15 @@ class ExponentialEpsilonSchedule:
         self.end = float(end)
         self.decay_episodes = float(decay_episodes)
         self.warmup_episodes = int(warmup_episodes)
-        self._rate = -math.log(self.end / self.start) / self.decay_episodes
 
     def value(self, episode: int) -> float:
         if episode < self.warmup_episodes:
             return self.start
-        eps = self.start * math.exp(-self._rate * (episode - self.warmup_episodes))
+        progress = (float(episode) - self.warmup_episodes) / self.decay_episodes
+        eps = self.start + progress * (self.end - self.start)
         return min(self.start, max(self.end, eps))
+
+
+# Import compatibility for downstream code written against the former class
+# name.  The behavior intentionally follows the revised linear specification.
+ExponentialEpsilonSchedule = LinearEpsilonSchedule

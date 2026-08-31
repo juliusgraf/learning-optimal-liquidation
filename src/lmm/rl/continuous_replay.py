@@ -1,11 +1,11 @@
 """Uniform replay buffer for the continuous-action relaxation (Phase 5; D9/D10).
 
 Mirrors ``rl/replay.py::ReplayBuffer`` but stores the action as a FLOAT vector
-(the committed continuous action of docs/continuous_action_extension.md §3) and
-a per-row ``next_cancel_admissible`` bool (the auction cancel-admissibility
-C(x') > 0 of the next state — the analogue of the DQN ``next_mask``, used by the
-bootstrap target to clamp the target action's cancel logit). The discrete
-``ReplayBuffer`` is left untouched.
+(the raw normalized proposal in ``[-1, 1]``) and a
+per-row ``next_cancel_admissible`` bool. The latter records the auction
+admissibility state for diagnostics/checkpoint compatibility; all actor-critic
+targets now remain in proposal space and leave the environment map to apply the
+cancel mask. The discrete ``ReplayBuffer`` is left untouched.
 
 One buffer per phase: the CLOB buffer's junction rows (next state at the auction
 open) hold the (shorter) auction next-obs zero-padded to this buffer's
@@ -28,15 +28,17 @@ class ContinuousReplayBatch:
     """One uniform minibatch as struct-of-arrays."""
 
     obs: np.ndarray  # (B, obs_dim) float32
-    action: np.ndarray  # (B, action_dim) float32 (committed continuous action)
+    action: np.ndarray  # (B, action_dim) float32 raw normalized proposal [-1, 1]
     reward: np.ndarray  # (B,) float32
     next_obs: np.ndarray  # (B, next_obs_dim) float32, zero-padded on junction rows
-    done: np.ndarray  # (B,) bool; True => bootstrap from terminal_value (item 1)
+    done: np.ndarray  # (B,) bool; True => add terminal_value, never a network value
     junction: np.ndarray  # (B,) bool; True => bootstrap from the auction networks
     next_cancel_admissible: np.ndarray  # (B,) bool; C(x') > 0 (auction next states)
-    # (B,) known absorbing-state value g = r_tau_cl (reward_scale'd, clipped),
-    # nonzero only on done rows; target bootstraps y = r_step + chi * g (item 1).
+    # (B,) known absorbing-state value g = r_tau_cl (reward_scale'd), nonzero
+    # only on done rows; target adds it exactly once as y = r_step + g.
     terminal_value: np.ndarray | None = None
+    # Deprecated compatibility field. Learners ignore it and replay emits ones.
+    discount: np.ndarray | None = None
 
 
 class ContinuousReplayBuffer:
@@ -70,6 +72,7 @@ class ContinuousReplayBuffer:
         self._junction = np.zeros(capacity, dtype=bool)
         self._next_cancel_adm = np.zeros(capacity, dtype=bool)
         self._terminal_value = np.zeros(capacity, dtype=np.float32)
+        self._discount = np.ones(capacity, dtype=np.float32)  # checkpoint compatibility only
         self._pos = 0
         self._size = 0
 
@@ -83,6 +86,7 @@ class ContinuousReplayBuffer:
         junction: bool,
         next_cancel_admissible: bool,
         terminal_value: float = 0.0,
+        discount: float = 1.0,
     ) -> None:
         """Append one transition, evicting FIFO at capacity.
 
@@ -92,9 +96,17 @@ class ContinuousReplayBuffer:
             raise ValueError("next_obs may be None only on terminal transitions")
         i = self._pos
         self._obs[i] = obs
+        action = np.asarray(action, dtype=np.float32)
+        if action.shape != (self.action_dim,):
+            raise ValueError(f"action shape must be {(self.action_dim,)}, got {action.shape}")
+        if not np.all(np.isfinite(action)) or np.any(action < -1.0) or np.any(action > 1.0):
+            raise ValueError("continuous replay actions must be finite raw proposals in [-1, 1]")
         self._action[i] = action
         self._reward[i] = float(reward)
         self._terminal_value[i] = float(terminal_value)
+        # Retain the keyword for compatibility but remove all transition-
+        # specific discount behavior from stored data.
+        self._discount[i] = 1.0
         self._next_obs[i] = 0.0
         if next_obs is not None:
             self._next_obs[i, : len(next_obs)] = next_obs
@@ -118,6 +130,7 @@ class ContinuousReplayBuffer:
             junction=self._junction[idx].copy(),
             next_cancel_admissible=self._next_cancel_adm[idx].copy(),
             terminal_value=self._terminal_value[idx].copy(),
+            discount=self._discount[idx].copy(),
         )
 
     def __len__(self) -> int:
@@ -135,6 +148,7 @@ class ContinuousReplayBuffer:
             "junction": self._junction.copy(),
             "next_cancel_adm": self._next_cancel_adm.copy(),
             "terminal_value": self._terminal_value.copy(),
+            "discount": np.ones_like(self._discount),
             "pos": self._pos,
             "size": self._size,
             "rng_state": self.rng.bit_generator.state,
@@ -154,6 +168,8 @@ class ContinuousReplayBuffer:
         self._next_cancel_adm[:] = state["next_cancel_adm"]
         if "terminal_value" in state:  # robust to pre-item-1 checkpoints
             self._terminal_value[:] = state["terminal_value"]
+        # Old checkpoint factors are intentionally discarded: Bellman factor 1.
+        self._discount.fill(1.0)
         self._pos = int(state["pos"])
         self._size = int(state["size"])
         self.rng.bit_generator.state = state["rng_state"]

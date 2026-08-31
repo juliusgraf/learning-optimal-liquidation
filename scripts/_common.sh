@@ -14,12 +14,15 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
+RESULTS_ROOT="results/revision_v2"
 
 SEED=""
 SMOKE=0
 SYMBOL=""
 NO_RESUME_CKPT=0     # 1 => disable periodic resume checkpoints (disk-safe)
 EXTRA_OVERRIDES=()   # optional per-runner `-o key=value` train overrides
+EXTRA_CONFIGS=()     # optional treatment overlays, appended after algo config
+RUN_NAME_SUFFIX=""  # optional stable treatment label in the run directory
 
 parse_common_args() {
   while [[ $# -gt 0 ]]; do
@@ -41,11 +44,15 @@ parse_common_args() {
 run_experiment() {
   local exp_name="$1" setting_cfg="$2" algo_cfg="$3" algo_name="$4" symbol="${5:-}"
 
-  local run_name="${algo_name}_seed${SEED_FOR_NAME}"
-  [[ -n "$symbol" ]] && run_name="${algo_name}_${symbol}_seed${SEED_FOR_NAME}"
-  local run_dir="results/${exp_name}/${run_name}"
+  local run_name="${algo_name}${RUN_NAME_SUFFIX}_seed${SEED_FOR_NAME}"
+  [[ -n "$symbol" ]] && run_name="${algo_name}_${symbol}${RUN_NAME_SUFFIX}_seed${SEED_FOR_NAME}"
+  local run_dir="${RESULTS_ROOT}/${exp_name}/${run_name}"
 
   local cfgs=(--config configs/base.yaml --config "$setting_cfg" --config "$algo_cfg")
+  local extra_cfg
+  for extra_cfg in ${EXTRA_CONFIGS[@]+"${EXTRA_CONFIGS[@]}"}; do
+    cfgs+=(--config "$extra_cfg")
+  done
   local seed_args=() sym_args=() train_over=() eval_args=()
   [[ -n "$SEED" ]] && seed_args=(--seed "$SEED")
   [[ -n "$symbol" ]] && sym_args=(--symbol "$symbol")
@@ -53,8 +60,11 @@ run_experiment() {
   if [[ "$SMOKE" -eq 1 ]]; then
     train_over=(
       -o experiment.episodes=4
-      -o algo.hyperparams.final_eval_n_seeds=3
-      -o algo.hyperparams.eval_interval_episodes=2
+      -o rl.test_size=3
+      -o rl.validation_size=2
+      -o rl.validation_frequency_episodes=2
+      -o rl.validation_patience_evals=10
+      -o rl.normalizer_fit_episodes=2
       -o algo.hyperparams.checkpoint_interval_episodes=2
       -o algo.hyperparams.min_buffer=1
     )
@@ -84,9 +94,9 @@ run_experiment() {
   python3 -m lmm.experiments.evaluate --run-dir "$run_dir" \
     ${sym_args[@]+"${sym_args[@]}"} "${eval_args[@]}"
 
-  echo ">>> regret ${run_dir}"
-  python3 -m lmm.experiments.regret --run-dir "$run_dir" --benchmark as
-  python3 -m lmm.experiments.regret --run-dir "$run_dir" --benchmark twap
+  echo ">>> paired policy differences ${run_dir}"
+  python3 -m lmm.experiments.policy_differences --run-dir "$run_dir" --benchmark as
+  python3 -m lmm.experiments.policy_differences --run-dir "$run_dir" --benchmark twap
 
   echo ">>> done ${run_dir}"
 }

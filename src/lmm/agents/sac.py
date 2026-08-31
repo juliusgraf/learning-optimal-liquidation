@@ -3,7 +3,7 @@
 Soft actor-critic (Haarnoja et al. 2018 conventions, automatic temperature):
 a tanh-Gaussian actor with reparameterized sampling, twin critics with a
 min-target plus the entropy bonus, and an auto-tuned temperature per phase
-(target entropy -dim(A)). No target actor (the current actor samples the target
+(target entropy -2 in the CLOB and -3 in the auction). No target actor
 action). Full spec: docs/continuous_action_extension.md.
 """
 
@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import numpy as np
 import torch
 import torch.nn as nn
 
@@ -47,13 +48,19 @@ class SACAgent(ContinuousActorCriticAgent):
     # -- actor / temperature setup -------------------------------------------
 
     def _make_actor(self, phase: str, obs_dim: int, hidden, act_cls):
-        spec = self.specs[phase]
-        return SquashedGaussianActor(obs_dim, spec.low, spec.high, hidden, act_cls)
+        dim = self._act_dim[phase]
+        return SquashedGaussianActor(
+            obs_dim,
+            -np.ones(dim, dtype=np.float32),
+            np.ones(dim, dtype=np.float32),
+            hidden,
+            act_cls,
+        )
 
     def _post_setup(self, seeds: SeedBundle) -> None:
         if self.hp.target_entropy != "auto":
             raise ValueError(f"target_entropy must be 'auto', got {self.hp.target_entropy!r}")
-        self.target_entropy = {p: -float(self._act_dim[p]) for p in self.PHASES}
+        self.target_entropy = {"clob": -2.0, "auction": -3.0}
         self.log_alpha = {
             p: torch.zeros(1, requires_grad=True, device=self.device) for p in self.PHASES
         }
@@ -72,9 +79,8 @@ class SACAgent(ContinuousActorCriticAgent):
 
     def _target_next_action(self, phase: str, next_obs: torch.Tensor, cadm):
         """Sample from the CURRENT actor (SAC has no target actor); return the
-        log-prob for the entropy term. No cancel clamp: it would break the
-        log-prob, and the critic already internalizes the env mask (it is
-        trained on masked dynamics; docs/continuous_action_extension.md §5)."""
+        log-prob for the entropy term.  Like DDPG/TD3 after the comparability
+        cleanup, this is a proposal action; Gamma_x applies the env mask."""
         return self.actor[phase](next_obs)
 
     def _min_online_q(self, phase: str, obs: torch.Tensor, action: torch.Tensor) -> torch.Tensor:

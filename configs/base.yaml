@@ -4,7 +4,8 @@
 # INSTANTIATION SITES — synthetic: main.py:1417-1422 (now legacy/main.py),
 # historical: data.py:1386-1398 (now legacy/data.py) — extracted in
 # audit/PARAMS_FROM_CODE.md. Constructor defaults and the paper table
-# tab:params_generative are NOT authoritative.
+# tab:params_generative are NOT authoritative, except where a later author
+# ruling explicitly changes a calibration (currently D21 for p1/p2).
 #
 # Setting-specific values (experiment name/episodes, mid-price model,
 # lambda0, AS sigma rule) live in synthetic_rough_heston.yaml /
@@ -15,11 +16,16 @@ experiment:
   setting: ""        # set by the setting overlay
   episodes: 0        # E; set by the setting overlay (2000 synth / 1000 hist)
   master_seed: 42    # legacy MASTER seed (main.py:1410); scheme rebuilt per D10
-  results_root: results
+  seeds: [42]        # explicit seed list; multi-seed launchers override this list
+  ablation_label: H_on__shaping_on__auction_on
+  auction_enabled: true
+  results_root: results/revision_v2
+  artifact_schema_version: 2
 
 grid:
   tau_op: 120        # tau_op (auction open); main.py:1417 / data.py:1387
   tau_cl: 150        # tau_cl (clearing time); main.py:1417 / data.py:1387
+  h: 30              # fixed auction horizon in action intervals
   T_physical: 150.0  # physical session length; dt = T/tau_cl = 1.0
   alpha: 0.01        # tick size alpha; main.py:1422 / data.py:1394
   S0: 100.0          # initial mid S^mid_0; main.py:263 (CSV pre-normalized, D13)
@@ -31,85 +37,93 @@ clob_flow:
                      # value; historical_sp500.yaml overrides to 60.0, data.py:1392)
   v_m: 2.0           # Pareto scale v_m; main.py:1418
   gamma_m: 2.5       # Pareto shape gamma_m; main.py:1419
-  V_max: 30          # max order volume V (Pareto cap); ctor arg `V`; main.py:1417
+  V: 30              # exogenous market-order cap (strategic V_max is below)
   V_inf: 15.0        # top-of-book scale V_inf (Beta multiplier); `V_top_max`; main.py:1421
   beta_a: 2.0        # Beta shape a; main.py:1422
   beta_b: 5.0        # Beta shape b; main.py:1422
-  depth_decay: 0.5   # geometric depth decay rho; main.py:1422
-  Lc: 12             # CLOB book levels per side; main.py:1417
+  rho_lob: 0.5       # geometric CLOB depth decay
+  L_max: 12          # maximum CLOB book depth
 
 auction_flow:
   p1: 1.0            # new exogenous MM arrival prob. LEGACY/D6 value: 0.3
-                     # (main.py:592). DELIBERATE OVERRIDE (2026-06-15): with p2=0
-                     # this guarantees >=1 exogenous MM at every fresh auction solve
-                     # (from t_{n+2} on), bounding the clearing denominator
-                     # (sum K_i + sum K^a) away from 0 and removing the D->0 clearing
-                     # singularity. TRADE-OFF: densifies auction liquidity relative to
-                     # the thin-book closing regime of the paper's calibration (see the
-                     # singularity discussion / pending AUDIT note).
+                     # (main.py:592). AUTHOR-RESOLVED OVERRIDE (D21, 2026-08-28):
+                     # with p2=0 this guarantees >=1 exogenous MM in every clearing
+                     # solve, including the end-of-auction-open solve. It bounds the
+                     # denominator sum K_i + sum K^a away from zero and prevents the
+                     # continuous-action small-positive-slope exploit. TRADE-OFF: this
+                     # is a denser-liquidity regime than the legacy calibration; see
+                     # audit/AUDIT.md F.2.
   p2: 0.0            # exogenous MM cancellation prob. LEGACY/D6 value: 0.2
-                     # (main.py:597). Set to 0 so arrived MMs persist (with p1=1
-                     # this makes >=1 MM present at every fresh solve; see p1).
+                     # (main.py:597). D21: arrived MMs persist; see p1.
   p3: 0.3            # new taker arrival prob per side (independent); main.py:601,609
   p4: 0.05           # taker cancellation prob per side. RULING D7: the legacy
                      # Bernoulli(0.1) x fair-coin construction (main.py:616-625)
                      # has EFFECTIVE rate 0.05; implemented as one Bernoulli(0.05).
-  K_min: 0.1         # exogenous MM slope law U_1, K ~ U(U_1, U_2); main.py:593
-  K_max: 2.0         # U_2; main.py:593
-  price_band_ticks: 10  # S ~ S_mid(frozen at tau_op) + alpha*U{-10..10};
-                        # `price_band_ticks`; main.py:1421 (M_1 = -10, M_2 = 10)
-  La: 12             # cap on # exogenous auction MMs (extra, AUDIT N8); main.py:1417
-  L_max: 100         # cap on N^zeta / nu-array size (paper script-N); main.py:1418
+  D_mu: 0.1          # numerical floor on active exogenous auction slope
+  U1: 0.1            # exogenous schedule slope lower bound
+  U2: 2.0            # exogenous schedule slope upper bound
+  M1: -10            # exogenous schedule price-offset lower bound (ticks)
+  M2: 10             # exogenous schedule price-offset upper bound (ticks)
 
 midprice:
   model: ""          # "rough_heston" | "historical"; set by the setting overlay
 
 algo1:
-  tau: 0.95          # Algorithm-1 smoothing tau. RULING D15: 0.95 in BOTH settings
-                     # (legacy historical passed the RL discount 0.99 into this slot
-                     # by mistake, data.py:1391 — not reproduced).
-  H0_from_mid: true  # H_0 = initial mid (= 100); main.py:264 / data.py:176
+  H0: 100.0          # explicit projected-clearing initialization
+  eta_H: 0.95        # explicit smoothing coefficient
 
 reward:
-  k_star: 1000       # k* in f_c; legacy kappa = 0.1 = 1/(k* alpha) at alpha = 0.01
-                     # (main.py:1418); ruling D5: NO clamp of the multiplier at 1
+  k_star: 1000       # k* in f_c; f_c(u)=min(1,u_+/(k*alpha))
   lambda_inv: 0.5    # terminal inventory penalty lambda; `lambda_param`; main.py:1417
   q: 1.0             # wrong-side penalty q in f_a; main.py:1418
   d: 0.1             # cancellation cost unit d (cost d_t*c_t, d_t = (t-n-1)d, D4);
                      # main.py:1418
+  shaping_enabled: true
+  clawback_shaping: false
   numerical_guard: false  # D8: optional far-out float guard, default OFF
   # numerical_guard_bound: 1.0e9  # |I_tau_cl| threshold when the guard is on
   #                               # (dataclass default; far outside the
   #                               # economic range, loud log if it binds)
 
 rl:
-  chi: 0.99          # discount chi; GAMMA, main.py:1440 / data.py:1355 (D6, D15)
+  chi: 1.0           # revised problem is undiscounted for every method
+  discount_mode: undiscounted  # every nonterminal Bellman coefficient is one
+  checkpoint_metric: risk_adjusted_pnl   # Pi_lambda; shaped return trains but
+                                         # never selects the reported policy
+  normalizer_fit_episodes: 32  # dedicated training-only random-policy paths;
+                               # frozen before learning and saved in checkpoints
+  validation_size: 24
+  validation_frequency_episodes: 100
+  validation_patience_evals: 5
+  test_size: 100
+  h_cl_feature_enabled: true
 
 actions:
-  # CLOB grid: {(0,0)} u {1..30} x {1..12} = 361 actions; main.py:1424-1427.
-  clob_volume_max: 30      # = V_max
-  clob_delta_min: 1        # book-level offset delta (plus the (0,0) no-op)
-  clob_delta_max: 12       # = Lc; explicit grid, no silent clamping (AUDIT N6)
-  # Auction grid: K in {0} u linspace(1, 33.33, 10), off in {-12..12},
-  # c in {0,1} = 550 actions; main.py:1429-1435. K^a = 0 == abstain.
-  auction_K_grid_min: 1.0
-  auction_K_grid_max: 33.333333333333336  # K_MAX = 10*I0/V_max; main.py:1430
-  auction_K_grid_n: 10
-  auction_offset_max: 12   # S^a = S_mid + off*alpha
+  # CLOB: one wait plus v=1..30, delta=0..12 => 391 actions.
+  V_max: 30
+  L_max: 12
+  # Auction: K=(10/3)k, k=0..10; b=-25..25; canonical K=0 actions.
+  # Enabled cancellation: 2 + 2*10*51 = 1022; disabled: 1 + 10*51 = 511.
+  beta: 3.3333333333333335
+  K_max: 10
+  B_max: 25
+  auction_cancel_mode: enabled  # headline full model; use the no-cancellation
+                                # treatment overlay for the matched sensitivity
 
 features:
-  # Exact legacy-pruned lists (ruling D11; AUDIT A.7). Names use the PAPER
-  # sign convention (D3): n_buy = paper N^+ (buying MOs; legacy `N_minus`).
-  clob:                    # feat_clob, main.py:1443-1450 — 8 dims
-    [inv_norm, h_cl, s_mid, depth_ask_norm, depth_bid_norm,
-     top_ask_norm, top_bid_norm, t_norm]
-  auction:                 # feat_auction, main.py:1452-1457 — 7 dims
-    [inv_norm, h_cl, s_mid, n_mm_norm, n_buy_norm, n_sell_norm, t_norm]
+  # Exact common manuscript order; phase-inactive coordinates are zero.
+  clob: &common_features
+    [time, inventory, h_cl, s_mid, decision_index,
+     depth_ask, depth_bid, top_ask, top_bid,
+     n_mm, n_buy, n_sell, cancel_admissible,
+     own_slope, own_weighted_quote, exogenous_slope,
+     auction_imbalance, exogenous_weighted_quote]
+  auction: *common_features
 
 benchmark:
   z: 10.0                  # auction heuristic slope multiplier z; main.py:1048
   dust_threshold: 0.01     # q < 1e-2 => no auction order; main.py:1043
-  as_n_samples: 10000      # K-hat regression samples; main.py:1935 (paper says 5000)
+  as_n_samples: 5000       # revised manuscript baseline
   as_gamma: 0.0            # AS risk aversion gamma -> 0; main.py:1940
   as_sigma_rule: ""        # "pooled_paths" | "single_path"; set by the setting overlay
   as_sigma_n_paths: 100    # simulated mid paths pooled for sigma (pooled_paths rule)

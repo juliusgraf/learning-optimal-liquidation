@@ -25,34 +25,8 @@ algo:
                                 # O(1e3-1e6); the MSE critic squared them into
                                 # losses up to ~1e18 at reward_scale=1.0 (full
                                 # divergence). 1e-3 keeps Bellman targets O(1-100).
-    reward_clip: 8.0            # symmetric clip on the SCALED reward in replay,
-                                # CALIBRATED to the measured honest reward envelope
-                                # (seed-42 reproduce_all analysis). The largest
-                                # LEGITIMATE transition is the terminal reward,
-                                # dominated by the inventory penalty lambda*I_max^2 =
-                                # 0.5*100^2 = 5000 plus bounded execution PnL; AS/TWAP
-                                # terminals reach ~5500 paper = ~5.5 scaled. clip=8.0
-                                # sits just ABOVE this, so it never truncates the real
-                                # objective signal, yet bounds the critic target to the
-                                # honest scale. The fictive per-step auction reward
-                                # K^a*H_cl*(H_cl-S^a) is unbounded: the actor quotes S^a
-                                # above the frozen mid, inflating the cached H_cl to
-                                # ~115-136 (occasionally ~1e4), so single steps reach
-                                # ~1.6e5 paper (scaled ~160) and clearing-blowup steps
-                                # ~1e9 (scaled ~1e6). clip=8.0 suppresses those ~20x and
-                                # ~1e5x respectively -- killing the 1e9-1e11 critic-target
-                                # divergence seen in TD3/DDPG/SAC. The previous 25.0 left
-                                # the target ~4.5x a legit terminal (too loose). Residual
-                                # per-step over-quoting (a shaping-reward effect the clip
-                                # only partly damps) is a secondary, learner-side concern.
-                                # test_reward_scaling.py pins the calibration band.
     activation: relu            # mlp activation (relu | tanh | elu)
     device: cpu                 # torch device
-    continuous_cancel: threshold  # auction cancel: threshold (default) | never
-    eval_interval_episodes: 100 # greedy eval cadence (deterministic actor)
-    eval_n_seeds: 24            # RETUNE 2026-06-15: 8 was too noisy for best.pt
-                                # selection / the eval curve; 24 (matches DQN).
-    final_eval_n_seeds: 100
     checkpoint_interval_episodes: 100
     # -- DDPG-specific --------------------------------------------------------
     actor_lr: 1.0e-4            # Adam, actor
@@ -69,14 +43,3 @@ algo:
                                 # target tracking (less overestimation feedback).
     exploration_noise: gaussian # gaussian | ou (eval: none)
     exploration_noise_std: 0.1  # noise scale (x action half-range)
-
-# Continuous agents normalize the raw ~100-valued price features (centered at
-# S0, clipped) so they do not dominate the O(1) features; the discrete DQN
-# keeps the legacy raw h_cl/s_mid (configs/base.yaml). Lists otherwise mirror
-# base.yaml exactly (only h_cl->h_cl_norm, s_mid->s_mid_norm).
-features:
-  clob:
-    [inv_norm, h_cl_norm, s_mid_norm, depth_ask_norm, depth_bid_norm,
-     top_ask_norm, top_bid_norm, t_norm]
-  auction:
-    [inv_norm, h_cl_norm, s_mid_norm, n_mm_norm, n_buy_norm, n_sell_norm, t_norm]

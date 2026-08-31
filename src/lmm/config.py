@@ -18,6 +18,7 @@ import argparse
 import dataclasses
 import typing
 from dataclasses import dataclass, field
+from datetime import date
 from pathlib import Path
 from typing import Any, Optional, Sequence, Union
 
@@ -68,18 +69,19 @@ class ExperimentMeta:
     episodes: int  # E; legacy 2000 (synthetic) / 1000 (historical)
     master_seed: int  # single master seed; ruling D10
     results_root: Path  # gitignored output root
+    artifact_schema_version: int = 2
+    seeds: tuple[int, ...] = (42,)
+    ablation_label: str = "H_on__shaping_on__auction_on"
+    auction_enabled: bool = True
 
 
 @dataclass(frozen=True)
 class GridParams:
-    """Time grid and price grid (sec:marketmodel; CLAUDE.md grid convention).
-
-    Grid 0 = t_0 < ... < t_n < tau_op = t_{n+1} < ... < t_m < tau_cl = t_{m+1};
-    n = tau_op - 1, m = tau_cl - 1; episode horizon m + 2 steps.
-    """
+    """Time and price grid, including the explicit auction horizon ``h``."""
 
     tau_op: int  # tau_op; main.py:1417 / data.py:1386 => 120
     tau_cl: int  # tau_cl; => 150
+    h: int  # number of auction action intervals; revised baseline => 30
     T_physical: float  # physical session length; dt = T/tau_cl = 1.0
     alpha: float  # tick size alpha; => 0.01
     S0: float  # initial mid price S^mid_0; main.py:263 => 100.0
@@ -89,60 +91,112 @@ class GridParams:
 
 @dataclass(frozen=True)
 class ClobFlowParams:
-    """CLOB-phase exogenous flow (Algorithm 2 `alg:generative_model`, Sec. 2.1)."""
+    """CLOB exogenous flow; ``V`` is distinct from strategic ``V_max``."""
 
     lambda0: float  # Poisson intensity lambda_0 per side; 1.0 synth / 60.0 hist
     v_m: float  # Pareto scale v_m; main.py:1418 => 2.0
     gamma_m: float  # Pareto shape gamma_m; => 2.5
-    V_max: int  # max order volume V (Pareto cap, volume grid max); => 30
+    V: int  # exogenous market-order Pareto cap; => 30
     V_inf: float  # top-of-book scale V_inf (Beta multiplier); => 15.0
     beta_a: float  # Beta shape a; => 2.0
     beta_b: float  # Beta shape b; => 5.0
-    depth_decay: float  # geometric depth decay rho; => 0.5
-    Lc: int  # book levels per side; => 12
+    rho_lob: float  # geometric CLOB depth decay; => 0.5
+    L_max: int  # maximum CLOB depth; => 12
+
+    @property
+    def V_max(self) -> int:
+        """Compatibility alias used by the existing matching engine."""
+        return self.V
+
+    @property
+    def depth_decay(self) -> float:
+        return self.rho_lob
+
+    @property
+    def Lc(self) -> int:
+        return self.L_max
 
 
 @dataclass(frozen=True)
 class AuctionFlowParams:
-    """Auction-phase exogenous flow (Algorithm 2 lines 12-17; rulings D6-D7)."""
+    """Auction exogenous proposal parameters.
 
-    p1: float  # new exogenous MM arrival prob; main.py:592 => 0.3
-    p2: float  # exogenous MM cancellation prob; main.py:597 => 0.2
+    ``U1``/``U2`` are deliberately distinct from the strategic slope-grid
+    index bound ``ActionGridParams.K_max``.
+    """
+
+    p1: float  # configured exogenous-MM arrival probability
+    p2: float  # configured exogenous-MM cancellation probability
     p3: float  # new taker arrival prob per side (independent); => 0.3
     # Taker cancellation prob per side. Ruling D7: single Bernoulli(0.05);
     # legacy realized it as Bernoulli(0.1) gated by a fair coin (same law).
     p4: float
-    K_min: float  # exogenous MM slope law U_1; K ~ U(K_min, K_max); => 0.1
-    K_max: float  # U_2; => 2.0
-    price_band_ticks: int  # quote band: S ~ S_mid(frozen) + alpha*U{-band..band}; => 10
-    La: int  # cap on # exogenous auction MMs (extra, AUDIT N8); => 12
-    L_max: int  # cap on N^zeta / nu-array size (paper script-N); => 100
+    D_mu: float  # numerical floor on total active exogenous slope; => 0.1
+    U1: float  # exogenous schedule slope lower bound; => 0.1
+    U2: float  # exogenous schedule slope upper bound; => 2.0
+    M1: int  # exogenous schedule price-offset lower bound in ticks; => -10
+    M2: int  # exogenous schedule price-offset upper bound in ticks; => 10
+
+    @property
+    def K_min(self) -> float:
+        return self.U1
+
+    @property
+    def K_max(self) -> float:
+        return self.U2
+
+    @property
+    def price_band_ticks(self) -> int:
+        """Compatibility view for the current symmetric-band generator."""
+        return max(abs(self.M1), abs(self.M2))
 
 
 @dataclass(frozen=True)
 class RoughHestonParams:
-    """Rough Heston scheme of Richard et al. (sub:rough; ruling D14: keep exactly)."""
+    """Rough-Heston parameters with rho disambiguated from CLOB depth."""
 
     H: float  # Hurst H; main.py:1421 => 0.1
-    rho: float  # correlation rho; => -0.7
+    rho_h: float  # price/variance Brownian correlation; => -0.7
     v0: float  # V_0; => 0.02
-    theta: float  # long-run variance theta; => 0.04
-    kappa: float  # mean reversion (paper's lambda); => 0.3
-    xi: float  # vol-of-vol (paper's nu); => 0.3
-    seconds_per_year: float  # physical-time scaling; main.py:25-33 => 252*6.5*3600
+    theta: float  # revised variance-drift level; => 0.02
+    varsigma: float  # variance mean-reversion coefficient; => 0.3
+    nu: float  # volatility of volatility; => 0.3
+    s_star: float  # trading seconds per year; => 252*6.5*3600
+
+    @property
+    def rho(self) -> float:
+        return self.rho_h
+
+    @property
+    def kappa(self) -> float:
+        return self.varsigma
+
+    @property
+    def xi(self) -> float:
+        return self.nu
+
+    @property
+    def seconds_per_year(self) -> float:
+        return self.s_star
 
 
 @dataclass(frozen=True)
 class HistoricalParams:
     """Historical mid-path replay (sub:historical; ruling D13)."""
 
-    csv_path: Path  # frozen experimental input (legacy/data.csv)
+    csv_path: Path  # frozen multi-session experimental input
     symbols: tuple[str, ...]  # data.py:1651 => MSFT, JPM, PG, GOOGL, CAT
     normalize_first: float  # --normalize first=100 default (D13)
-    n_rows: int  # rows consumed per path; data.py:1654 => 120 (= tau_op)
+    n_rows: int  # compatibility loader minimum; env regularizes through tau_op
     date: str = ""  # session date provenance (Phase 6: never a hard-coded constant)
-    path_policy: str = "fixed"  # "fixed" = same realized path every episode (legacy,
-    # paper "same realized price path"); "bootstrap" is reserved (deferred, Phase 6)
+    path_policy: str = "fixed"  # active historical config uses "split_pool";
+    # "fixed" is retained for diagnostics and "bootstrap" remains reserved
+    timezone: str = "America/New_York"
+    missing_data_treatment: str = "error"
+    split_id: str = ""
+    train_date_range: tuple[str, ...] = ()
+    validation_date_range: tuple[str, ...] = ()
+    test_date_range: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -156,11 +210,19 @@ class MidPriceConfig:
 
 @dataclass(frozen=True)
 class Algo1Params:
-    """Algorithm 1, hypothetical clearing price (alg:hyp_clearing_price; D2, D15)."""
+    """Projected CLOB clearing-signal initialization and smoothing."""
 
-    tau: float  # smoothing tau; ruling D15 => 0.95 in BOTH settings
-    H0_from_mid: bool  # H_0 = initial mid (= 100); main.py:264
-    H0: Optional[float] = None  # explicit H_0; required iff H0_from_mid is false
+    H0: float  # explicit initial signal; revised baseline => 100
+    eta_H: float  # smoothing coefficient; revised baseline => 0.95
+
+    @property
+    def tau(self) -> float:
+        return self.eta_H
+
+    @property
+    def H0_from_mid(self) -> bool:
+        """Compatibility flag: revised configs always use explicit ``H0``."""
+        return False
 
 
 @dataclass(frozen=True)
@@ -171,6 +233,8 @@ class RewardParams:
     lambda_inv: float  # terminal inventory penalty lambda; main.py:1417 => 0.5
     q: float  # wrong-side penalty q in f_a; => 1.0
     d: float  # cancellation cost unit d (cost d_t*c_t, D4); => 0.1
+    shaping_enabled: bool  # common CLOB/interim/terminal shaping switch
+    clawback_shaping: bool  # cancellation clawback ablation; baseline false
     numerical_guard: bool  # D8: optional far-out float guard, default OFF
     # |I_tau_cl| threshold when the guard is on — far outside the economic
     # range (|I| <= I0 + auction exposure ~ O(10^3)); binding is logged
@@ -180,27 +244,60 @@ class RewardParams:
 
 @dataclass(frozen=True)
 class RLParams:
-    """Objective (P) constants shared by all algorithms."""
+    """Learning and validation-objective constants shared by all algorithms."""
 
-    chi: float  # discount chi; GAMMA main.py:1440 / data.py:1355 => 0.99 (D15)
+    chi: float  # revised finite-horizon Bellman factor; must equal one
+    discount_mode: str = "undiscounted"
+    # Periodic validation selects best.pt on Pi_lambda, never shaped return.
+    checkpoint_metric: str = "risk_adjusted_pnl"
+    # Dedicated training-only calibration episodes used to fit the frozen
+    # common feature normalizer before any learning update.
+    normalizer_fit_episodes: int = 32
+    validation_size: int = 24
+    validation_frequency_episodes: int = 100
+    validation_patience_evals: int = 5
+    test_size: int = 100
+    h_cl_feature_enabled: bool = True
 
 
 @dataclass(frozen=True)
 class ActionGridParams:
-    """Discrete action grids (AUDIT A.8; grids are config choices, D6).
+    """Strategic discrete action envelope from manuscript Section 9."""
 
-    CLOB: {(0,0)} u {1..volume_max} x {delta_min..delta_max} (361 actions).
-    Auction: K in {0} u linspace(K_grid_min, K_grid_max, K_grid_n), offset in
-    {-offset_max..offset_max}, c in {0,1} (550 actions). K^a = 0 == abstain.
-    """
+    V_max: int  # strategic CLOB submitted-volume cap; => 30
+    L_max: int  # strategic CLOB quote offsets are 0..L_max; => 12
+    beta: float  # strategic auction slope step; => 10/3
+    K_max: int  # maximum strategic slope index k; => 10
+    B_max: int  # strategic auction price-offset bound; => 25 ticks
+    auction_cancel_mode: str = "enabled"  # "enabled" (1022) | "never" (511)
 
-    clob_volume_max: int  # main.py:1424 => 30 (= V_max)
-    clob_delta_min: int  # => 1 (plus the (0,0) no-op)
-    clob_delta_max: int  # => 12; N6: defined explicitly, no silent clamping
-    auction_K_grid_min: float  # => 1.0
-    auction_K_grid_max: float  # K_MAX = 10*I0/V_max; main.py:1430 => 33.3333...
-    auction_K_grid_n: int  # => 10 (plus K = 0)
-    auction_offset_max: int  # S^a = S_mid + off*alpha, off in {-12..12} => 12
+    @property
+    def clob_volume_max(self) -> int:
+        return self.V_max
+
+    @property
+    def clob_delta_min(self) -> int:
+        return 0
+
+    @property
+    def clob_delta_max(self) -> int:
+        return self.L_max
+
+    @property
+    def auction_K_grid_min(self) -> float:
+        return self.beta
+
+    @property
+    def auction_K_grid_max(self) -> float:
+        return self.beta * self.K_max
+
+    @property
+    def auction_K_grid_n(self) -> int:
+        return self.K_max
+
+    @property
+    def auction_offset_max(self) -> int:
+        return self.B_max
 
 
 @dataclass(frozen=True)
@@ -211,7 +308,7 @@ class FeatureParams:
     """
 
     clob: tuple[str, ...]  # 8 dims; feat_clob main.py:1443-1450
-    auction: tuple[str, ...]  # 7 dims; feat_auction main.py:1452-1457
+    auction: tuple[str, ...]  # revision default adds cancel_admissible to legacy 7 dims
     # Affine normalization for the OPTIONAL price features ``h_cl_norm`` /
     # ``s_mid_norm`` only (the legacy raw ``h_cl`` / ``s_mid`` ignore these):
     # x_norm = clip((x - S0) / price_norm_scale, -clip, +clip), centered at the
@@ -225,13 +322,13 @@ class FeatureParams:
 
 @dataclass(frozen=True)
 class BenchmarkParams:
-    """AS / TWAP benchmarks (sec:benchmark; AUDIT A.9; ruling D16)."""
+    """AS / TWAP benchmarks (sec:benchmark; bounded common envelope, D23)."""
 
     z: float  # auction heuristic slope multiplier z; main.py:1048 => 10.0
     dust_threshold: float  # q < dust => no auction order; => 1e-2
     as_n_samples: int  # K-hat regression samples; main.py:1935 => 10000
     as_gamma: float  # AS risk aversion gamma; => 0.0
-    as_sigma_rule: str  # "pooled_paths" (synthetic) | "single_path" (historical)
+    as_sigma_rule: str  # "pooled_paths" for both active settings; single_path supported
     as_sigma_n_paths: int  # simulated mid paths pooled for sigma (Phase 4)
     twap_delta_mode: str  # "min" => delta = min of the grid = 1
 
@@ -345,6 +442,118 @@ def _deep_merge(base: dict[str, Any], overlay: dict[str, Any]) -> dict[str, Any]
     return out
 
 
+def _migrate_legacy_schema(tree: dict[str, Any]) -> None:
+    """Normalize the immediately preceding resolved-config schema in place.
+
+    This deliberately recognizes only keys renamed by the manuscript
+    revision.  It keeps committed result fixtures readable without weakening
+    the strict unknown-key check for arbitrary misspellings.
+    """
+
+    grid = tree.get("grid")
+    if isinstance(grid, dict) and "h" not in grid:
+        tau_op, tau_cl = grid.get("tau_op"), grid.get("tau_cl")
+        if isinstance(tau_op, int) and isinstance(tau_cl, int):
+            grid["h"] = tau_cl - tau_op
+
+    clob = tree.get("clob_flow")
+    if isinstance(clob, dict):
+        legacy = {"V_max": "V", "depth_decay": "rho_lob", "Lc": "L_max"}
+        for old, new in legacy.items():
+            if old in clob:
+                if new in clob:
+                    raise ConfigError(f"clob_flow: cannot specify both {old!r} and {new!r}")
+                clob[new] = clob.pop(old)
+
+    auction = tree.get("auction_flow")
+    if isinstance(auction, dict):
+        for old, new in (("K_min", "U1"), ("K_max", "U2")):
+            if old in auction:
+                if new in auction:
+                    raise ConfigError(f"auction_flow: cannot specify both {old!r} and {new!r}")
+                auction[new] = auction.pop(old)
+        if "price_band_ticks" in auction:
+            if "M1" in auction or "M2" in auction:
+                raise ConfigError(
+                    "auction_flow: price_band_ticks cannot be mixed with M1/M2"
+                )
+            band = auction.pop("price_band_ticks")
+            auction["M1"], auction["M2"] = -band, band
+        auction.setdefault("D_mu", 0.1)
+
+    midprice = tree.get("midprice")
+    rough = midprice.get("rough_heston") if isinstance(midprice, dict) else None
+    if isinstance(rough, dict):
+        for old, new in (
+            ("rho", "rho_h"),
+            ("kappa", "varsigma"),
+            ("xi", "nu"),
+            ("seconds_per_year", "s_star"),
+        ):
+            if old in rough:
+                if new in rough:
+                    raise ConfigError(
+                        f"midprice.rough_heston: cannot specify both {old!r} and {new!r}"
+                    )
+                rough[new] = rough.pop(old)
+
+    algo1 = tree.get("algo1")
+    if isinstance(algo1, dict):
+        if "tau" in algo1:
+            if "eta_H" in algo1:
+                raise ConfigError("algo1: cannot specify both 'tau' and 'eta_H'")
+            algo1["eta_H"] = algo1.pop("tau")
+        from_mid = algo1.pop("H0_from_mid", None)
+        if algo1.get("H0") is None and from_mid is True:
+            if not isinstance(grid, dict) or "S0" not in grid:
+                raise ConfigError("algo1.H0: cannot infer legacy H0 without grid.S0")
+            algo1["H0"] = grid["S0"]
+
+    reward = tree.get("reward")
+    if isinstance(reward, dict):
+        reward.setdefault("shaping_enabled", True)
+        reward.setdefault("clawback_shaping", False)
+
+    actions = tree.get("actions")
+    if isinstance(actions, dict) and any(
+        key in actions
+        for key in (
+            "clob_volume_max",
+            "clob_delta_min",
+            "clob_delta_max",
+            "auction_K_grid_min",
+            "auction_K_grid_max",
+            "auction_K_grid_n",
+            "auction_offset_max",
+        )
+    ):
+        canonical = {"V_max", "L_max", "beta", "K_max", "B_max"}
+        overlap = canonical.intersection(actions)
+        if overlap:
+            raise ConfigError(
+                f"actions: cannot mix legacy grid keys with canonical keys {sorted(overlap)}"
+            )
+        try:
+            actions["V_max"] = actions.pop("clob_volume_max")
+            actions.pop("clob_delta_min")
+            actions["L_max"] = actions.pop("clob_delta_max")
+            old_k_min = actions.pop("auction_K_grid_min")
+            old_k_value_max = actions.pop("auction_K_grid_max")
+            old_k_index_max = actions.pop("auction_K_grid_n")
+            actions["B_max"] = actions.pop("auction_offset_max")
+        except KeyError as exc:
+            raise ConfigError(
+                f"actions: incomplete legacy action-grid schema; missing {exc.args[0]!r}"
+            ) from None
+        if old_k_index_max <= 0:
+            raise ConfigError("actions.auction_K_grid_n must be positive")
+        actions["beta"] = old_k_value_max / old_k_index_max
+        actions["K_max"] = old_k_index_max
+        # ``auction_K_grid_min`` was the old first sampled value.  The revised
+        # grid is defined by beta*k, so it is intentionally not carried over.
+        _ = old_k_min
+
+
 def _apply_override(tree: dict[str, Any], spec: str) -> None:
     """Apply one dotted override ``a.b.c=value`` (value parsed as YAML) in place."""
     if "=" not in spec:
@@ -360,6 +569,109 @@ def _apply_override(tree: dict[str, Any], spec: str) -> None:
             raise ConfigError(f"override {spec!r}: {k!r} is not a mapping")
         node = nxt
     node[keys[-1]] = yaml.safe_load(raw)
+
+
+def _parse_date_range(
+    name: str, values: tuple[str, ...], *, required: bool
+) -> tuple[date, date] | None:
+    if not values:
+        if required:
+            raise ConfigError(
+                f"midprice.historical.{name}: a [start, end] range is required"
+            )
+        return None
+    if len(values) != 2:
+        raise ConfigError(
+            f"midprice.historical.{name}: expected [start, end], got {values!r}"
+        )
+    try:
+        start, end = (date.fromisoformat(value) for value in values)
+    except ValueError as exc:
+        raise ConfigError(
+            f"midprice.historical.{name}: dates must use YYYY-MM-DD"
+        ) from exc
+    if end < start:
+        raise ConfigError(
+            f"midprice.historical.{name}: end {end} precedes start {start}"
+        )
+    return start, end
+
+
+def _validate_experiment_config(cfg: ExperimentConfig) -> ExperimentConfig:
+    """Enforce cross-field contracts that a dataclass alone cannot express."""
+    if cfg.grid.h != cfg.grid.tau_cl - cfg.grid.tau_op:
+        raise ConfigError("grid.h must equal grid.tau_cl-grid.tau_op")
+    if cfg.rl.chi != 1.0:
+        raise ConfigError("the revised finite-horizon objective requires rl.chi=1")
+    if cfg.rl.discount_mode != "undiscounted":
+        raise ConfigError("the revised objective requires rl.discount_mode='undiscounted'")
+    if cfg.experiment.artifact_schema_version < 2:
+        raise ConfigError(
+            "revised runs require experiment.artifact_schema_version >= 2"
+        )
+    if cfg.rl.normalizer_fit_episodes <= 0:
+        raise ConfigError("rl.normalizer_fit_episodes must be positive")
+    if min(
+        cfg.rl.validation_size,
+        cfg.rl.validation_frequency_episodes,
+        cfg.rl.validation_patience_evals,
+        cfg.rl.test_size,
+    ) <= 0:
+        raise ConfigError("validation/test sizes, frequency, and patience must be positive")
+
+    historical = cfg.midprice.historical
+    if cfg.midprice.model == "historical":
+        if historical is None:
+            raise ConfigError(
+                "midprice.model=historical requires midprice.historical"
+            )
+        # The committed one-session fixture remains readable for unit tests and
+        # legacy characterization only.  Publication runs must provide three
+        # explicit, chronological, nonoverlapping date ranges.
+        compatibility = historical.split_id.startswith("legacy_")
+        ranges = {
+            "train_date_range": _parse_date_range(
+                "train_date_range",
+                historical.train_date_range,
+                required=not compatibility,
+            ),
+            "validation_date_range": _parse_date_range(
+                "validation_date_range",
+                historical.validation_date_range,
+                required=not compatibility,
+            ),
+            "test_date_range": _parse_date_range(
+                "test_date_range",
+                historical.test_date_range,
+                required=not compatibility,
+            ),
+        }
+        if not compatibility:
+            train = ranges["train_date_range"]
+            validation = ranges["validation_date_range"]
+            test = ranges["test_date_range"]
+            assert train is not None and validation is not None and test is not None
+            if not (train[1] < validation[0] and validation[1] < test[0]):
+                raise ConfigError(
+                    "historical ranges must be chronological and nonoverlapping: "
+                    "train end < validation start and validation end < test start"
+                )
+        if historical.missing_data_treatment not in ("error", "ffill"):
+            raise ConfigError(
+                "midprice.historical.missing_data_treatment must be error|ffill"
+            )
+        if historical.path_policy not in ("fixed", "split_pool", "bootstrap"):
+            raise ConfigError(
+                "midprice.historical.path_policy must be fixed|split_pool|bootstrap"
+            )
+    elif cfg.midprice.model == "rough_heston":
+        if cfg.midprice.rough_heston is None:
+            raise ConfigError(
+                "midprice.model=rough_heston requires midprice.rough_heston"
+            )
+    else:
+        raise ConfigError(f"unknown midprice.model {cfg.midprice.model!r}")
+    return cfg
 
 
 # ---------------------------------------------------------------------------
@@ -391,7 +703,8 @@ def load_config(
         merged = _deep_merge(merged, loaded)
     for spec in overrides:
         _apply_override(merged, spec)
-    return _build_dataclass(ExperimentConfig, merged)
+    _migrate_legacy_schema(merged)
+    return _validate_experiment_config(_build_dataclass(ExperimentConfig, merged))
 
 
 def build_hyperparams(dc_type: type, mapping: dict[str, Any]) -> Any:

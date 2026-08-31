@@ -18,12 +18,12 @@ midprice:
   rough_heston:           # Richard et al. scheme, kept exactly (ruling D14);
                           # params main.py:1421-1422 (match Abi Jaber-El Euch)
     H: 0.1                # Hurst H
-    rho: -0.7             # price-vol correlation
+    rho_h: -0.7           # price-vol correlation (distinct from rho_lob)
     v0: 0.02              # V_0
-    theta: 0.04           # long-run variance
-    kappa: 0.3            # mean reversion (paper's lambda)
-    xi: 0.3               # vol-of-vol (paper's nu)
-    seconds_per_year: 5896800.0  # 252 * 6.5 * 3600; main.py:25-33 (1 grid unit = 1 s)
+    theta: 0.02           # revised variance-drift level
+    varsigma: 0.3         # mean reversion
+    nu: 0.3               # vol-of-vol
+    s_star: 5896800.0     # 252 * 6.5 * 3600 trading seconds/year
 
 benchmark:
   as_sigma_rule: pooled_paths   # std of log-returns pooled over training paths;

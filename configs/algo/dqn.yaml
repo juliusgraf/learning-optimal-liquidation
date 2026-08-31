@@ -61,9 +61,3 @@ algo:
                                 # 300: keeps mild exploration through the region
                                 # where the policy used to peak-then-collapse.
     epsilon_warmup_episodes: 100
-    eval_interval_episodes: 100 # greedy eval cadence (epsilon = 0)
-    eval_n_seeds: 24            # WIDENED from 8 (2026-06-15): best.pt is selected
-                                # on this (disjoint) validation set; 8 was too
-                                # noisy to trust the selection / the eval curve.
-                                # Still << final_eval_n_seeds=100 (the test set).
-    final_eval_n_seeds: 100

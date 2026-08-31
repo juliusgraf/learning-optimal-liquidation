@@ -77,7 +77,7 @@ def spawn_child(bundle: SeedBundle, component: str) -> np.random.Generator:
     """Spawn a fresh, reproducible child generator from a component's sequence.
 
     Successive calls for the same component yield a deterministic sequence of
-    independent generators (used e.g. for per-episode env seeds; the regret
+    independent generators (used e.g. for per-episode env seeds; the paired
     estimator replays the same children for benchmark episodes — CRN).
     """
     if component not in bundle.sequences:

@@ -23,7 +23,7 @@ class DDPGHyperparams(ContinuousHyperparams):
     """DDPG-specific knobs (configs/algo/ddpg.yaml)."""
 
     exploration_noise: str  # "gaussian" | "ou"
-    exploration_noise_std: float  # noise scale (x action half-range)
+    exploration_noise_std: float  # standard deviation in normalized [-1, 1] space
 
 
 class DDPGAgent(ContinuousActorCriticAgent):

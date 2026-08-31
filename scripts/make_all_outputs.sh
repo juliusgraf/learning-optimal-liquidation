@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Regenerate every figure and table from the saved outputs of all FINISHED runs
-# (those with checkpoints/final.pt). Backfills regret CSVs if missing, produces
+# (those with checkpoints/final.pt). Backfills paired-difference CSVs if missing, produces
 # per-run figures/tables, then the cross-algorithm combined figures/tables per
 # setting under results/<setting>/_combined/. Does NOT train.
 #
@@ -29,8 +29,9 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ ! -d results ]]; then
-  echo "no results/ directory; run a run_*.sh script first" >&2
+RESULTS_ROOT="results/revision_v2"
+if [[ ! -d "$RESULTS_ROOT" ]]; then
+  echo "no $RESULTS_ROOT directory; run a run_*.sh script first" >&2
   exit 1
 fi
 
@@ -41,7 +42,7 @@ echo "== discovering finished runs (checkpoints/final.pt) =="
 finished=()
 while IFS= read -r ckpt; do
   finished+=("$(dirname "$(dirname "$ckpt")")")
-done < <(find results -type f -path '*/checkpoints/final.pt' 2>/dev/null | sort)
+done < <(find "$RESULTS_ROOT" -type f -path '*/checkpoints/final.pt' 2>/dev/null | sort)
 
 if [[ ${#finished[@]} -eq 0 ]]; then
   echo "no finished runs found (need checkpoints/final.pt)" >&2
@@ -53,8 +54,8 @@ printf '  %s\n' "${finished[@]}"
 for rd in "${finished[@]}"; do
   echo "== per-run outputs: $rd =="
   if [[ -f "$rd/eval/records.csv" ]]; then
-    [[ -f "$rd/eval/regret_as.csv" ]]   || python3 -m lmm.experiments.regret --run-dir "$rd" --benchmark as || true
-    [[ -f "$rd/eval/regret_twap.csv" ]] || python3 -m lmm.experiments.regret --run-dir "$rd" --benchmark twap || true
+    [[ -f "$rd/eval/policy_difference_as.csv" ]]   || python3 -m lmm.experiments.policy_differences --run-dir "$rd" --benchmark as || true
+    [[ -f "$rd/eval/policy_difference_twap.csv" ]] || python3 -m lmm.experiments.policy_differences --run-dir "$rd" --benchmark twap || true
   else
     echo "  WARNING: no eval/records.csv in $rd (re-run its run_*.sh)" >&2
   fi
@@ -64,7 +65,7 @@ done
 
 # -- combined cross-algorithm outputs per setting (single seed, CRN-safe) -----
 echo "== combined cross-algorithm outputs per setting =="
-for setting_dir in results/*/; do
+for setting_dir in "$RESULTS_ROOT"/*/; do
   setting="$(basename "$setting_dir")"
   [[ "$setting" == "_combined" ]] && continue
 
@@ -112,8 +113,8 @@ for setting_dir in results/*/; do
   fi
   echo "  setting=$setting seed=$target (${#group[@]} runs)"
   [[ -n "$skipped" ]] && echo "    excluded from combined (other seeds):$skipped (pass --seed to choose)"
-  python3 -m lmm.experiments.make_figures --run-dir "${group[@]}" --out "results/${setting}/_combined/figures"
-  python3 -m lmm.experiments.make_tables  --run-dir "${group[@]}" --out "results/${setting}/_combined/tables"
+  python3 -m lmm.experiments.make_figures --run-dir "${group[@]}" --out "$RESULTS_ROOT/${setting}/_combined/figures"
+  python3 -m lmm.experiments.make_tables  --run-dir "${group[@]}" --out "$RESULTS_ROOT/${setting}/_combined/tables"
 done
 
 echo "== make_all_outputs complete =="

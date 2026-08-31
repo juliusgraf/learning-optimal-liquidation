@@ -18,9 +18,10 @@ import torch.nn as nn
 from helpers import load_dqn_cfg, new_env
 from lmm.agents.base import Transition
 from lmm.agents.dqn import DQNAgent
+from lmm.env.features import FeatureNormalizer
 from lmm.rl.networks import mlp
 from lmm.rl.replay import ReplayBatch, ReplayBuffer
-from lmm.rl.schedules import ExponentialEpsilonSchedule
+from lmm.rl.schedules import LinearEpsilonSchedule
 from lmm.utils.seeding import seed_everything
 
 AGENT_COMPONENTS = ("exploration", "replay_clob", "replay_auction")
@@ -51,26 +52,34 @@ def set_constant_net(net: nn.Sequential, bias: np.ndarray) -> None:
 
 
 def test_mlp_shapes_and_structure():
-    net = mlp(8, [16, 16], 361)
-    x = torch.zeros(5, 8)
-    assert net(x).shape == (5, 361)
+    net = mlp(18, [16, 16], 391)
+    x = torch.zeros(5, 18)
+    assert net(x).shape == (5, 391)
     linears = [m for m in net.modules() if isinstance(m, nn.Linear)]
-    assert [(m.in_features, m.out_features) for m in linears] == [(8, 16), (16, 16), (16, 361)]
+    assert [(m.in_features, m.out_features) for m in linears] == [
+        (18, 16), (16, 16), (16, 391)
+    ]
     assert sum(isinstance(m, nn.ReLU) for m in net.modules()) == 2
+
+
+def test_no_cancel_config_builds_511_output_auction_head():
+    cfg = load_dqn_cfg("actions.auction_cancel_mode=never")
+    agent = make_agent(cfg)
+    x = torch.zeros(3, len(cfg.features.auction))
+    assert len(agent.auction_grid) == 511
+    assert agent.q["auction"](x).shape == (3, 511)
 
 
 # -- schedule -------------------------------------------------------------------
 
 
-def test_epsilon_schedule_resolution_4():
-    sched = ExponentialEpsilonSchedule(1.0, 0.01, decay_episodes=300.0, warmup_episodes=100)
+def test_epsilon_schedule_is_flat_then_exactly_linear():
+    sched = LinearEpsilonSchedule(1.0, 0.01, decay_episodes=600.0, warmup_episodes=100)
     assert sched.value(0) == 1.0
     assert sched.value(99) == 1.0  # warmup: epsilon = start
     assert sched.value(100) == pytest.approx(1.0)  # decay starts AT warmup
-    # eps(e) = start * exp(-rate (e - warmup)), rate = -ln(end/start)/decay
-    rate = -np.log(0.01 / 1.0) / 300.0
-    assert sched.value(250) == pytest.approx(np.exp(-rate * 150.0))
-    assert sched.value(400) == pytest.approx(0.01)  # reaches end exactly
+    assert sched.value(400) == pytest.approx((1.0 + 0.01) / 2.0)
+    assert sched.value(700) == pytest.approx(0.01)  # reaches end exactly
     assert sched.value(10_000) == 0.01  # clipped at end thereafter
 
 
@@ -112,7 +121,7 @@ def test_replay_fifo_eviction_at_capacity():
 
 def test_replay_pads_shorter_junction_rows_and_terminal_rows():
     buf = ReplayBuffer(4, obs_dim=8, next_obs_dim=8, mask_dim=6, rng=np.random.default_rng(0))
-    buf.add(  # junction row: 7-dim next obs, 4-wide mask, zero-padded
+    buf.add(  # junction row: auction next obs, 4-wide mask, zero-padded
         obs=np.ones(8),
         action=1,
         reward=0.5,
@@ -171,7 +180,6 @@ def test_bellman_targets_hand_computed():
     # target-eval) is covered by test_double_q_bellman_targets.
     dqn_cfg = load_dqn_cfg("algo.hyperparams.double_q=false")
     agent = make_agent(dqn_cfg)
-    chi = dqn_cfg.rl.chi
     n_clob, n_auc = len(agent.clob_grid), len(agent.auction_grid)
     bias_clob = np.linspace(-1.0, 1.0, n_clob)
     bias_auc = np.linspace(2.0, -2.0, n_auc)  # max at index 0, min at the end
@@ -199,16 +207,15 @@ def test_bellman_targets_hand_computed():
         ],
     )
     y = agent.compute_targets("clob", batch).cpu().numpy()
-    assert y[0] == pytest.approx(1.0 + chi * bias_clob.max(), abs=1e-6)
-    assert y[1] == pytest.approx(0.5 + chi * bias_auc.max(), abs=1e-6)
-    assert y[2] == pytest.approx(0.0 + chi * bias_auc[-5:].max(), abs=1e-6)
+    assert y[0] == pytest.approx(1.0 + bias_clob.max(), abs=1e-6)
+    assert y[1] == pytest.approx(0.5 + bias_auc.max(), abs=1e-6)
+    assert y[2] == pytest.approx(bias_auc[-5:].max(), abs=1e-6)
     assert y[3] == pytest.approx(-3.0)
 
 
 def test_bellman_targets_auction_phase():
     dqn_cfg = load_dqn_cfg("algo.hyperparams.double_q=false")  # vanilla target path
     agent = make_agent(dqn_cfg)
-    chi = dqn_cfg.rl.chi
     n_auc = len(agent.auction_grid)
     bias_auc = np.arange(n_auc, dtype=float) / n_auc
     set_constant_net(agent.q_target["auction"], bias_auc)
@@ -225,18 +232,13 @@ def test_bellman_targets_auction_phase():
         ],
     )
     y = agent.compute_targets("auction", batch).cpu().numpy()
-    assert y[0] == pytest.approx(2.0 + chi * bias_auc[20], abs=1e-6)
+    assert y[0] == pytest.approx(2.0 + bias_auc[20], abs=1e-6)
     assert y[1] == pytest.approx(5.0)
 
 
-def test_terminal_value_bootstraps_with_one_chi():
-    """Item 1 (no fold): a done row carrying a known absorbing-state value
-    g = r_tau_cl bootstraps as y = r_step + chi*g (one chi, since tau_cl =
-    t_m + 1) -- the rigorous Q* target, NOT the old chi^0 fold (y = r_step + g)
-    nor a network max. Pins the chi factor at the compute_targets level."""
+def test_terminal_value_is_added_exactly_once_without_network_bootstrap():
     cfg = load_dqn_cfg("algo.hyperparams.double_q=false")
     agent = make_agent(cfg)
-    chi = cfg.rl.chi
     n_clob, clob_dim = len(agent.clob_grid), len(cfg.features.clob)
     r_step, g = 2.0, 50.0
     batch = ReplayBatch(
@@ -250,8 +252,7 @@ def test_terminal_value_bootstraps_with_one_chi():
         terminal_value=np.array([g], np.float32),
     )
     y = agent.compute_targets("clob", batch).cpu().numpy()
-    assert y[0] == pytest.approx(r_step + chi * g, abs=1e-6)
-    assert y[0] != pytest.approx(r_step + g, abs=1e-3)  # not the chi^0 fold
+    assert y[0] == pytest.approx(r_step + g, abs=1e-6)
 
 
 def test_double_q_bellman_targets():
@@ -261,7 +262,6 @@ def test_double_q_bellman_targets():
     Q_target[A] <= max_a' Q_target."""
     dqn_cfg = load_dqn_cfg("algo.hyperparams.double_q=true")
     agent = make_agent(dqn_cfg)
-    chi = dqn_cfg.rl.chi
     n_clob = len(agent.clob_grid)
     A, B = 3, 7  # online's argmax is A; target's own argmax is B != A
     online_bias = np.full(n_clob, -1.0)
@@ -277,8 +277,8 @@ def test_double_q_bellman_targets():
         [(1.0, False, False, np.ones(clob_dim), np.ones(n_clob, dtype=bool))],
     )
     y = agent.compute_targets("clob", batch).cpu().numpy()
-    assert y[0] == pytest.approx(1.0 + chi * target_bias[A], abs=1e-6)
-    assert y[0] < 1.0 + chi * target_bias.max()  # strictly below the vanilla max
+    assert y[0] == pytest.approx(1.0 + target_bias[A], abs=1e-6)
+    assert y[0] < 1.0 + target_bias.max()  # strictly below the vanilla max
 
 
 # -- masked exploration / greedy (property test on the real env) ------------------
@@ -319,8 +319,31 @@ def test_greedy_argmax_respects_mask(dqn_cfg):
     bias[legal_idx] = 5.0
     set_constant_net(agent.q["auction"], bias)
     mask = agent.auction_grid.mask(cancel_admissible=False)
-    a = agent.act(np.zeros(7, dtype=np.float32), mask, "auction", eval_mode=True)
+    a = agent.act(
+        np.zeros(len(dqn_cfg.features.auction), dtype=np.float32),
+        mask,
+        "auction",
+        eval_mode=True,
+    )
     assert a == legal_idx
+
+
+def test_greedy_ties_use_first_lexicographic_action(dqn_cfg):
+    agent = make_agent(dqn_cfg)
+    n_clob = len(agent.clob_grid)
+    tied = (7, 19)
+    bias = np.zeros(n_clob)
+    bias[list(tied)] = 5.0
+    set_constant_net(agent.q["clob"], bias)
+    mask = np.zeros(n_clob, dtype=bool)
+    mask[list(tied)] = True
+    chosen = agent.act(
+        np.zeros(len(dqn_cfg.features.clob), dtype=np.float32),
+        mask,
+        "clob",
+        eval_mode=True,
+    )
+    assert chosen == min(tied)
 
 
 # -- checkpointing -------------------------------------------------------------------
@@ -329,6 +352,11 @@ def test_greedy_argmax_respects_mask(dqn_cfg):
 def test_checkpoint_round_trip(dqn_cfg, tmp_path):
     cfg = load_dqn_cfg("algo.hyperparams.min_buffer=8", "algo.hyperparams.batch_size=8")
     agent = make_agent(cfg, master_seed=5)
+    agent.set_feature_normalizer(
+        FeatureNormalizer(cfg.grid.tau_cl).fit(
+            np.vstack([np.zeros(18), np.ones(18)])
+        )
+    )
     rng = np.random.default_rng(0)
     clob_dim = len(cfg.features.clob)
     n_clob = len(agent.clob_grid)
@@ -394,7 +422,10 @@ def test_dqn_converges_on_deterministic_bandit():
     for _ in range(2000):
         ctx = int(rng.integers(2))
         a = int(rng.integers(n_arms))
-        r = 1.0 if a == best[ctx] else 0.0
+        # Agent replay applies the manuscript-wide 1e-3 reward scale.  Use a
+        # 1,000-unit bandit payoff so this remains a unit-scale regression
+        # target rather than a numerical tie between near-zero Q values.
+        r = 1000.0 if a == best[ctx] else 0.0
         agent.observe(
             Transition(
                 obs=x0 if ctx == 0 else x1,

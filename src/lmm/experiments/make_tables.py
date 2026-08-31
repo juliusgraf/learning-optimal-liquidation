@@ -8,7 +8,8 @@ stepping.
 ``--run-dir`` accepts one or more run dirs (the cross-algorithm tables need the
 sibling DDPG/TD3/SAC runs). Tables:
   - eval_summary_final          (synthetic group)   -> replaces tab:eval_summary_final
-  - dqn_results_full (+ improvements)  (historical) -> replaces tab:dqn_results_full
+  - dqn_results_full (+ improvements)  (historical, currency)
+  - dqn_results_full_bps (+ improvements_bps) (historical, normalized)
   - params_generative / params_midprice (primary config) -> replaces tab:params_generative
   - hyperparams_<algo>          (per resolved algo config)
 """
@@ -79,6 +80,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 def _hist_ms(group=group):
                     table = T.build_historical_results_multiseed(group)
                     written.extend(T.write_table(table, out, "dqn_results_multiseed"))
+                    table_bps = T.build_historical_results_multiseed(
+                        group, metric=T.NORMALIZED_PRIMARY_COL
+                    )
+                    written.extend(
+                        T.write_table(table_bps, out, "dqn_results_multiseed_bps")
+                    )
                 safe(_hist_ms, what=f"historical_multiseed[{setting}]")
             else:
                 def _eval_ms(group=group):
@@ -91,6 +98,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 ret_t, imp_t = T.build_historical_results(group)
                 written.extend(T.write_table(ret_t, out, "dqn_results_full"))
                 written.extend(T.write_table(imp_t, out, "dqn_results_improvements"))
+                ret_bps, imp_bps = T.build_historical_results(
+                    group, metric=T.NORMALIZED_PRIMARY_COL
+                )
+                written.extend(T.write_table(ret_bps, out, "dqn_results_full_bps"))
+                written.extend(
+                    T.write_table(imp_bps, out, "dqn_results_improvements_bps")
+                )
             safe(_hist, what=f"historical[{setting}]")
         else:
             def _eval(group=group):

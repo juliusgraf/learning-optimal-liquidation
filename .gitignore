@@ -9,7 +9,9 @@ results/
 *.egg-info/
 .pytest_cache/
 build/
-# Phase 6: loader outputs + download cache (data/README.md is tracked)
+# Ad-hoc loader outputs and cache; the canonical frozen dataset is tracked.
 data/*.csv
 data/*.meta.json
+!data/historical_sp500_1m.csv
+!data/historical_sp500_1m.csv.meta.json
 .cache/
