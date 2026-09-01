@@ -132,6 +132,8 @@ def _train(tmp_path, run_name: str) -> str:
         "-o", "rl.test_size=2",
         "-o", "algo.hyperparams.checkpoint_interval_episodes=2",
         "-o", "algo.hyperparams.min_buffer=200",
+        "-o", "algo.hyperparams.min_buffer_clob=200",
+        "-o", "algo.hyperparams.min_buffer_auction=90",
         "-o", "algo.hyperparams.batch_size=32",
         "-o", "benchmark.as_n_samples=500",
         "-o", "benchmark.as_sigma_n_paths=3",

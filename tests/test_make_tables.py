@@ -43,7 +43,9 @@ def test_tables_exist_and_csv_parses(fixture_run_dir, tmp_path):
         assert col in summary.columns
     params = pd.read_csv(tmp_path / "params_generative.csv")
     assert list(params.columns) == ["Symbol", "Value", "Comment"]
-    assert len(params) == 26  # matches tab:params_generative
+    assert len(params) == 33
+    clock = params.loc[params["Symbol"] == "$[t]$", "Value"]
+    assert len(clock) == 1 and clock.iloc[0] in ("minutes", "seconds")
 
 
 def test_tex_structure(fixture_run_dir, tmp_path):

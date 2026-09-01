@@ -363,7 +363,7 @@ def validate_historical_artifact(
         csv_path = Path(repo_root) / csv_path
     if not csv_path.exists():
         raise FileNotFoundError(
-            f"historical dataset not found: {csv_path}; run lmm-load-data as "
+            f"historical dataset not found: {csv_path}; run the configured data loader as "
             "documented in data/README.md"
         )
     if params.split_id.startswith("legacy_"):
@@ -392,7 +392,32 @@ def validate_historical_artifact(
             params.missing_data_treatment,
         ),
         "split ranges": (metadata.get("split_ranges"), expected_ranges),
+        # Sidecars written before the explicit-clock field are unambiguously
+        # one-minute artifacts because interval=1m and the lengths are stored
+        # as clob_minutes/auction_minutes. Preserve those completed downloads.
+        "time unit": (
+            metadata.get(
+                "time_unit",
+                "minutes" if metadata.get("interval") == "1m" else None,
+            ),
+            "minutes",
+        ),
     }
+    provenance_requirements = {
+        "source": params.source,
+        "price type": params.price_type,
+        "quote feed": params.quote_feed,
+        "artifact normalization": params.artifact_normalization,
+    }
+    provenance_keys = {
+        "source": "source",
+        "price type": "price_type",
+        "quote feed": "quote_feed",
+        "artifact normalization": "normalize",
+    }
+    for label, expected in provenance_requirements.items():
+        if expected:
+            checks[label] = (metadata.get(provenance_keys[label]), expected)
     for label, (actual, expected) in checks.items():
         if actual != expected:
             raise ValueError(
@@ -486,6 +511,7 @@ def regenerate(
         "tickers": tickers,
         "date": date,
         "interval": interval,
+        "time_unit": "minutes",
         "session_start": session_start,
         "session_end": session_end,
         "timezone": timezone_name,
@@ -634,6 +660,7 @@ def regenerate_range(
         "split_ranges": split_ranges,
         "split_session_dates": split_session_dates,
         "interval": interval,
+        "time_unit": "minutes",
         "session_start": session_start,
         "session_end": session_end,
         "timezone": timezone_name,

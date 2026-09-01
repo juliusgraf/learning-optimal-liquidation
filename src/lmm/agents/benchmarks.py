@@ -223,7 +223,9 @@ class ASBenchmarkAgent(_LiquidationBenchmark):
             mid0 = env.midprice.reset(rng)
             path = [mid0] + [env.midprice.advance_to(float(t)) for t in range(1, g.tau_op + 1)]
             rets.append(np.diff(np.log(np.asarray(path))))
-        dt = g.T_physical / g.tau_cl
+        # One integer interval is one configured physical clock unit (one
+        # minute in every active setting), so sigma is per sqrt(clock unit).
+        dt = g.physical_time_per_grid_unit
         return float(np.std(np.concatenate(rets), ddof=1) / math.sqrt(dt))
 
     def _build_delta_table(self) -> np.ndarray:

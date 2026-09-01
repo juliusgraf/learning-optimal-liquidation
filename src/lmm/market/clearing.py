@@ -98,6 +98,13 @@ class Algo1Estimator:
         self._last_index = 0
         self._history: dict[int, dict[int, float]] = {}
         self._diagnostics: dict[int, Algo1Diagnostics] = {}
+        # Running first and second raw sums make the per-observation moment
+        # update O(number of active levels), rather than repeatedly scanning
+        # the complete O_1,...,O_i history.  Missing levels are zeros and hence
+        # require no explicit update.  This is algebraically identical to the
+        # manuscript formula and matters for empirically wide historical books.
+        self._sum_q: dict[int, float] = {}
+        self._sum_q2: dict[int, float] = {}
 
     @property
     def eta_H(self) -> float:
@@ -114,6 +121,8 @@ class Algo1Estimator:
         self._last_index = 0
         self._history.clear()
         self._diagnostics.clear()
+        self._sum_q.clear()
+        self._sum_q2.clear()
         self.n_khat_clamped = 0
         self.n_zero_slope_skips = 0
 
@@ -129,8 +138,12 @@ class Algo1Estimator:
             )
         q = snapshot.exogenous_volume_by_tick(eps=_EPS)
         self._history[i] = q
-        e_hat, var_hat, k_hat = self._moments(
-            histories=self._history,
+        for tick, volume in q.items():
+            self._sum_q[tick] = self._sum_q.get(tick, 0.0) + float(volume)
+            self._sum_q2[tick] = self._sum_q2.get(tick, 0.0) + float(volume) ** 2
+        e_hat, var_hat, k_hat = self._moments_from_sums(
+            sum_q=self._sum_q,
+            sum_q2=self._sum_q2,
             denominator=i,
             active_ticks=tuple(q),
         )
@@ -189,12 +202,31 @@ class Algo1Estimator:
             histories[final_index] = q_star
             denominator = final_index
 
-        e_hat, var_hat, k_hat = self._moments(
-            histories=histories,
-            denominator=denominator,
-            active_ticks=tuple(q_star),
-            count_clamps=False,
-        )
+        if final_index == self._last_index and final_index > 0:
+            # Common environment path: replace O_n in the running sufficient
+            # statistics without rebuilding all prior per-tick histories.
+            sum_q = dict(self._sum_q)
+            sum_q2 = dict(self._sum_q2)
+            for tick, volume in self._history[final_index].items():
+                sum_q[tick] = sum_q.get(tick, 0.0) - float(volume)
+                sum_q2[tick] = sum_q2.get(tick, 0.0) - float(volume) ** 2
+            for tick, volume in q_star.items():
+                sum_q[tick] = sum_q.get(tick, 0.0) + float(volume)
+                sum_q2[tick] = sum_q2.get(tick, 0.0) + float(volume) ** 2
+            e_hat, var_hat, k_hat = self._moments_from_sums(
+                sum_q=sum_q,
+                sum_q2=sum_q2,
+                denominator=denominator,
+                active_ticks=tuple(q_star),
+                count_clamps=False,
+            )
+        else:
+            e_hat, var_hat, k_hat = self._moments(
+                histories=histories,
+                denominator=denominator,
+                active_ticks=tuple(q_star),
+                count_clamps=False,
+            )
         kept_ticks = np.asarray(
             sorted(k for k, q in q_star.items() if q > 0.0 and k_hat.get(k, 0.0) > 0.0),
             dtype=int,
@@ -232,13 +264,37 @@ class Algo1Estimator:
     ) -> tuple[dict[int, float], dict[int, float], dict[int, float]]:
         if denominator <= 0:
             raise ValueError("moment denominator must be positive")
+        sum_q: dict[int, float] = {}
+        sum_q2: dict[int, float] = {}
+        for values in histories.values():
+            for tick, volume in values.items():
+                sum_q[tick] = sum_q.get(tick, 0.0) + float(volume)
+                sum_q2[tick] = sum_q2.get(tick, 0.0) + float(volume) ** 2
+        return self._moments_from_sums(
+            sum_q=sum_q,
+            sum_q2=sum_q2,
+            denominator=denominator,
+            active_ticks=active_ticks,
+            count_clamps=count_clamps,
+        )
+
+    def _moments_from_sums(
+        self,
+        sum_q: Mapping[int, float],
+        sum_q2: Mapping[int, float],
+        denominator: int,
+        active_ticks: tuple[int, ...],
+        count_clamps: bool = True,
+    ) -> tuple[dict[int, float], dict[int, float], dict[int, float]]:
+        """Evaluate Algorithm-1 moments from exact sufficient statistics."""
+        if denominator <= 0:
+            raise ValueError("moment denominator must be positive")
         e_hat: dict[int, float] = {}
         var_hat: dict[int, float] = {}
         k_hat: dict[int, float] = {}
         for tick in sorted(set(active_ticks)):
-            values = [float(q.get(tick, 0.0)) for q in histories.values()]
-            total = float(sum(values))
-            total_sq = float(sum(v * v for v in values))
+            total = float(sum_q.get(tick, 0.0))
+            total_sq = float(sum_q2.get(tick, 0.0))
             e = total / denominator
             var = total_sq / denominator
             raw = 0.0 if e <= 0.0 else (2.0 * e - var / e) / self.grid.alpha

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Cross-seed aggregation: build the IQM/bootstrap-CI tables + figure from runs
 # spanning several master seeds, per setting, into
-# results/revision_v2/<setting>/_multiseed/.
+# results/revision_v5/<setting>/_multiseed/.
 # Reads each run's seed from seed.txt and includes only the requested seeds.
 #
 # Usage: scripts/make_multiseed_outputs.sh [--seeds "42 7 99"]
@@ -20,7 +20,7 @@ done
 
 run_seed() { tr -dc '0-9' < "$1/seed.txt" 2>/dev/null || true; }
 
-RESULTS_ROOT="results/revision_v2"
+RESULTS_ROOT="results/revision_v5"
 [[ -d "$RESULTS_ROOT" ]] || { echo "no $RESULTS_ROOT directory" >&2; exit 1; }
 
 for setting_dir in "$RESULTS_ROOT"/*/; do

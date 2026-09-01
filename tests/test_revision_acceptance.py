@@ -28,7 +28,7 @@ from lmm.agents.ddpg import DDPGAgent
 from lmm.agents.dqn import DQNAgent
 from lmm.agents.sac import SACAgent
 from lmm.agents.td3 import TD3Agent
-from lmm.config import save_resolved
+from lmm.config import load_config, save_resolved
 from lmm.data.load_yfinance_data import validate_historical_artifact
 from lmm.env import mdp as mdp_module
 from lmm.env.action_spaces import AuctionAction, ClobAction
@@ -111,6 +111,44 @@ class _ScriptedRng:
 def _flow(cfg, **probabilities) -> ExogenousAuctionFlow:
     params = replace(cfg.auction_flow, **probabilities)
     return ExogenousAuctionFlow(params, cfg.grid, cfg.clob_flow)
+
+
+def test_synthetic_and_historical_differ_only_in_midprice_and_identity():
+    for algo in ("dqn", "ddpg", "td3", "sac"):
+        synthetic = load_config(
+            REPO_ROOT / "configs/base.yaml",
+            REPO_ROOT / "configs/synthetic_rough_heston.yaml",
+            REPO_ROOT / f"configs/algo/{algo}.yaml",
+        )
+        historical = load_config(
+            REPO_ROOT / "configs/base.yaml",
+            REPO_ROOT / "configs/historical_sp500_midquotes.yaml",
+            REPO_ROOT / f"configs/algo/{algo}.yaml",
+        )
+        for cfg in (synthetic, historical):
+            assert cfg.grid.time_unit == "minutes"
+            assert cfg.grid.physical_time_per_grid_unit == pytest.approx(1.0)
+            assert cfg.grid.tau_op == 120
+            assert cfg.grid.tau_cl == 150
+            assert cfg.grid.h == 30
+        assert synthetic.midprice.rough_heston.s_star == pytest.approx(252 * 6.5 * 60)
+        assert synthetic.experiment.episodes == historical.experiment.episodes == 800
+        for section in (
+            "grid",
+            "clob_flow",
+            "auction_flow",
+            "algo1",
+            "reward",
+            "rl",
+            "actions",
+            "features",
+            "benchmark",
+            "algo",
+        ):
+            assert getattr(synthetic, section) == getattr(historical, section), (
+                algo,
+                section,
+            )
 
 
 def test_historical_dataset_has_verified_disjoint_nonempty_pools():
@@ -361,17 +399,22 @@ def test_dqn_action_counts_and_canonical_no_order_rules():
     cfg = _small_dqn_cfg()
     env = new_env(cfg)
     assert len(env.clob_grid) == 1 + 30 * 13 == 391
-    assert len(env.auction_grid) == 2 + 10 * 51 * 2 == 1022
+    assert len(env.auction_grid) == 2 + 6 * 21 * 2 == 254
     zero = [a for a in env.auction_grid.actions if a.K_a == 0.0]
     assert zero == [AuctionAction(0.0, 0, 0), AuctionAction(0.0, 0, 1)]
 
     _drive_to_auction(env)
-    assert env.action_mask().sum() == 511
+    assert env.action_mask().sum() == 127
     env.step(AuctionAction(cfg.actions.beta, 0, 0))
-    assert env.action_mask().sum() == 1022
+    assert env.action_mask().sum() == 128
 
-    no_cancel = new_env(_small_dqn_cfg("actions.auction_cancel_mode=never"))
-    assert len(no_cancel.auction_grid) == 1 + 10 * 51 == 511
+    no_cancel = new_env(
+        _small_dqn_cfg(
+            "actions.auction_cancel_mode=never",
+            "actions.auction_order_mode=multi",
+        )
+    )
+    assert len(no_cancel.auction_grid) == 1 + 6 * 21 == 127
     assert [a for a in no_cancel.auction_grid.actions if a.K_a == 0.0] == [
         AuctionAction(0.0, 0, 0)
     ]
@@ -423,6 +466,8 @@ def test_one_update_opportunity_and_common_unclipped_scaled_reward(algo):
     )
     cfg = loader(
         "algo.hyperparams.min_buffer=1",
+        "algo.hyperparams.min_buffer_clob=1",
+        "algo.hyperparams.min_buffer_auction=1",
         "algo.hyperparams.batch_size=1",
     )
     agent = _AGENTS[algo](cfg, seed_everything(12, SEED_COMPONENTS, seed_torch=True))
@@ -519,15 +564,37 @@ def test_auction_has_no_inventory_bound_or_terminal_clipping():
 
 
 def test_unshaped_return_equals_risk_adjusted_pnl_plus_initial_notional():
-    cfg = _small_cfg("reward.shaping_enabled=false")
+    cfg = _small_cfg(
+        "reward.shaping_enabled=false",
+        "reward.center_initial_inventory_value=false",
+    )
     env = new_env(cfg)
     agent = TWAPBenchmarkAgent(cfg)
     agent.bind(env)
     agent.start_episode(0)
     result = run_episode(env, agent, 77, chi=cfg.rl.chi, train=False)
-    initial_notional = result.initial_mid * result.initial_inventory
     assert result.return_undisc == pytest.approx(
-        result.risk_adjusted_pnl + initial_notional, abs=1e-8
+        result.risk_adjusted_pnl
+        + result.initial_mid * result.initial_inventory,
+        abs=1e-8,
+    )
+
+
+def test_centered_unshaped_return_equals_risk_adjusted_pnl():
+    cfg = _small_cfg(
+        "reward.shaping_enabled=false",
+        "reward.center_initial_inventory_value=true",
+    )
+    env = new_env(cfg)
+    agent = TWAPBenchmarkAgent(cfg)
+    agent.bind(env)
+    agent.start_episode(0)
+    result = run_episode(env, agent, 77, chi=cfg.rl.chi, train=False)
+    assert result.reward_baseline_adjustment == pytest.approx(
+        -result.initial_mid * result.initial_inventory, abs=1e-8
+    )
+    assert result.return_undisc == pytest.approx(
+        result.risk_adjusted_pnl, abs=1e-8
     )
 
 
@@ -546,7 +613,7 @@ def test_no_auction_comparator_terminates_at_open_with_exogenous_mid_mark():
     assert result.z_tau_cl == 0.0
     assert result.s_cl == pytest.approx(result.residual_liquidation_price)
     assert result.return_undisc == pytest.approx(
-        result.risk_adjusted_pnl + result.initial_mid * result.initial_inventory,
+        result.risk_adjusted_pnl,
         abs=1e-8,
     )
 
@@ -559,6 +626,7 @@ def test_rough_heston_uses_annualized_delta_bar_t():
     model.advance_to(2.5)
     assert model._times[1] == pytest.approx(2.5 / params.s_star, rel=1e-15)
     assert model._times[1] != pytest.approx(2.5)
+    assert cfg.grid.time_unit == "minutes"
 
 
 def test_benchmark_schedule_keeps_positive_part_and_inventory_cap():

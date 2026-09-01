@@ -1,6 +1,6 @@
 """Run-directory creation and experiment metadata dumping (fully functional).
 
-Every revised run writes ``results/revision_v2/<experiment_name>/<run_name>/`` containing
+Every current run writes ``results/revision_v5/<experiment_name>/<run_name>/`` containing
 ``config_resolved.yaml``, ``seed.txt``, ``git_sha.txt``, ``metrics.csv``,
 ``eval/``, ``checkpoints/``, ``logs/run.log``, ``figures/``, ``tables/``
 (engineering conventions, CLAUDE.md). Figures and tables are always
@@ -115,6 +115,9 @@ def write_run_metadata(paths: RunPaths, cfg: ExperimentConfig, master_seed: int)
                 "packages": packages,
                 "artifact_schema_version": cfg.experiment.artifact_schema_version,
                 "environment_contract": ENVIRONMENT_CONTRACT,
+                "time_unit": cfg.grid.time_unit,
+                "tau_op": cfg.grid.tau_op,
+                "tau_cl": cfg.grid.tau_cl,
                 "ablation_label": cfg.experiment.ablation_label,
                 "dqn_equal_q_tie_breaking": "first action in lexicographic grid order",
             },

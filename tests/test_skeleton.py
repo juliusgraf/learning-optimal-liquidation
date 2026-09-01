@@ -80,13 +80,22 @@ def test_config_binding_values_synthetic() -> None:
     assert cfg.algo1.tau == 0.95  # D15: smoothing, both settings
     assert cfg.rl.chi == 1.0
     assert cfg.rl.checkpoint_metric == "risk_adjusted_pnl"
-    assert cfg.reward.d == 0.1 and cfg.reward.lambda_inv == 0.5 and cfg.reward.q == 1.0
+    assert cfg.reward.d == 0.1 and cfg.reward.lambda_inv == 2.0 and cfg.reward.q == 0.0
     assert cfg.reward.k_star == 1000 and cfg.grid.alpha == 0.01  # kappa=0.1 <=> k*alpha=10
     assert cfg.reward.numerical_guard is False  # D8: default OFF
-    assert cfg.clob_flow.lambda0 == 1.0 and cfg.experiment.episodes == 1000  # tuned 2026-06-15 (was 2000)
+    assert cfg.clob_flow.lambda0 == 1.0 and cfg.experiment.episodes == 800
+    assert (cfg.clob_flow.V_inf, cfg.clob_flow.rho_lob, cfg.clob_flow.L_max) == (
+        2.0,
+        0.96,
+        200,
+    )
+    assert cfg.grid.time_unit == "minutes"
+    assert (cfg.grid.tau_op, cfg.grid.tau_cl, cfg.grid.h) == (120, 150, 30)
+    assert cfg.grid.T_physical == 150.0
     assert cfg.midprice.model == "rough_heston"
     rh = cfg.midprice.rough_heston
     assert rh is not None and (rh.H, rh.rho, rh.v0, rh.theta) == (0.1, -0.7, 0.02, 0.02)
+    assert rh.s_star == pytest.approx(252 * 6.5 * 60)
     assert len(cfg.features.clob) == 18 and len(cfg.features.auction) == 18
     assert cfg.features.auction[12] == "cancel_admissible"
     assert cfg.actions.auction_cancel_mode == "enabled"
@@ -95,15 +104,17 @@ def test_config_binding_values_synthetic() -> None:
 
 
 def test_config_binding_values_historical() -> None:
-    cfg = load_config(CONFIGS / "base.yaml", CONFIGS / "historical_sp500.yaml")
-    assert cfg.clob_flow.lambda0 == 60.0 and cfg.experiment.episodes == 500  # tuned 2026-06-15 (was 1000)
+    cfg = load_config(CONFIGS / "base.yaml", CONFIGS / "historical_sp500_midquotes.yaml")
+    assert cfg.clob_flow.lambda0 == 1.0 and cfg.experiment.episodes == 800
+    assert cfg.grid.time_unit == "minutes"
+    assert (cfg.grid.tau_op, cfg.grid.tau_cl, cfg.grid.h) == (120, 150, 30)
     assert cfg.algo1.tau == 0.95  # D15: legacy historical 0.99 NOT reproduced
     assert cfg.midprice.model == "historical"
     hist = cfg.midprice.historical
     assert hist is not None
-    assert hist.csv_path == Path("data/historical_sp500_1m.csv")
+    assert hist.csv_path == Path("data/historical_sp500_midquotes_1m.csv")
     assert hist.path_policy == "split_pool"
-    assert hist.split_id == "sp500_1m_2026-08_v1"
+    assert hist.split_id == "sp500_midquotes_sip_2026-08_v1"
     assert hist.train_date_range == ("2026-08-03", "2026-08-14")
     assert hist.validation_date_range == ("2026-08-17", "2026-08-21")
     assert hist.test_date_range == ("2026-08-24", "2026-08-28")
@@ -135,6 +146,13 @@ def test_config_cli_override() -> None:
 def test_config_rejects_unknown_key() -> None:
     with pytest.raises(ConfigError, match="unknown key"):
         _load_synthetic(overrides=["reward.not_a_param=1"])
+
+
+def test_config_rejects_incoherent_physical_clock() -> None:
+    with pytest.raises(ConfigError, match="T_physical must equal grid.tau_cl"):
+        _load_synthetic(overrides=["grid.T_physical=149.0"])
+    with pytest.raises(ConfigError, match="grid.time_unit"):
+        _load_synthetic(overrides=["grid.time_unit=hours"])
 
 
 # ---------------------------------------------------------------------------

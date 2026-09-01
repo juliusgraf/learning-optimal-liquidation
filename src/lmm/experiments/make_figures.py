@@ -1,6 +1,6 @@
 """Regenerate all figures from saved run outputs (Phase 7).
 
-Figures are ALWAYS regenerated from results/revision_v2/<...>/metrics.csv and eval/ records
+Figures are ALWAYS regenerated from the current run artifacts and eval records
 (incl. eval/traces/ for the anatomy figures) — never produced inside training
 code (engineering conventions). No env stepping happens here.
 
@@ -71,6 +71,11 @@ def _common_primary_col(frames) -> str:
 
 def _outcome_label(metric: str) -> str:
     return _OUTCOME_LABELS[metric]
+
+
+def _time_axis_label(cfg) -> str:
+    """Physical label for saved simulator times."""
+    return f"Time ({cfg.grid.time_unit})"
 
 
 def _common_eval_col(frames) -> tuple[str, str]:
@@ -179,6 +184,7 @@ def fig_episode_anatomy(run_dir: Path, out: Path, *, policy: str = "dqn", episod
         return
     cfg = P.read_config(run_dir)
     tau_op, tau_cl = float(cfg.grid.tau_op), float(cfg.grid.tau_cl)
+    time_label = _time_axis_label(cfg)
     clob, auc = _phase_split(tr)
 
     fig, axes = P.plt.subplots(3, 3, figsize=(13.0, 9.0))
@@ -189,17 +195,17 @@ def fig_episode_anatomy(run_dir: Path, out: Path, *, policy: str = "dqn", episod
 
     ax = axes[0, 0]
     ax.plot(tr["t"], tr["s_mid"], color=blue); mark(ax)
-    ax.set(title=r"Mid price $S_t^{\mathrm{mid}}$", xlabel="t")
+    ax.set(title=r"Mid price $S_t^{\mathrm{mid}}$", xlabel=time_label)
 
     ax = axes[0, 1]
     ax.plot(tr["t"], tr["inventory"], color=blue); mark(ax)
-    ax.set(title=r"Inventory $I_t$", xlabel="t")
+    ax.set(title=r"Inventory $I_t$", xlabel=time_label)
 
     ax = axes[0, 2]
     if not clob.empty:
         ax.stem(clob["t"], clob["E_t"], basefmt=" ", linefmt=blue, markerfmt="o")
     mark(ax)
-    ax.set(title=r"Executed volume $E_t$", xlabel="t")
+    ax.set(title=r"Executed volume $E_t$", xlabel=time_label)
 
     ax = axes[1, 0]
     ax.plot(tr["t"], tr["h_cl"], color=blue, label=r"$H_t^{\mathrm{cl}}$")
@@ -207,14 +213,14 @@ def fig_episode_anatomy(run_dir: Path, out: Path, *, policy: str = "dqn", episod
     if not term.empty and term["S_cl"].notna().any():
         ax.scatter([tau_cl], [term["S_cl"].iloc[0]], color=orange, zorder=5, label=r"$S^{\mathrm{cl}}$")
     mark(ax)
-    ax.set(title=r"Clearing price $H_t^{\mathrm{cl}}$", xlabel="t"); ax.legend()
+    ax.set(title=r"Clearing price $H_t^{\mathrm{cl}}$", xlabel=time_label); ax.legend()
 
     ax = axes[1, 1]
     if not clob.empty:
         ax.plot(clob["t"], clob["top_ask"], color=orange, label=r"$V_t^{+,1}$")
         ax.plot(clob["t"], clob["top_bid"], color=green, label=r"$V_t^{-,1}$")
     mark(ax)
-    ax.set(title="Top-of-book volumes", xlabel="t"); ax.legend()
+    ax.set(title="Top-of-book volumes", xlabel=time_label); ax.legend()
 
     ax = axes[1, 2]
     if not auc.empty:
@@ -222,15 +228,15 @@ def fig_episode_anatomy(run_dir: Path, out: Path, *, policy: str = "dqn", episod
         ax.step(auc["t"], auc["n_buy_auc"], where="post", label=r"$N_t^{+}$", color=orange)
         ax.step(auc["t"], auc["n_sell_auc"], where="post", label=r"$N_t^{-}$", color=green)
     mark(ax)
-    ax.set(title="Auction arrivals", xlabel="t"); ax.legend()
+    ax.set(title="Auction arrivals", xlabel=time_label); ax.legend()
 
     ax = axes[2, 0]
     ax.plot(tr["t"], tr["reward"], color=blue); mark(ax)
-    ax.set(title=r"One-step reward $R_t$", xlabel="t")
+    ax.set(title=r"One-step reward $R_t$", xlabel=time_label)
 
     ax = axes[2, 1]
     ax.plot(tr["t"], tr["cum_reward"], color=blue); mark(ax)
-    ax.set(title="Cumulative reward", xlabel="t")
+    ax.set(title="Cumulative reward", xlabel=time_label)
 
     ax = axes[2, 2]
     if not clob.empty:
@@ -244,7 +250,7 @@ def fig_episode_anatomy(run_dir: Path, out: Path, *, policy: str = "dqn", episod
         twin.plot(auc["t"], auc["act_offset"], color="0.4", linewidth=1.0, label="offset")
     twin.set_ylabel("offset / $\\delta$")
     mark(ax)
-    ax.set(title="Actions", xlabel="t"); ax.legend(loc="upper left")
+    ax.set(title="Actions", xlabel=time_label); ax.legend(loc="upper left")
 
     fig.suptitle(f"Episode anatomy ({P.POLICY_LABELS.get(policy, policy)}, episode {episode})")
     fig.tight_layout()
@@ -263,6 +269,7 @@ def fig_benchmark_anatomy(run_dir: Path, out: Path, *, episode: int = 0) -> None
         return
     cfg = P.read_config(run_dir)
     tau_op, tau_cl = float(cfg.grid.tau_op), float(cfg.grid.tau_cl)
+    time_label = _time_axis_label(cfg)
 
     fig, axes = P.plt.subplots(2, 2, figsize=(11.0, 7.0))
     series = (("as", as_tr), ("twap", twap_tr))
@@ -273,24 +280,24 @@ def fig_benchmark_anatomy(run_dir: Path, out: Path, *, episode: int = 0) -> None
     ax = axes[0, 0]
     for key, tr in series:
         ax.plot(tr["t"], tr["inventory"], color=P.POLICY_COLORS[key], label=P.POLICY_LABELS[key])
-    mark(ax); ax.set(title=r"Inventory $I_t$", xlabel="t"); ax.legend()
+    mark(ax); ax.set(title=r"Inventory $I_t$", xlabel=time_label); ax.legend()
 
     ax = axes[0, 1]
     for key, tr in series:
         clob = tr[tr["phase"] == "clob"]
         ax.plot(clob["t"], clob["E_t"], color=P.POLICY_COLORS[key], label=P.POLICY_LABELS[key])
-    mark(ax); ax.set(title=r"Executed volume $E_t$ (CLOB)", xlabel="t"); ax.legend()
+    mark(ax); ax.set(title=r"Executed volume $E_t$ (CLOB)", xlabel=time_label); ax.legend()
 
     ax = axes[1, 0]
     for key, tr in series:
         clob = tr[tr["phase"] == "clob"]
         ax.plot(clob["t"], clob["S_bullet"], color=P.POLICY_COLORS[key], label=f"{P.POLICY_LABELS[key]} $S^\\bullet$")
-    mark(ax); ax.set(title="Submitted CLOB price", xlabel="t"); ax.legend()
+    mark(ax); ax.set(title="Submitted CLOB price", xlabel=time_label); ax.legend()
 
     ax = axes[1, 1]
     for key, tr in series:
         ax.plot(tr["t"], tr["cum_reward"], color=P.POLICY_COLORS[key], label=P.POLICY_LABELS[key])
-    mark(ax); ax.set(title="Cumulative reward", xlabel="t"); ax.legend()
+    mark(ax); ax.set(title="Cumulative reward", xlabel=time_label); ax.legend()
 
     fig.suptitle(f"Benchmark anatomy (episode {episode})")
     fig.tight_layout()
@@ -324,6 +331,7 @@ def fig_cancellation_strategy(
             stacklevel=2,
         )
         return
+    cfg = P.read_config(run_dir)
 
     t = auc["t"].to_numpy(float)
     c = auc["act_cancel"].fillna(0.0).to_numpy(float)
@@ -342,7 +350,7 @@ def fig_cancellation_strategy(
     ax.set_yticks([0, 1])
     ax.set_yticklabels(["0", "1"])
     ax.set_ylabel(r"$c_t$")
-    ax.set_xlabel("t")
+    ax.set_xlabel(_time_axis_label(cfg))
 
     ax.set_title(
         rf"Cancellation strategy $c_t$ "

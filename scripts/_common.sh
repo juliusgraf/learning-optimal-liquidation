@@ -14,7 +14,7 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
-RESULTS_ROOT="results/revision_v2"
+RESULTS_ROOT="results/revision_v5"
 
 SEED=""
 SMOKE=0
@@ -67,15 +67,15 @@ run_experiment() {
       -o rl.normalizer_fit_episodes=2
       -o algo.hyperparams.checkpoint_interval_episodes=2
       -o algo.hyperparams.min_buffer=1
+      -o algo.hyperparams.min_buffer_clob=1
+      -o algo.hyperparams.min_buffer_auction=1
     )
     eval_args=(--n-episodes 3 --trace-episodes 1)
   else
     eval_args=(--trace-episodes 1)
   fi
 
-  # Per-runner extra train overrides (e.g. the historical DQN epsilon schedule,
-  # which must track the shorter episode budget). Set by the caller before
-  # run_experiment/run_historical; appended AFTER any smoke overrides.
+  # Optional per-runner/treatment overrides, appended after smoke overrides.
   train_over+=( ${EXTRA_OVERRIDES[@]+"${EXTRA_OVERRIDES[@]}"} )
 
   # Disk-safe: drop periodic resume checkpoints (replay-heavy ckpt_ep*.pt). The
@@ -101,13 +101,19 @@ run_experiment() {
   echo ">>> done ${run_dir}"
 }
 
-# Loop the five paper tickers (or a single --symbol) for the historical setting.
+# Loop the five paper tickers (or a single --symbol) for the true-midquote
+# historical setting. The Yahoo proxy is never selected by a canonical runner.
 HIST_TICKERS=(MSFT JPM PG GOOGL CAT)
 run_historical() {  # run_historical <algo_cfg> <algo_name>
   local algo_cfg="$1" algo_name="$2"
+  local data="data/historical_sp500_midquotes_1m.csv"
+  if [[ ! -f "$data" || ! -f "${data}.meta.json" ]]; then
+    echo "missing true-midquote artifact or sidecar; build it using data/README.md" >&2
+    return 2
+  fi
   local tickers=("${HIST_TICKERS[@]}")
   [[ -n "$SYMBOL" ]] && tickers=("$SYMBOL")
   for ticker in "${tickers[@]}"; do
-    run_experiment historical_sp500 configs/historical_sp500.yaml "$algo_cfg" "$algo_name" "$ticker"
+    run_experiment historical_sp500_midquotes configs/historical_sp500_midquotes.yaml "$algo_cfg" "$algo_name" "$ticker"
   done
 }

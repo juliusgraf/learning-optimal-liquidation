@@ -152,12 +152,22 @@ class ClobActionGrid:
 
 
 class AuctionActionGrid:
-    """Lexicographic auction list with exact slopes ``beta*k``."""
+    """Lexicographic auction policy templates with exact slopes ``beta*k``.
+
+    With the default ``frozen_mid`` center, a template offset is the absolute
+    manuscript coordinate ``b``.  With ``indicative`` centering, it is a local
+    displacement that the environment resolves to ``b`` at decision time.
+    """
 
     def __init__(self, params: ActionGridParams) -> None:
         self.params = params
-        K_choices = tuple(params.beta * k for k in range(1, params.K_max + 1))
-        offsets = range(-params.B_max, params.B_max + 1)
+        K_choices = tuple(params.beta * k for k in params.auction_K_multipliers)
+        template_offset_max = params.auction_template_offset_max
+        offsets = range(
+            -template_offset_max,
+            template_offset_max + 1,
+            params.auction_offset_step,
+        )
         if params.auction_cancel_mode == "enabled":
             self.actions = (
                 AuctionAction(0.0, 0, 0),
@@ -184,6 +194,11 @@ class AuctionActionGrid:
         self._cancel_flags = np.fromiter(
             (a.cancel == 1 for a in self.actions), dtype=bool, count=len(self.actions)
         )
+        self._stacking_flags = np.fromiter(
+            (a.K_a > 0.0 and a.cancel == 0 for a in self.actions),
+            dtype=bool,
+            count=len(self.actions),
+        )
 
     def __len__(self) -> int:
         return len(self.actions)
@@ -197,30 +212,41 @@ class AuctionActionGrid:
         *,
         frozen_mid: float | None = None,
         alpha: float | None = None,
+        offset_center_ticks: int = 0,
     ) -> np.ndarray:
-        """Mask cancellation and, when price inputs are supplied, ``S^a >= 0``.
+        """Mask cancellation and absolute offset/price admissibility.
 
         ``frozen_mid`` and ``alpha`` are optional for compatibility with the
-        current environment call site.  Supplying exactly one is an error.
+        direct-offset default.  ``offset_center_ticks`` resolves local policy
+        templates to the absolute manuscript coordinate ``b``.  Supplying
+        exactly one of the price inputs is an error.
         """
         if cancel_admissible:
             mask = np.ones(len(self.actions), dtype=bool)
+            if self.params.auction_order_mode == "single_replace":
+                mask &= ~self._stacking_flags
         else:
             mask = ~self._cancel_flags
         if (frozen_mid is None) != (alpha is None):
             raise ValueError("frozen_mid and alpha must be supplied together")
         if frozen_mid is not None:
             assert alpha is not None
-            nonnegative = np.fromiter(
+            offset_admissible = np.fromiter(
                 (
                     a.K_a == 0.0
-                    or float(frozen_mid) + float(alpha) * a.offset >= 0.0
+                    or (
+                        abs(int(offset_center_ticks) + a.offset)
+                        <= self.params.B_max
+                        and float(frozen_mid)
+                        + float(alpha) * (int(offset_center_ticks) + a.offset)
+                        >= 0.0
+                    )
                     for a in self.actions
                 ),
                 dtype=bool,
                 count=len(self.actions),
             )
-            mask &= nonnegative
+            mask &= offset_admissible
         return mask
 
 
@@ -304,6 +330,8 @@ class ContinuousActionAdapter:
         self._beta = float(ap.beta)
         self._K_index_max = int(ap.K_max)
         self._offset_max = int(ap.B_max)
+        self._template_offset_max = int(ap.auction_template_offset_max)
+        self._offset_step = int(ap.auction_offset_step)
         # The env always starts in the CLOB phase after reset(); _phase is not
         # set until then, so default to the CLOB box at construction.
         self.action_space = self._boxes["clob"]
@@ -425,11 +453,29 @@ class ContinuousActionAdapter:
         k_unclipped = round_half_up(K_raw / self._beta)
         k = int(np.clip(k_unclipped, 0, self._K_index_max))
         K = self._beta * k
-        b_raw = self._offset_max * raw[1]
-        b_rounded = round_half_up(b_raw)
-        offset = 0 if k == 0 else int(
-            np.clip(b_rounded, -self._offset_max, self._offset_max)
+        b_raw = self._template_offset_max * raw[1]
+        b_index_unclipped = round_half_up(b_raw / self._offset_step)
+        b_rounded = self._offset_step * b_index_unclipped
+        template_offset = int(
+            np.clip(
+                b_rounded,
+                -self._template_offset_max,
+                self._template_offset_max,
+            )
         )
+        if self.cfg.actions.auction_offset_center == "indicative":
+            center_offset = round_half_up(
+                (float(self.env.h_cl) - float(self.env.s_mid))
+                / float(self.cfg.grid.alpha)
+            )
+        else:
+            center_offset = 0
+        offset = 0 if k == 0 else center_offset + template_offset
+        if k > 0:
+            # At the edge of the ambient admissible band, continuous actors
+            # are projected to the nearest valid absolute b.  Discrete actors
+            # use an exact state-dependent mask instead.
+            offset = int(np.clip(offset, -self._offset_max, self._offset_max))
         offset_before_admissibility = offset
         if k > 0:
             alpha = float(self.cfg.grid.alpha)
@@ -443,6 +489,12 @@ class ContinuousActionAdapter:
             committed = raw.astype(np.float32, copy=True)
         else:
             cancel = int(raw[2] >= 0.0 and bool(self.env.cancel_admissible))
+            if (
+                self.cfg.actions.auction_order_mode == "single_replace"
+                and k > 0
+                and bool(self.env.cancel_admissible)
+            ):
+                cancel = 1
             committed = raw.astype(np.float32, copy=True)
         order = AuctionAction(K_a=K, offset=offset, cancel=cancel)
         diagnostics: dict[str, float | int | bool] = {

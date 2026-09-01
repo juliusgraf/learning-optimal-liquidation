@@ -153,16 +153,25 @@ def test_auction_event_frequencies(cfg):
         for _ in range(n_steps):
             mm_before, buy_before, sell_before = flow.n_mm, flow.n_buy, flow.n_sell
             ev = flow.step(rng)
-            tally("p1", mm_before < p.La, ev.new_mm)
+            # The revised transactional auction has no legacy La schedule cap;
+            # a schedule-arrival proposal is eligible at every minute and is
+            # accepted exactly when the resulting exogenous book stays valid.
+            tally("p1", True, ev.new_mm)
             tally("p2", mm_before > 0 or ev.new_mm, ev.mm_cancelled)
             tally("p3_buy", True, ev.new_buy_taker)
             tally("p3_sell", True, ev.new_sell_taker)
             tally("p4_buy", buy_before > 0 or ev.new_buy_taker, ev.buy_taker_cancelled)
             tally("p4_sell", sell_before > 0 or ev.new_sell_taker, ev.sell_taker_cancelled)
 
-        # Exogenous MM law checks on the surviving end-of-episode ledger
-        # (cancellation is independent of (K, S), so survivors keep the law).
-        K, S = flow.supply_curves()
+        # Auction-arrival law checks exclude the deterministic persistent
+        # carry-over/fallback schedule installed at reset.
+        auction_records = [
+            rec
+            for rec in flow.active_schedules
+            if rec.provenance == "auction"
+        ]
+        K = np.asarray([rec.slope for rec in auction_records], dtype=float)
+        S = np.asarray([rec.reference for rec in auction_records], dtype=float)
         k_all.extend(K.tolist())
         if len(S):
             offsets = S / cfg.grid.alpha - np.floor(100.0 / cfg.grid.alpha)

@@ -66,7 +66,7 @@ class ExperimentMeta:
 
     name: str
     setting: str  # "synthetic_rough_heston" | "historical_sp500"
-    episodes: int  # E; legacy 2000 (synthetic) / 1000 (historical)
+    episodes: int  # E; active settings use one matched budget
     master_seed: int  # single master seed; ruling D10
     results_root: Path  # gitignored output root
     artifact_schema_version: int = 2
@@ -82,26 +82,32 @@ class GridParams:
     tau_op: int  # tau_op; main.py:1417 / data.py:1386 => 120
     tau_cl: int  # tau_cl; => 150
     h: int  # number of auction action intervals; revised baseline => 30
-    T_physical: float  # physical session length; dt = T/tau_cl = 1.0
+    time_unit: str  # active synthetic and historical experiments both use minutes
+    T_physical: float  # session length in time_unit; dt = T/tau_cl = 1 minute
     alpha: float  # tick size alpha; => 0.01
     S0: float  # initial mid price S^mid_0; main.py:263 => 100.0
     I0: int  # initial inventory I_0; ctor `I` => 100
     I_max: int  # legacy normalization constant (== I0); clipping removed per D8
+
+    @property
+    def physical_time_per_grid_unit(self) -> float:
+        """Physical duration represented by one integer simulator interval."""
+        return self.T_physical / self.tau_cl
 
 
 @dataclass(frozen=True)
 class ClobFlowParams:
     """CLOB exogenous flow; ``V`` is distinct from strategic ``V_max``."""
 
-    lambda0: float  # Poisson intensity lambda_0 per side; 1.0 synth / 60.0 hist
+    lambda0: float  # Poisson intensity lambda_0 per side and per grid time unit
     v_m: float  # Pareto scale v_m; main.py:1418 => 2.0
     gamma_m: float  # Pareto shape gamma_m; => 2.5
     V: int  # exogenous market-order Pareto cap; => 30
-    V_inf: float  # top-of-book scale V_inf (Beta multiplier); => 15.0
+    V_inf: float  # top-of-book scale V_inf (Beta multiplier); shared => 2.0
     beta_a: float  # Beta shape a; => 2.0
     beta_b: float  # Beta shape b; => 5.0
-    rho_lob: float  # geometric CLOB depth decay; => 0.5
-    L_max: int  # maximum CLOB depth; => 12
+    rho_lob: float  # geometric CLOB depth persistence; shared => 0.96
+    L_max: int  # maximum exogenous CLOB depth; shared => 200
 
     @property
     def V_max(self) -> int:
@@ -161,7 +167,7 @@ class RoughHestonParams:
     theta: float  # revised variance-drift level; => 0.02
     varsigma: float  # variance mean-reversion coefficient; => 0.3
     nu: float  # volatility of volatility; => 0.3
-    s_star: float  # trading seconds per year; => 252*6.5*3600
+    s_star: float  # trading simulator-clock units per year; minute baseline => 98280
 
     @property
     def rho(self) -> float:
@@ -176,7 +182,8 @@ class RoughHestonParams:
         return self.nu
 
     @property
-    def seconds_per_year(self) -> float:
+    def time_units_per_year(self) -> float:
+        """Number of configured simulator clock units in one trading year."""
         return self.s_star
 
 
@@ -186,7 +193,10 @@ class HistoricalParams:
 
     csv_path: Path  # frozen multi-session experimental input
     symbols: tuple[str, ...]  # data.py:1651 => MSFT, JPM, PG, GOOGL, CAT
-    normalize_first: float  # --normalize first=100 default (D13)
+    # The frozen artifact remains in provider price units.  This is a modeling
+    # coordinate transform applied independently after a session is selected;
+    # it must not be confused with source-data preprocessing.
+    normalize_first: float
     n_rows: int  # compatibility loader minimum; env regularizes through tau_op
     date: str = ""  # session date provenance (Phase 6: never a hard-coded constant)
     path_policy: str = "fixed"  # active historical config uses "split_pool";
@@ -197,6 +207,13 @@ class HistoricalParams:
     train_date_range: tuple[str, ...] = ()
     validation_date_range: tuple[str, ...] = ()
     test_date_range: tuple[str, ...] = ()
+    # Fail-closed provenance requirements for publication datasets.  Empty
+    # strings keep older resolved configs/fixtures readable; active configs
+    # specify all four and the artifact validator checks the sidecar exactly.
+    source: str = ""
+    price_type: str = ""
+    quote_feed: str = ""
+    artifact_normalization: str = ""
 
 
 @dataclass(frozen=True)
@@ -230,8 +247,8 @@ class RewardParams:
     """Three-regime reward constants (sec:MDP; rulings D4, D5, D8)."""
 
     k_star: int  # k* in f_c; legacy kappa=0.1 <=> k*alpha=10 <=> k*=1000
-    lambda_inv: float  # terminal inventory penalty lambda; main.py:1417 => 0.5
-    q: float  # wrong-side penalty q in f_a; => 1.0
+    lambda_inv: float  # terminal inventory penalty lambda; shared => 2.0
+    q: float  # wrong-side shaping penalty; inactive headline => 0.0
     d: float  # cancellation cost unit d (cost d_t*c_t, D4); => 0.1
     shaping_enabled: bool  # common CLOB/interim/terminal shaping switch
     clawback_shaping: bool  # cancellation clawback ablation; baseline false
@@ -240,6 +257,33 @@ class RewardParams:
     # range (|I| <= I0 + auction exposure ~ O(10^3)); binding is logged
     # loudly and asserted never to happen on seeded standard runs (D8).
     numerical_guard_bound: float = 1e9
+    # Optional phase overrides.  ``None`` preserves the historical shared
+    # switch, while pilots can keep economic CLOB cash and retain a dense,
+    # purchase-sensitive auction signal.
+    clob_shaping_enabled: Optional[bool] = None
+    auction_shaping_enabled: Optional[bool] = None
+    # Potential-based numerical centering: subtract the initial-mid value of
+    # every inventory decrement and the remaining terminal inventory.  Across
+    # a complete episode this is exactly the policy-invariant constant
+    # S_mid_0*I_0, so action rankings and the manuscript objective are
+    # unchanged while Bellman targets operate on PnL-scale differences.
+    center_initial_inventory_value: bool = False
+
+    @property
+    def effective_clob_shaping(self) -> bool:
+        return (
+            self.shaping_enabled
+            if self.clob_shaping_enabled is None
+            else self.clob_shaping_enabled
+        )
+
+    @property
+    def effective_auction_shaping(self) -> bool:
+        return (
+            self.shaping_enabled
+            if self.auction_shaping_enabled is None
+            else self.auction_shaping_enabled
+        )
 
 
 @dataclass(frozen=True)
@@ -266,10 +310,30 @@ class ActionGridParams:
 
     V_max: int  # strategic CLOB submitted-volume cap; => 30
     L_max: int  # strategic CLOB quote offsets are 0..L_max; => 12
-    beta: float  # strategic auction slope step; => 10/3
-    K_max: int  # maximum strategic slope index k; => 10
-    B_max: int  # strategic auction price-offset bound; => 25 ticks
-    auction_cancel_mode: str = "enabled"  # "enabled" (1022) | "never" (511)
+    beta: float  # strategic auction slope step; shared => 1
+    K_max: int  # maximum strategic slope index k; shared => 32
+    B_max: int  # ambient strategic auction price-offset bound; shared => 150 ticks
+    auction_cancel_mode: str = "enabled"  # shared grids: enabled 254 | never 127
+    # Numerical coarsening of the integer auction reference-price coordinate.
+    # The ambient manuscript action remains integer-valued; a value >1 selects
+    # a broad, regular subset without exploding the DQN output head.
+    auction_offset_step: int = 1
+    # ``frozen_mid`` enumerates the manuscript offset b directly.  The
+    # ``indicative`` option instead enumerates a local displacement around the
+    # currently observed indicative clearing price and translates it back to
+    # an absolute manuscript offset before the order reaches the environment.
+    # This is a numerical policy parameterization, not a change to Adm(x).
+    auction_offset_center: str = "frozen_mid"
+    auction_local_offset_max: Optional[int] = None
+    # Optional non-uniform DQN slope subset, expressed as integer multipliers
+    # of beta.  Empty preserves the canonical 1..K_max grid.  A geometric
+    # subset gives fine control near zero and keeps the largest manuscript
+    # slope without multiplying it by every offset/cancellation choice.
+    auction_slope_multipliers: tuple[int, ...] = ()
+    # ``multi`` is the manuscript ambient action family.  ``single_replace``
+    # is a numerical policy-class restriction: once an agent schedule is live,
+    # a new schedule must simultaneously cancel/replace it.
+    auction_order_mode: str = "multi"
 
     @property
     def clob_volume_max(self) -> int:
@@ -296,8 +360,25 @@ class ActionGridParams:
         return self.K_max
 
     @property
+    def auction_K_multipliers(self) -> tuple[int, ...]:
+        if self.auction_slope_multipliers:
+            return self.auction_slope_multipliers
+        return tuple(range(1, self.K_max + 1))
+
+    @property
+    def auction_K_choice_count(self) -> int:
+        return len(self.auction_K_multipliers)
+
+    @property
     def auction_offset_max(self) -> int:
         return self.B_max
+
+    @property
+    def auction_template_offset_max(self) -> int:
+        """Half-width represented by the policy's auction offset coordinate."""
+        if self.auction_local_offset_max is None:
+            return self.B_max
+        return self.auction_local_offset_max
 
 
 @dataclass(frozen=True)
@@ -497,6 +578,13 @@ def _migrate_legacy_schema(tree: dict[str, Any]) -> None:
                     )
                 rough[new] = rough.pop(old)
 
+    # Resolved artifacts written before the explicit-clock schema retain their
+    # original meaning: old rough-Heston runs used seconds, while historical
+    # paths have always used minutes. Active configs specify this key directly.
+    if isinstance(grid, dict) and "time_unit" not in grid:
+        model = midprice.get("model") if isinstance(midprice, dict) else None
+        grid["time_unit"] = "seconds" if model == "rough_heston" else "minutes"
+
     algo1 = tree.get("algo1")
     if isinstance(algo1, dict):
         if "tau" in algo1:
@@ -601,6 +689,55 @@ def _validate_experiment_config(cfg: ExperimentConfig) -> ExperimentConfig:
     """Enforce cross-field contracts that a dataclass alone cannot express."""
     if cfg.grid.h != cfg.grid.tau_cl - cfg.grid.tau_op:
         raise ConfigError("grid.h must equal grid.tau_cl-grid.tau_op")
+    if cfg.grid.time_unit not in ("minutes", "seconds"):
+        raise ConfigError("grid.time_unit must be 'minutes' or 'seconds'")
+    if cfg.grid.T_physical <= 0.0:
+        raise ConfigError("grid.T_physical must be positive")
+    if abs(cfg.grid.physical_time_per_grid_unit - 1.0) > 1e-12:
+        raise ConfigError(
+            "the simulator clock requires one physical time_unit per integer grid interval: "
+            "grid.T_physical must equal grid.tau_cl"
+        )
+    if cfg.actions.auction_offset_step <= 0:
+        raise ConfigError("actions.auction_offset_step must be positive")
+    if cfg.actions.K_max <= 0 or cfg.actions.beta <= 0.0:
+        raise ConfigError("actions.K_max and actions.beta must be positive")
+    if cfg.actions.B_max <= 0:
+        raise ConfigError("actions.B_max must be positive")
+    if cfg.actions.auction_offset_center not in ("frozen_mid", "indicative"):
+        raise ConfigError(
+            "actions.auction_offset_center must be frozen_mid|indicative"
+        )
+    local_offset_max = cfg.actions.auction_template_offset_max
+    if local_offset_max < 0 or local_offset_max > cfg.actions.B_max:
+        raise ConfigError(
+            "actions.auction_local_offset_max must lie in [0, actions.B_max]"
+        )
+    if local_offset_max % cfg.actions.auction_offset_step != 0:
+        raise ConfigError(
+            "the policy auction-offset half-width must be divisible by "
+            "actions.auction_offset_step"
+        )
+    multipliers = cfg.actions.auction_K_multipliers
+    if (
+        not multipliers
+        or tuple(sorted(set(multipliers))) != multipliers
+        or multipliers[0] <= 0
+        or multipliers[-1] > cfg.actions.K_max
+    ):
+        raise ConfigError(
+            "actions.auction_slope_multipliers must be strictly increasing, "
+            "unique, positive, and no larger than actions.K_max"
+        )
+    if cfg.actions.auction_order_mode not in ("multi", "single_replace"):
+        raise ConfigError("actions.auction_order_mode must be multi|single_replace")
+    if (
+        cfg.actions.auction_order_mode == "single_replace"
+        and cfg.actions.auction_cancel_mode != "enabled"
+    ):
+        raise ConfigError(
+            "actions.auction_order_mode=single_replace requires cancellation enabled"
+        )
     if cfg.rl.chi != 1.0:
         raise ConfigError("the revised finite-horizon objective requires rl.chi=1")
     if cfg.rl.discount_mode != "undiscounted":
@@ -625,6 +762,8 @@ def _validate_experiment_config(cfg: ExperimentConfig) -> ExperimentConfig:
             raise ConfigError(
                 "midprice.model=historical requires midprice.historical"
             )
+        if cfg.grid.time_unit != "minutes":
+            raise ConfigError("historical mid-price paths require grid.time_unit='minutes'")
         # The committed one-session fixture remains readable for unit tests and
         # legacy characterization only.  Publication runs must provide three
         # explicit, chronological, nonoverlapping date ranges.
@@ -669,6 +808,8 @@ def _validate_experiment_config(cfg: ExperimentConfig) -> ExperimentConfig:
             raise ConfigError(
                 "midprice.model=rough_heston requires midprice.rough_heston"
             )
+        if cfg.midprice.rough_heston.s_star <= 0.0:
+            raise ConfigError("midprice.rough_heston.s_star must be positive")
     else:
         raise ConfigError(f"unknown midprice.model {cfg.midprice.model!r}")
     return cfg

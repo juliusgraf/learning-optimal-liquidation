@@ -769,10 +769,11 @@ def _get(cfg: ExperimentConfig, spec: Any) -> Any:
 
 # (symbol, dotted-path-or-callable, comment) — matches tab:params_generative.
 PARAM_SYMBOLS: list[tuple[str, Any, str]] = [
-    ("$\\tau^{\\mathrm{op}}$", "grid.tau_op", "Auction opening time"),
-    ("$\\tau^{\\mathrm{cl}}$", "grid.tau_cl", "Clearing time"),
+    ("$[t]$", "grid.time_unit", "Physical unit of the simulator clock"),
+    ("$\\tau^{\\mathrm{op}}$", "grid.tau_op", "Auction opening time from session start"),
+    ("$\\tau^{\\mathrm{cl}}$", "grid.tau_cl", "Clearing time from session start"),
     ("$I_0$", "grid.I0", "Initial inventory"),
-    ("$\\lambda_0$", "clob_flow.lambda0", "Continuous phase Poisson intensity"),
+    ("$\\lambda_0$", "clob_flow.lambda0", "Per-side Poisson intensity per clock unit"),
     ("$v_m$", "clob_flow.v_m", "Pareto distribution scale parameter"),
     ("$\\gamma_m$", "clob_flow.gamma_m", "Pareto distribution shape parameter"),
     ("$V_\\infty$", "clob_flow.V_inf", "Beta distribution scaling parameter"),
@@ -780,6 +781,10 @@ PARAM_SYMBOLS: list[tuple[str, Any, str]] = [
     ("$\\beta_b$", "clob_flow.beta_b", "Second Beta distribution shape parameter"),
     ("$\\rho$", "clob_flow.depth_decay", "Limit order book volume decay parameter"),
     ("$V$", "clob_flow.V_max", "Maximum volume admitted by the market"),
+    ("$L_{\\mathrm{book}}$", "clob_flow.L_max", "Maximum exogenous CLOB depth"),
+    ("$L_{\\mathrm{agent}}$", "actions.L_max", "Maximum strategic CLOB quote offset"),
+    ("$B_{\\mathrm{max}}$", "actions.B_max", "Ambient strategic auction offset bound"),
+    ("$D_\\mu$", "auction_flow.D_mu", "Minimum active exogenous auction slope"),
     ("$U_1$", "auction_flow.K_min", "Exogenous supply slope lower bound"),
     ("$U_2$", "auction_flow.K_max", "Exogenous supply slope upper bound"),
     ("$M_1$", lambda c: -c.auction_flow.price_band_ticks, "Exogenous supply spread lower bound"),
@@ -795,15 +800,18 @@ PARAM_SYMBOLS: list[tuple[str, Any, str]] = [
     ("$\\alpha$", "grid.alpha", "Tick size"),
     ("$\\beta$", lambda c: c.actions.auction_K_grid_max / c.actions.auction_K_grid_n, "Tick size of grid on $K^a$"),
     ("$\\mathcal{K}$", "actions.auction_K_grid_n", "Upper bound on $K^a/\\beta$"),
+    ("Slope indices", "actions.auction_K_multipliers", "Strategic auction slope subset"),
+    ("Local offset", "actions.auction_template_offset_max", "Policy offset half-width around its center"),
 ]
 
 ROUGH_HESTON_SYMBOLS: list[tuple[str, Any, str]] = [
     ("$H$", "midprice.rough_heston.H", "Hurst exponent"),
     ("$\\rho$", "midprice.rough_heston.rho", "Price-volatility correlation"),
     ("$V_0$", "midprice.rough_heston.v0", "Initial variance"),
-    ("$\\theta$", "midprice.rough_heston.theta", "Long-run variance"),
-    ("$\\lambda$", "midprice.rough_heston.kappa", "Variance mean-reversion rate"),
+    ("$\\theta$", "midprice.rough_heston.theta", "Variance-drift level (long-run variance is theta/varsigma)"),
+    ("$\\varsigma$", "midprice.rough_heston.kappa", "Variance mean-reversion rate"),
     ("$\\nu$", "midprice.rough_heston.xi", "Volatility of volatility"),
+    ("$s^\\star$", "midprice.rough_heston.s_star", "Trading clock units per year"),
 ]
 
 # Paper symbols for the RL hyperparameters that have one; others render blank.

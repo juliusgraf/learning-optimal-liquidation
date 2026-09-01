@@ -18,7 +18,7 @@ from lmm.market.clob import OrderBook, executed_volume
 
 from helpers import drive_to_auction, new_env, step_pair
 
-AUCTION_HOLD = AuctionAction(2.0, 2, 0)
+AUCTION_HOLD = AuctionAction(0.0, 0, 0)
 
 
 # ---------------------------------------------------------------------------

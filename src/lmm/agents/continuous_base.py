@@ -156,6 +156,10 @@ class ContinuousActorCriticAgent(Agent):
         for phase in self.PHASES:
             obs_dim = self._obs_dim[phase]
             actor = self._make_actor(phase, obs_dim, hidden, act_cls).to(self.device)
+            if phase == "auction" and getattr(
+                self.hp, "safe_auction_initialization", False
+            ):
+                self._initialize_safe_auction_actor(actor)
             self.actor[phase] = actor
             self.actor_optim[phase] = torch.optim.Adam(actor.parameters(), lr=self.hp.actor_lr)
             if self.uses_target_actor:
@@ -174,6 +178,37 @@ class ContinuousActorCriticAgent(Agent):
             self.critic_targets[phase] = ctgts
             params = [p for c in critics for p in c.parameters()]
             self.critic_optim[phase] = torch.optim.Adam(params, lr=self.hp.critic_lr)
+
+    def _initialize_safe_auction_actor(self, actor: nn.Module) -> None:
+        """Start the projected auction policy at K=0, b=0, cancel=0.
+
+        The target values stay inside (-1,1), avoiding saturated tanh units.
+        DDPG/TD3 expose a final linear head as ``net[-1]``; SAC has separate
+        mean/log-standard-deviation heads.
+        """
+        # The adapter rounds k=(raw+1)K_max/2 half-up.  Choose a finite raw
+        # value that maps safely inside the k=0 cell for any configured K_max,
+        # including the wider ambient range used by the sparse DQN grid.
+        slope_raw = -1.0 + 0.25 / float(self.cfg.actions.K_max)
+        target = np.array([slope_raw, 0.0, -0.5], dtype=np.float32)
+        if self._act_dim["auction"] == 2:
+            target = target[:2]
+        pre_tanh = torch.as_tensor(
+            np.arctanh(target), dtype=torch.float32, device=self.device
+        )
+        with torch.no_grad():
+            if hasattr(actor, "mean_head") and hasattr(actor, "log_std_head"):
+                actor.mean_head.weight.zero_()
+                actor.mean_head.bias.copy_(pre_tanh)
+                actor.log_std_head.weight.zero_()
+                actor.log_std_head.bias.fill_(-2.5)
+                return
+            net = getattr(actor, "net", None)
+            head = net[-1] if isinstance(net, nn.Sequential) else None
+            if not isinstance(head, nn.Linear):
+                raise AssertionError("continuous auction actor needs a linear output head")
+            head.weight.zero_()
+            head.bias.copy_(pre_tanh)
 
     def _post_setup(self, seeds: SeedBundle) -> None:
         """Hook for subclass extras (e.g. SAC temperature). Default: no-op."""
@@ -303,7 +338,10 @@ class ContinuousActorCriticAgent(Agent):
         self._pending_update_phase = None
         if phase not in self.replay:
             raise ValueError(f"unknown phase {phase!r}")
-        if len(self.replay[phase]) < self.hp.min_buffer:
+        phase_min_buffer = getattr(self.hp, f"min_buffer_{phase}", None)
+        if phase_min_buffer is None:
+            phase_min_buffer = self.hp.min_buffer
+        if len(self.replay[phase]) < int(phase_min_buffer):
             return {}
         stats = self._gradient_step(phase, self.replay[phase].sample(self.hp.batch_size))
         return {

@@ -173,7 +173,7 @@ def test_metadata_sidecar(tmp_path):
     assert disk == meta
     for key in (
         "tickers", "date", "interval", "session_start", "session_end", "timezone",
-        "clob_minutes", "auction_minutes", "tau_op", "tau_cl", "n_rows", "source",
+        "clob_minutes", "auction_minutes", "tau_op", "tau_cl", "time_unit", "n_rows", "source",
         "mid_proxy", "normalize", "fill", "filled_minutes", "row_to_decision_time",
         "downloaded_at_utc", "yfinance_version",
         "csv_sha256",

@@ -1,0 +1,13 @@
+# DQN-only bounded-pilot schedule. It changes training duration/exploration,
+# never the simulator or action space.
+
+algo:
+  hyperparams:
+    epsilon_warmup_episodes: 20
+    epsilon_decay_episodes: 150.0
+    # Auction actions can create leveraged signed inventory and there are only
+    # 30 auction samples per episode.  Preserve broad CLOB exploration while
+    # using a conservative auction behavior policy and prior.
+    epsilon_auction_scale: 0.1
+    safe_auction_noop_margin: 0.02
+    auction_learning_start_episode: 100

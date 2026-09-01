@@ -1,7 +1,8 @@
 # Revised artifact and metrics schema
 
-All current runs live under
-`results/revision_v2/<experiment_name>/<run_name>/`. Readers require both the
+All current confirmation runs live under
+`results/revision_v5/<experiment_name>/<run_name>/` and bounded pilots under
+`results/pilots_v5/<experiment_name>/<run_name>/`. Readers require both the
 current `artifact_schema_version` and the exact environment contract identifier
 stored in checkpoints and evaluation metadata. Missing or mismatched values are
 fatal; the pipeline does not load old checkpoints or result directories.
@@ -21,6 +22,9 @@ Every run saves:
   when applicable;
 - checkpoint-selection metric (`risk_adjusted_pnl`), ablation label, auction
   switch, and deterministic DQN tie-breaking rule.
+- the physical clock (`time_unit=minutes`, `tau_op=120`, `tau_cl=150`) in the
+  resolved config, runtime metadata, evaluation metadata, and realized-grid
+  records.
 
 ## Episode accounting
 
@@ -37,6 +41,7 @@ training metrics and evaluation records:
 | `clob_shaping_adjustment` | CLOB training reward minus CLOB economic cash |
 | `auction_interim_shaping` | cumulative fictive interim auction shaping |
 | `auction_terminal_shaping` | terminal purchase-side shaping, applied once to aggregate cash |
+| `reward_baseline_adjustment` | optional policy-invariant subtraction of initial inventory value from the training reward |
 | `training_return` / `return_undisc` | undiscounted shaped training objective |
 | `pnl` | marked-to-market PnL, including cancellation fees |
 | `risk_adjusted_pnl` | `pnl - inventory_penalty` (`Pi_lambda`) |
@@ -55,11 +60,18 @@ pnl = clob_economic_cash
 risk_adjusted_pnl = pnl - terminal_penalty
 ```
 
-With shaping disabled:
+With shaping disabled and reward centering disabled (the revision-v2
+reproduction default):
 
 ```text
 return_undisc = risk_adjusted_pnl + initial_mid * initial_inventory
 ```
+
+With `reward.center_initial_inventory_value=true`, the same value is removed
+incrementally as inventory changes and at the terminal mark.  This is a
+potential-based numerical transformation: the full-episode adjustment is
+exactly `-initial_mid * initial_inventory`, policy rankings are unchanged, and
+an unshaped `return_undisc` equals `risk_adjusted_pnl`.
 
 Normalized fields are also written:
 
@@ -113,7 +125,8 @@ fill, never requested quantity.
 
 The evaluation directory also contains:
 
-- `realized_grids.jsonl` — test grid and terminal time per policy/episode;
+- `realized_grids.jsonl` — test grid, terminal time, and physical time unit per
+  policy/episode;
 - `proposal_diagnostics.csv` — proposed, accepted, validity-rejected, and
   ineligible counts/rates for each of the six exogenous proposal types;
 - `action_diagnostics.csv` — raw normalized proposals, projected five-coordinate
@@ -121,7 +134,7 @@ The evaluation directory also contains:
 - `clearing_diagnostics.csv` — continuous and rounded prices, residual,
   allocation quantities/ratios, carry-over/fallback, and price displacement;
 - `h_forecasts.csv` and `h_forecast_summary.csv` — signed bias, MAE, RMSE, and
-  benchmark improvements grouped by physical time-to-close;
+  benchmark improvements grouped by physical time-to-close in minutes;
 - `traces/<policy>_ep<i>.csv` — per-step anatomy traces.
 
 ## Paired policy differences

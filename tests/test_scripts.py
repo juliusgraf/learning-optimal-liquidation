@@ -23,10 +23,10 @@ SCRIPTS = [
     ("run_synthetic_ddpg.sh", "synthetic_rough_heston", "ddpg", None),
     ("run_synthetic_td3.sh", "synthetic_rough_heston", "td3", None),
     ("run_synthetic_sac.sh", "synthetic_rough_heston", "sac", None),
-    ("run_historical_dqn.sh", "historical_sp500", "dqn", "MSFT"),
-    ("run_historical_ddpg.sh", "historical_sp500", "ddpg", "MSFT"),
-    ("run_historical_td3.sh", "historical_sp500", "td3", "MSFT"),
-    ("run_historical_sac.sh", "historical_sp500", "sac", "MSFT"),
+    ("run_historical_dqn.sh", "historical_sp500_midquotes", "dqn", "MSFT"),
+    ("run_historical_ddpg.sh", "historical_sp500_midquotes", "ddpg", "MSFT"),
+    ("run_historical_td3.sh", "historical_sp500_midquotes", "td3", "MSFT"),
+    ("run_historical_sac.sh", "historical_sp500_midquotes", "sac", "MSFT"),
 ]
 
 
@@ -43,7 +43,7 @@ def test_run_script_smoke(script, setting, algo, symbol):
     res = _run(script, extra)
     assert res.returncode == 0, f"{script} failed:\n{res.stderr[-2000:]}"
     name = f"{algo}_{symbol}_seed{SEED}" if symbol else f"{algo}_seed{SEED}"
-    rd = REPO / "results" / "revision_v2" / setting / name
+    rd = REPO / "results" / "revision_v5" / setting / name
     assert (rd / "checkpoints" / "final.pt").exists()
     assert (rd / "eval" / "records.csv").exists()
     # Traces use the resolved learned-policy label.
@@ -65,7 +65,7 @@ def test_acceptance_run_then_make_all_outputs():
     )
     assert res.returncode == 0, res.stderr[-2000:]
 
-    rd = REPO / "results" / "revision_v2" / "synthetic_rough_heston" / f"dqn_seed{seed}"
+    rd = REPO / "results" / "revision_v5" / "synthetic_rough_heston" / f"dqn_seed{seed}"
     for name in ("training_diagnostics", "episode_anatomy", "eval_distributions"):
         assert (rd / "figures" / f"{name}.pdf").exists()
         assert (rd / "figures" / f"{name}.png").exists()
@@ -73,6 +73,6 @@ def test_acceptance_run_then_make_all_outputs():
         assert (rd / "tables" / f"{name}.tex").exists()
         assert (rd / "tables" / f"{name}.csv").exists()
 
-    combined = REPO / "results" / "revision_v2" / "synthetic_rough_heston" / "_combined"
+    combined = REPO / "results" / "revision_v5" / "synthetic_rough_heston" / "_combined"
     assert (combined / "figures" / "algorithm_comparison.png").exists()
     assert (combined / "tables" / "eval_summary_final.csv").exists()

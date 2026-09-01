@@ -15,7 +15,7 @@ import pytest
 
 from lmm.env.action_spaces import AuctionAction, ClobAction
 
-from helpers import NOOP_AUCTION, drive_to_auction, new_env
+from helpers import NOOP_AUCTION, drive_to_auction, load_synthetic_cfg, new_env
 
 
 def C_of_paper_state(ps) -> float:
@@ -68,7 +68,16 @@ def assert_cancel_admissible(env, expected: bool):
     mask = env.action_mask()
     cancel_rows = np.array([a.cancel == 1 for a in env.auction_grid.actions])
     assert mask[cancel_rows].any() == expected
-    assert mask[~cancel_rows].all()  # c = 0 actions always admissible
+    if not expected:
+        assert mask[~cancel_rows].all()
+    elif env.cfg.actions.auction_order_mode == "single_replace":
+        stacking = np.array(
+            [a.cancel == 0 and a.K_a > 0.0 for a in env.auction_grid.actions]
+        )
+        assert not mask[stacking].any()
+        assert mask[~(cancel_rows | stacking)].all()
+    else:
+        assert mask[~cancel_rows].all()
     assert env._ledger.cancel_admissible() == expected
     assert env.cancel_admissible == expected
     assert (C_of_paper_state(env.paper_state()) > 0) == expected
@@ -80,8 +89,8 @@ def test_cancel_forbidden_at_auction_open_and_after_abstain(synthetic_cfg):
     env = new_env(synthetic_cfg)
     drive_to_auction(env, seed=2)
     assert_cancel_admissible(env, False)  # t = n+1: c_{t_{n+1}} = 0 forced
-    assert len(env.auction_grid) == 1022
-    assert env.action_mask().sum() == 511
+    assert len(env.auction_grid) == 254
+    assert env.action_mask().sum() == 127
     with pytest.raises(ValueError, match="cancel-all is ineligible"):
         env.step(AuctionAction(2.0, 2, 1))
 
@@ -96,7 +105,7 @@ def test_cancel_allowed_after_live_submission_then_forbidden_again(synthetic_cfg
     drive_to_auction(env, seed=2)
     env.step(AuctionAction(2.0, 1, 0))  # live prior order with K^a > 0
     assert_cancel_admissible(env, True)
-    assert env.action_mask().sum() == 1022
+    assert env.action_mask().sum() == 128
 
     # Cancel-all WITHOUT a new submission: ledger empty again afterwards.
     env.step(AuctionAction(0.0, 0, 1))
@@ -108,6 +117,88 @@ def test_cancel_allowed_after_live_submission_then_forbidden_again(synthetic_cfg
     assert_cancel_admissible(env, True)
     env.step(AuctionAction(1.0, 0, 1))
     assert_cancel_admissible(env, True)  # the just-submitted K=1 order lives
+
+
+def test_single_replace_mode_requires_cancellation_before_a_new_live_schedule():
+    cfg = load_synthetic_cfg("actions.auction_order_mode=single_replace")
+    env = new_env(cfg)
+    drive_to_auction(env, seed=2)
+    env.step(AuctionAction(cfg.actions.beta, 1, 0))
+
+    mask = env.action_mask()
+    stacking = np.array(
+        [a.K_a > 0.0 and a.cancel == 0 for a in env.auction_grid.actions]
+    )
+    assert not mask[stacking].any()
+    assert mask.sum() == 128  # two no-ops plus every cancel/replace action
+    with pytest.raises(ValueError, match="single_replace mode requires cancel=1"):
+        env.step(AuctionAction(cfg.actions.beta, 2, 0))
+
+    env.step(AuctionAction(cfg.actions.beta, 2, 1))
+    assert env.own_slope == pytest.approx(cfg.actions.beta)
+    assert env.cancel_admissible
+
+
+def test_indicative_centered_grid_maps_to_absolute_manuscript_offset():
+    cfg = load_synthetic_cfg(
+        "actions.beta=6.666666666666667",
+        "actions.K_max=5",
+        "actions.auction_slope_multipliers=[1,2,3,4,5]",
+        "actions.B_max=150",
+        "actions.auction_offset_center=indicative",
+        "actions.auction_local_offset_max=10",
+        "actions.auction_order_mode=single_replace",
+    )
+    env = new_env(cfg)
+    drive_to_auction(env, seed=2)
+    assert len(env.auction_grid) == 212
+
+    # A template at local displacement -4 is executed at the manuscript
+    # offset b=33 when the observed indicative price is 37 ticks above the
+    # frozen mid.  Direct AuctionAction objects remain absolute b actions.
+    env._h_cache = env.s_mid + 37 * cfg.grid.alpha
+    idx = next(
+        i
+        for i, a in enumerate(env.auction_grid.actions)
+        if a.K_a == pytest.approx(cfg.actions.beta)
+        and a.offset == -4
+        and a.cancel == 0
+    )
+    assert env.action_mask()[idx]
+    assert env._decode_auction(idx) == AuctionAction(cfg.actions.beta, 33, 0)
+    direct = AuctionAction(cfg.actions.beta, -4, 0)
+    assert env._decode_auction(direct) is direct
+
+
+def test_nonuniform_slope_subset_keeps_small_and_large_actions_compact():
+    cfg = load_synthetic_cfg(
+        "actions.beta=1.0",
+        "actions.K_max=32",
+        "actions.auction_slope_multipliers=[1,2,4,8,16,32]",
+        "actions.B_max=150",
+        "actions.auction_offset_center=indicative",
+        "actions.auction_local_offset_max=10",
+    )
+    env = new_env(cfg)
+    slopes = sorted({a.K_a for a in env.auction_grid.actions if a.K_a > 0.0})
+    assert slopes == [1.0, 2.0, 4.0, 8.0, 16.0, 32.0]
+    assert len(env.auction_grid) == 254
+
+
+def test_indicative_centered_grid_masks_templates_outside_ambient_band():
+    cfg = load_synthetic_cfg(
+        "actions.B_max=30",
+        "actions.auction_offset_center=indicative",
+        "actions.auction_local_offset_max=10",
+    )
+    env = new_env(cfg)
+    drive_to_auction(env, seed=2)
+    env._h_cache = env.s_mid + 28 * cfg.grid.alpha
+    mask = env.action_mask()
+    outside = np.array(
+        [a.K_a > 0.0 and a.offset > 2 for a in env.auction_grid.actions]
+    )
+    assert not mask[outside].any()
 
 
 def test_cancel_admissibility_is_in_the_auction_observation(synthetic_cfg):
@@ -163,7 +254,10 @@ def test_ledger_mask_agrees_with_C_on_paper_state_throughout(synthetic_cfg):
         checked += 1
 
         K = float(rng.choice([0.0, 0.0, 2.0, 5.0]))  # abstain half the time
-        cancel = int(admissible and rng.random() < 0.4)
+        cancel = int(
+            admissible
+            and (K > 0.0 or rng.random() < 0.4)
+        )  # single-replace requires cancellation for a new live schedule
         offset = 0 if K == 0.0 else int(rng.integers(-3, 4))
         _, _, term, _, _ = env.step(AuctionAction(K, offset, cancel))
         if term:

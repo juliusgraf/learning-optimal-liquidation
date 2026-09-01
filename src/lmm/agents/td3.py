@@ -9,6 +9,7 @@ docs/continuous_action_extension.md.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Optional
 
 import numpy as np
 import torch
@@ -29,6 +30,9 @@ class TD3Hyperparams(ContinuousHyperparams):
     target_noise_std: float  # target-policy smoothing sigma in normalized space
     target_noise_clip: float  # smoothing clip in normalized space
     policy_delay: int  # delayed actor / target-sync cadence
+    min_buffer_clob: Optional[int] = None
+    min_buffer_auction: Optional[int] = None
+    safe_auction_initialization: bool = False
 
 
 class TD3Agent(ContinuousActorCriticAgent):

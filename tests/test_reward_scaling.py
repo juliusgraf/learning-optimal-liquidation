@@ -200,7 +200,11 @@ def test_gradient_updates_stay_finite_under_paper_scale_rewards(algo):
     """A short SEEDED training segment fed paper-scale rewards keeps the
     per-update losses / TD errors / gradient norms finite and non-divergent."""
     cfg, agent = build_agent(
-        algo, "algo.hyperparams.min_buffer=32", "algo.hyperparams.batch_size=16"
+        algo,
+        "algo.hyperparams.min_buffer=32",
+        "algo.hyperparams.min_buffer_clob=32",
+        "algo.hyperparams.min_buffer_auction=32",
+        "algo.hyperparams.batch_size=16",
     )
     clob_dim = len(cfg.features.clob)
     rng = np.random.default_rng(0)

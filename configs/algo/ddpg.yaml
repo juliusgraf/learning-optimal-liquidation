@@ -5,8 +5,8 @@
 #
 # Phase 7: kept exactly as the Phase 5 tuned defaults. Deviations from
 # configs/algo/dqn.yaml are intentional and standard for continuous control:
-# wider [64,64] nets (DQN uses [16,16]), separate actor/critic lrs, and Polyak
-# (soft) target updates instead of DQN's hard target_update_interval.
+# algorithm-specific actor/critic learning rates and Polyak (soft) target
+# updates instead of DQN's target rule. Network widths are shared at [128,128].
 
 algo:
   name: ddpg
@@ -14,9 +14,12 @@ algo:
     # -- shared run/eval/replay (mirror configs/algo/dqn.yaml so train.py
     #    drives every algorithm uniformly) --------------------------------
     buffer_size: 50000          # replay capacity per phase
-    min_buffer: 5000            # learning starts (per phase)
+    min_buffer: 5000            # compatibility fallback; phase thresholds below win
+    min_buffer_clob: 2000
+    min_buffer_auction: 512
     batch_size: 128
-    hidden_layers: [64, 64]     # actor & critic MLP widths per phase
+    hidden_layers: [128, 128]   # common capacity across both mid-price sources
+    safe_auction_initialization: true
     grad_clip_norm: 1.0         # global gradient-norm clip
     updates_per_env_step: 1     # gradient steps per eligible update
     update_every: 1             # env steps between updates
@@ -30,16 +33,7 @@ algo:
     checkpoint_interval_episodes: 100
     # -- DDPG-specific --------------------------------------------------------
     actor_lr: 1.0e-4            # Adam, actor
-    critic_lr: 3.0e-4           # Adam, critic. RETUNE 2026-06-15: LOWERED from
-                                # 1.0e-3. The aggressive 1e-3 critic drove the
-                                # deterministic-policy overestimation runaway:
-                                # eval found a good policy (~20k) by ~ep200 then
-                                # COLLAPSED (final.pt ~0). At 3e-4 the collapse is
-                                # gone (final.pt 15.8k > AS+TWAP, stable rising
-                                # curve), synthetic AND historical. The structural
-                                # cure is clipped double-Q (= TD3); this calmer
-                                # critic is the within-DDPG fix. AUDIT sec F.3.
-    target_soft_tau: 0.0025     # RETUNE 2026-06-15: 0.005 -> 0.0025, slower
-                                # target tracking (less overestimation feedback).
+    critic_lr: 3.0e-4           # conservative critic step for deterministic control
+    target_soft_tau: 0.0025     # slow target tracking limits feedback instability
     exploration_noise: gaussian # gaussian | ou (eval: none)
     exploration_noise_std: 0.1  # noise scale (x action half-range)

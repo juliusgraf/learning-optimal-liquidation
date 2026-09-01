@@ -29,7 +29,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-RESULTS_ROOT="results/revision_v2"
+RESULTS_ROOT="results/revision_v5"
 if [[ ! -d "$RESULTS_ROOT" ]]; then
   echo "no $RESULTS_ROOT directory; run a run_*.sh script first" >&2
   exit 1

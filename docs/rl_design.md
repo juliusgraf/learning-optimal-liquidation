@@ -4,6 +4,28 @@ This document records the implemented learning contract. The revised
 manuscript is authoritative for the model; this file explains how its state,
 actions, chronology, rewards, and evaluation criteria reach the learners.
 
+## Physical clock
+
+Synthetic and historical environments share one minute as their physical time
+unit. The CLOB runs from minute 0 to auction opening at `tau_op=120`; the
+closing auction then has 30 one-minute action intervals and clears at
+`tau_cl=150`. CLOB `lambda0` values are intensities per minute, and auction
+arrival/cancellation probabilities apply once per minute. The rough-Heston
+Euler scheme converts its nonuniform minute grid to trading years with
+`s_star=98,280` trading minutes per year. This affects calendar-time dynamics,
+but not the number of simulator decisions or network input dimensions.
+
+## Shared simulator contract
+
+Rough-Heston and historical-midquote runs differ only in the exogenous
+mid-price branch and run identity. They share the complete market and learner
+configuration: `lambda0=1`, `V_inf=2`, `rho_lob=0.96`, exogenous book depth
+200, strategic CLOB offset bound 12, auction flow, action semantics, centered
+economic reward, validation design, and algorithm hyperparameters. Setting
+overlays contain no simulator or learning overrides. The active historical
+branch is therefore a historical mid-price replay inside the same simulated
+CLOB/auction—not a separately calibrated simulator.
+
 ## Objective and Bellman targets
 
 The finite-horizon learning objective is undiscounted. Every nonterminal target
@@ -38,7 +60,7 @@ accepted exogenous proposals and active strategic schedules strictly before the
 current action. The indicative price is the lagged value available under the
 manuscript chronology.
 
-Physical time and decision index are divided by `tau_cl`. All other continuous
+Physical time in minutes and decision index are divided by `tau_cl`. All other continuous
 features are standardized using statistics fitted on dedicated training-only
 paths and then frozen. The same transformed observation reaches behavior
 policies, replay, online networks, target networks, actors, and critics.
@@ -56,13 +78,16 @@ integer `v=1..30`, `delta=0..12`, for 391 actions. The state mask enforces
 order lives only for the current realized interval and is removed before the
 next snapshot/carry-over.
 
-Auction actions use `K=beta*k`, `k=0..10`, offsets `b=-25..25`, and a cancel-all
-bit. With cancellation enabled the canonical grid has
-`2 + 2*10*51 = 1,022` actions. Without cancellation it has
-`1 + 10*51 = 511`. Zero slope has zero offset. Cancellation removes every live
+Auction actions use `beta=1` and slope indices `{1,2,4,8,16,32}`. The policy
+enumerates 21 local offsets within ten ticks of the observed indicative price;
+the environment translates each template to the absolute manuscript offset
+inside the ambient `[-150,150]` bound. With cancellation enabled the grid has
+`2 + 2*6*21 = 254` actions. Without cancellation it has
+`1 + 6*21 = 127`. Zero slope has zero offset. Cancellation removes every live
 strategic schedule submitted strictly before the current action; the new
-current action is never canceled by its own bit. Equal DQN Q-values choose the
-first action in lexicographic grid order.
+current action is never canceled by its own bit. In the headline
+`single_replace` class, a new positive-slope schedule must cancel a prior live
+schedule. Equal DQN Q-values choose the first action in lexicographic order.
 
 Auction inventory is not clipped or bounded by a hidden liquidation
 constraint. Two-sided learned schedules may buy. Clearing and accounting use
@@ -89,7 +114,8 @@ saved as evaluation diagnostics.
 
 Each method has separate CLOB and auction function approximators and replay
 buffers because the action spaces differ structurally. The observation size is
-identical. Phase-local target updates occur only after a successful update from
+identical. Both settings use two 128-unit hidden layers and phase-specific
+replay warm-ups of 2,000 CLOB and 512 auction transitions. Phase-local target updates occur only after a successful update from
 that phase. Replay retains the next phase and admissibility mask so the CLOB to
 auction junction is explicit.
 
@@ -101,9 +127,12 @@ contract is shared.
 
 ## Reward and accounting separation
 
-Training uses the manuscript's three-regime shaped reward. Evaluation separately
-records CLOB cash, terminal auction cash, cancellation fees, residual mark,
-inventory penalty, and each shaping adjustment.
+Headline training uses the centered economic objective with `lambda_inv=2`;
+the manuscript's three-regime shaping is retained as an explicit treatment.
+Centering removes the policy-invariant initial inventory value incrementally,
+so it changes target scale but not complete-episode policy ordering. Evaluation
+separately records CLOB cash, terminal auction cash, cancellation fees,
+residual mark, inventory penalty, and each shaping adjustment.
 
 Primary policy selection and comparison use:
 
@@ -113,8 +142,8 @@ pnl = CLOB cash + auction cash + residual mark
 risk_adjusted_pnl = pnl - lambda_inv * I_final^2
 ```
 
-No shaping term enters either field. With shaping disabled, the episode return
-equals `risk_adjusted_pnl + initial inventory value` to numerical tolerance.
+No shaping term enters either field. With headline centering and shaping
+disabled, the episode return equals `risk_adjusted_pnl` to numerical tolerance.
 
 ## Validation, testing, and comparison
 

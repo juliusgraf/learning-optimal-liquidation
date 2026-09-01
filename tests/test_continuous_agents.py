@@ -35,10 +35,27 @@ def make_cont_agent(cfg, cls, master_seed: int = 1234):
 
 
 def test_shared_no_cancel_mode_changes_sac_action_dim_and_target_entropy():
-    cfg = load_sac_cfg("actions.auction_cancel_mode=never")
+    cfg = load_sac_cfg(
+        "actions.auction_cancel_mode=never",
+        "actions.auction_order_mode=multi",
+    )
     agent = make_cont_agent(cfg, SACAgent)
     assert agent._act_dim["auction"] == 2
     assert agent.target_entropy["auction"] == -3.0
+
+
+def test_safe_auction_actor_still_projects_to_zero_with_wide_slope_band():
+    cfg = load_ddpg_cfg(
+        "actions.K_max=32",
+        "algo.hyperparams.safe_auction_initialization=true",
+    )
+    agent = make_cont_agent(cfg, DDPGAgent)
+    obs = torch.zeros((1, len(cfg.features.auction)), dtype=torch.float32)
+    with torch.no_grad():
+        raw = agent.actor["auction"](obs).squeeze(0).cpu().numpy()
+    projected_k_coordinate = (raw[0] + 1.0) * cfg.actions.K_max / 2.0
+    assert projected_k_coordinate < 0.5
+    assert raw[2] < 0.0  # no cancellation request
 
 
 def constant_critic(critic, value: float) -> None:
@@ -210,7 +227,13 @@ def test_continuous_replay_round_trip_restores_stream():
 
 @pytest.mark.parametrize("algo,cls", [("ddpg", DDPGAgent), ("td3", TD3Agent), ("sac", SACAgent)])
 def test_checkpoint_round_trip(algo, cls, tmp_path):
-    cfg = load_algo_cfg(algo, "algo.hyperparams.min_buffer=8", "algo.hyperparams.batch_size=8")
+    cfg = load_algo_cfg(
+        algo,
+        "algo.hyperparams.min_buffer=8",
+        "algo.hyperparams.min_buffer_clob=8",
+        "algo.hyperparams.min_buffer_auction=8",
+        "algo.hyperparams.batch_size=8",
+    )
     agent = make_cont_agent(cfg, cls, master_seed=5)
     normalizer = FeatureNormalizer(cfg.grid.tau_cl).fit(
         np.vstack([np.zeros(18), np.ones(18)])
@@ -268,6 +291,8 @@ def _train(tmp_path, algo: str, run_name: str) -> str:
         "-o", "rl.test_size=2",
         "-o", "algo.hyperparams.checkpoint_interval_episodes=4",
         "-o", "algo.hyperparams.min_buffer=150",
+        "-o", "algo.hyperparams.min_buffer_clob=150",
+        "-o", "algo.hyperparams.min_buffer_auction=90",
         "-o", "algo.hyperparams.batch_size=32",
     ]
     assert train_mod.main(argv) == 0

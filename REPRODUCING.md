@@ -2,9 +2,10 @@
 
 This repository implements the revised manuscript environment for the
 synthetic rough-Heston setting and the historical-midprice setting, with DQN
-and the DDPG/TD3/SAC continuous-action relaxations. Revised artifacts are
-written only below `results/revision_v2/`; checkpoints and results from earlier
-environment contracts are rejected.
+and the DDPG/TD3/SAC continuous-action relaxations. Current minute-clock
+artifacts are written below `results/revision_v5/` (bounded pilots below
+`results/pilots_v5/`); checkpoints and results from earlier environment
+contracts are rejected.
 
 ## Setup
 
@@ -31,38 +32,100 @@ chronology, residual-book carry-over, transactional auction validity,
 indicative-price lags, action counts and canonical no-ops, cross-phase Bellman
 targets, one update per transition, common unclipped reward scaling, pro-rata
 fills, inventory conservation, self-trade exclusion, unshaped accounting,
-annualized rough-Heston time, the capped benchmark schedule, and rejection of
+annualized minute-clock rough-Heston time, the capped benchmark schedule, and rejection of
 stale artifacts.
 
 Do not infer publication readiness from the legacy characterization tests in
 `tests/audit/`; they document the superseded implementation.
 
+## Common physical clock
+
+Both active settings use minutes. One integer grid interval is one minute,
+`tau_op=120` opens the auction after a two-hour CLOB phase, and `tau_cl=150`
+ends a 30-minute auction. CLOB Poisson intensities are therefore per minute and
+auction Bernoulli probabilities are per one-minute decision. The synthetic
+rough-Heston model remains parameterized in trading years, using
+`s_star=252*6.5*60=98,280` trading minutes per year. The numerical grid has not
+grown, so this change does not add environment steps; it changes the physical
+meaning and the synthetic mid-price calendar-time increment.
+
+## One shared simulator
+
+The active setting overlays select only run identity and the exogenous
+mid-price source. Both inherit the same grid, CLOB and auction flows, action
+space, cancellation/order semantics, reward, validation design, and
+algorithm-specific hyperparameters from `configs/base.yaml` and
+`configs/algo/*.yaml`. In particular, both use `lambda0=1`, `V_inf=2`,
+`rho_lob=0.96`, exogenous `L_max=200`, agent CLOB offset bound 12, and the
+same 254-template cancellation-enabled DQN auction head. The acceptance suite
+compares every shared resolved section for all four learners.
+
 ## Historical data requirement
 
-The configured input, `data/historical_sp500_1m.csv`, contains 20 frozen
-one-minute sessions for CAT, PG, GOOGL, JPM, and MSFT. The chronological pools
-are 10 training sessions (2026-08-03–14), 5 validation sessions
-(2026-08-17–21), and 5 test sessions (2026-08-24–28). The accompanying sidecar
-records source provenance, per-session fills, split membership, and the CSV
-digest. Dataset ID, digest, tickers, timezone, missing-data treatment, split
-ranges, and nonempty pools are verified before use and copied into every run.
+New historical experiments require
+`data/historical_sp500_midquotes_1m.csv` and its schema-3 sidecar. The artifact
+is built from timestamped bid/ask quotes (SIP for publication), stores raw USD
+midpoints without normalization, and maps each decision time to the latest
+valid quote at or before that time. The environment freezes the auction-open
+midquote during the call and rebases a selected session to `S0=100` only as an
+explicit model-coordinate transformation. Order flow, books, auction
+proposals, clearing, and allocation remain simulated.
 
-The loader maps each realized decision time to the most recent observation at
-or before that time and never interpolates from a future bar. It uses the
-historical observation at auction open and freezes it throughout the call. The
-historical series supplies midprices only; order flow, books, auction proposals,
-clearing, and allocation remain simulated.
-
-The range-capable yfinance builder and exact regeneration command are documented
-in `data/README.md`:
+The exact credential-safe build command, raw-event archive contract, and the
+legacy Yahoo reproduction path are documented in `data/README.md`:
 
 ```bash
-python3 -m lmm.data.load_yfinance_data --help
+python3 -m lmm.data.load_midquote_data --help
 ```
+
+Generation must be followed by the policy-free carry-over gate:
+
+```bash
+python3 -m lmm.experiments.diagnose_simulator \
+  --config configs/base.yaml \
+  --config configs/historical_sp500_midquotes.yaml \
+  --episodes 20 --assert-ready
+```
+
+Run the same gate for the rough-Heston source:
+
+```bash
+python3 -m lmm.experiments.diagnose_simulator \
+  --config configs/base.yaml \
+  --config configs/synthetic_rough_heston.yaml \
+  --episodes 100 --assert-ready
+```
+
+`historical_sp500_1m.csv` is a normalized Yahoo one-minute close proxy and is
+retained only for revision-v2 reproduction; it is not a publication input.
+
+## Minute-clock staged historical runs
+
+After the true-midquote artifact and simulator gate exist, the default launcher
+runs only the bounded 100-episode DQN stage-1 pilot:
+
+```bash
+scripts/run_historical_midquote_dqn.sh --symbol MSFT --seed 42
+```
+
+Omit `--symbol` to run the pilot over all five assets. The launcher runs the
+simulator gate first, then training, held-out evaluation, paired AS/TWAP
+differences, and tables. It refuses to start if either the quote CSV or sidecar
+is missing.
+
+The longer 800-episode confirmation is never selected implicitly. Launch it
+only after every asset passes the stage-1 gates:
+
+```bash
+scripts/run_historical_midquote_dqn.sh --confirm --symbol MSFT --seed 42
+```
+
+Numerical rationale, the cancellation contract, bounded pilot evidence, and
+paper-promotion criteria are in `docs/revision_v3_calibration.md`.
 
 ## Canonical runs
 
-The baseline budgets are 1,000 synthetic episodes and 500 historical episodes.
+The matched confirmation budget is 800 episodes in both settings.
 Each run fits its feature normalizer on training-only paths, selects `best.pt`
 on validation risk-adjusted PnL, and evaluates that fixed checkpoint on 100
 held-out test episodes per seed/configuration.
@@ -106,8 +169,8 @@ scripts/run_synthetic_treatments.sh --seed 42
 scripts/run_synthetic_treatments.sh --smoke --seed 42
 ```
 
-The no-cancellation treatment gives DQN 511 auction actions; the enabled
-regime has 1,022. Continuous agents use two or three normalized auction
+The no-cancellation treatment gives DQN 127 auction actions; the enabled
+regime has 254. Continuous agents use two or three normalized auction
 proposal coordinates respectively while keeping the same 18-feature network
 input.
 
@@ -127,7 +190,7 @@ both in currency units and in basis points of initial notional.
 For a synthetic DQN run named `dqn_seed42`:
 
 ```bash
-RUN=results/revision_v2/synthetic_rough_heston/dqn_seed42
+RUN=results/revision_v5/synthetic_rough_heston/dqn_seed42
 
 python3 -m lmm.experiments.train \
   --config configs/base.yaml \

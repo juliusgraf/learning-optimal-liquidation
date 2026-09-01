@@ -56,9 +56,9 @@ class RoughHestonMidPrice(MidPriceModel):
     Implements the revised manuscript scheme: kernel
     K(u) = u^(H-1/2)/Gamma(H+1/2), (V)_+ truncation in the variance
     recursion, correlated log-price update (rho dW_v + sqrt(1-rho^2) dW_perp,
-    drift -V_+/2), and physical-time scaling ``bar(t)=t/s_star``. One
-    synthetic simulator unit is one second; raw seconds are never used as
-    Brownian variances.
+    drift -V_+/2), and physical-time scaling ``bar(t)=t/s_star``. The active
+    synthetic simulator uses minutes, so ``s_star`` is expressed in trading
+    minutes per year; raw minutes are never used as Brownian variances.
 
     Per ruling D14, performance work only VECTORIZES the same recursion:
     the per-step variance update
@@ -87,9 +87,9 @@ class RoughHestonMidPrice(MidPriceModel):
         self.grid = grid
         self.method = method
         self._kernel_const = 1.0 / math.gamma(params.H + 0.5)
-        # Manuscript conversion: bar(t)=t/s_star.  This is deliberately
-        # independent of the reporting-only ``T_physical`` field.
-        self._years_per_grid_unit = 1.0 / params.seconds_per_year
+        # Calendar conversion: bar(t)=t/s_star, with t and s_star expressed in
+        # the same configured clock unit (minutes for all active experiments).
+        self._years_per_grid_unit = 1.0 / params.time_units_per_year
         self._rng: np.random.Generator | None = None
 
     def reset(self, rng: np.random.Generator) -> float:

@@ -1,6 +1,6 @@
 """Train any agent on any setting from config (Phase 4).
 
-Writes results/revision_v2/<experiment_name>/<run_name>/ with config_resolved.yaml,
+Writes the configured results root (currently results/revision_v5) with config_resolved.yaml,
 seed.txt, git_sha.txt, metrics.csv (per-episode), checkpoints/, logs/run.log
 (engineering conventions, CLAUDE.md). Figures/tables are produced separately
 by make_figures.py / make_tables.py from these saved outputs.
@@ -73,6 +73,7 @@ METRICS_COLUMNS = [
     "clob_shaping_adjustment",
     "auction_interim_shaping",
     "auction_terminal_shaping",
+    "reward_baseline_adjustment",
     "clob_reward_sum",
     "auction_step_reward_sum",
     "terminal_reward",
@@ -253,6 +254,7 @@ def _metrics_row(
         "clob_shaping_adjustment": res.clob_shaping_adjustment,
         "auction_interim_shaping": res.auction_interim_shaping,
         "auction_terminal_shaping": res.auction_terminal_shaping,
+        "reward_baseline_adjustment": res.reward_baseline_adjustment,
         "clob_reward_sum": res.clob_reward_sum,
         "auction_step_reward_sum": res.auction_step_reward_sum,
         "terminal_reward": res.terminal_reward,
@@ -460,6 +462,39 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         # The "initial-DQN" baseline: the untrained networks, saved BEFORE
         # any training (evaluated by evaluate.py as the initial reference).
         agent.save(paths.checkpoints / "initial.pt")
+        # A safety-aware initialization is a legitimate policy candidate.  It
+        # must enter the same fixed-seed economic validation race as later
+        # checkpoints; otherwise the first trained checkpoint can replace a
+        # superior no-op initialization merely because no baseline score was
+        # recorded.
+        initial_validation = _run_eval(
+            validation_env, agent, eval_seeds, chi, checkpoint_metric
+        )
+        best_validation_score = initial_validation["checkpoint_score"]
+        best_episode = -1
+        agent.save(paths.checkpoints / "best.pt")
+        (paths.checkpoints / "best_selection.yaml").write_text(
+            yaml.safe_dump(
+                {
+                    "metric": checkpoint_metric,
+                    "mode": "max",
+                    "value": best_validation_score,
+                    "episode": best_episode,
+                    "n_validation_seeds": len(eval_seeds),
+                    "validation_seeds": eval_seeds,
+                    "validation_frequency_episodes": cfg.rl.validation_frequency_episodes,
+                    "patience_evals": cfg.rl.validation_patience_evals,
+                    "seed_stream": "env_eval",
+                    "candidate": "initial_untrained_policy",
+                },
+                sort_keys=False,
+            )
+        )
+        logger.info(
+            "initial validation %s %.6f",
+            checkpoint_metric,
+            best_validation_score,
+        )
 
     new_csv = start_episode == 0 or not paths.metrics_csv.exists()
     csv_file = paths.metrics_csv.open("w" if new_csv else "a", newline="")

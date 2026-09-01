@@ -20,7 +20,7 @@ def cfg():
     return load_synthetic_cfg()
 
 
-def normalized_for(order, cfg):
+def normalized_for(order, cfg, *, offset_center=0):
     if isinstance(order, ClobAction):
         return np.array(
             [
@@ -32,7 +32,7 @@ def normalized_for(order, cfg):
     return np.array(
         [
             2.0 * order.K_a / cfg.actions.auction_K_grid_max - 1.0,
-            order.offset / cfg.actions.B_max,
+            (order.offset - offset_center) / cfg.actions.auction_template_offset_max,
             1.0 if order.cancel else -1.0,
         ],
         dtype=np.float32,
@@ -71,14 +71,18 @@ def test_discrete_grid_points_produce_identical_full_episode(cfg):
 
     step = 0
     while True:
+        offset_center = 0
         if discrete.phase == "clob":
             volume = 4.0 if discrete.inventory >= 4.0 else 0.0
             order = ClobAction(volume, 3 if volume else 0)
         else:
-            cancel = int(step % 4 and discrete.cancel_admissible)
-            order = AuctionAction(2.0 * cfg.actions.beta, 3, cancel)
+            cancel = int(discrete.cancel_admissible)
+            offset_center = discrete._auction_offset_center_ticks()
+            order = AuctionAction(2.0 * cfg.actions.beta, offset_center + 3, cancel)
         obs_d, reward_d, done_d, _, info_d = discrete.step(order)
-        obs_c, reward_c, done_c, _, info_c = relaxed.step(normalized_for(order, cfg))
+        obs_c, reward_c, done_c, _, info_c = relaxed.step(
+            normalized_for(order, cfg, offset_center=offset_center)
+        )
         np.testing.assert_array_equal(obs_d, obs_c)
         assert reward_d == reward_c
         assert done_d == done_c
@@ -110,8 +114,8 @@ def test_auction_projection_snaps_slope_offset_and_cancel(cfg):
     env = ContinuousActionAdapter(new_env(cfg))
     drive_to_auction(env)
     order, committed, diagnostics = env._project_auction(np.array([0.0, 0.1, 1.0]))
-    assert order.K_a == pytest.approx(5 * cfg.actions.beta)
-    assert order.offset == 3
+    assert order.K_a == pytest.approx(0.5 * cfg.actions.auction_K_grid_max)
+    assert order.offset == env.env._auction_offset_center_ticks() + 1
     assert order.cancel == 0  # threshold positive, but cancellation is not admissible yet
     assert diagnostics["cancel_threshold_positive"]
     assert not diagnostics["cancel_executed"]
@@ -130,8 +134,24 @@ def test_zero_slope_has_canonical_zero_offset(cfg):
     assert order == AuctionAction(0.0, 0, 0)
 
 
+def test_continuous_auction_offset_can_be_centered_on_indicative_price():
+    cfg = load_synthetic_cfg(
+        "actions.B_max=150",
+        "actions.auction_offset_center=indicative",
+        "actions.auction_local_offset_max=10",
+    )
+    env = ContinuousActionAdapter(new_env(cfg))
+    drive_to_auction(env)
+    env.env._h_cache = env.s_mid + 37 * cfg.grid.alpha
+    order, _, _ = env._project_auction(np.array([0.0, 0.5, -1.0]))
+    assert order.offset == 42  # indicative center 37 plus local displacement 5
+
+
 def test_no_cancel_treatment_uses_two_dimensional_auction_proposal():
-    cfg = load_synthetic_cfg("actions.auction_cancel_mode=never")
+    cfg = load_synthetic_cfg(
+        "actions.auction_cancel_mode=never",
+        "actions.auction_order_mode=multi",
+    )
     specs = continuous_action_specs(cfg)
     assert specs["clob"].dim == 2 and specs["auction"].dim == 2
     env = ContinuousActionAdapter(new_env(cfg))

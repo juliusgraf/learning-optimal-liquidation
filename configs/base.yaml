@@ -1,48 +1,48 @@
-# base.yaml — all model/RL constants shared by both settings.
+# base.yaml — the single simulator/learning specification shared by every
+# active setting. Setting overlays select only the exogenous mid-price model
+# and run identity; they must not recalibrate market mechanics.
 #
-# SOURCE OF TRUTH (rulings D6-D7): the values passed at the LEGACY CODE'S
-# INSTANTIATION SITES — synthetic: main.py:1417-1422 (now legacy/main.py),
-# historical: data.py:1386-1398 (now legacy/data.py) — extracted in
-# audit/PARAMS_FROM_CODE.md. Constructor defaults and the paper table
-# tab:params_generative are NOT authoritative, except where a later author
-# ruling explicitly changes a calibration (currently D21 for p1/p2).
+# The legacy instantiation audit in audit/PARAMS_FROM_CODE.md establishes the
+# starting model. Documented later calibrations (D21 and the unified v5
+# carry-over/action/reward calibration) supersede those legacy numerics here.
+# Constructor defaults and stale manuscript tables are not authoritative.
 #
-# Setting-specific values (experiment name/episodes, mid-price model,
-# lambda0, AS sigma rule) live in synthetic_rough_heston.yaml /
-# historical_sp500.yaml; algorithm hyperparameters in algo/*.yaml.
+# Setting-specific values (experiment name and mid-price model) live in
+# synthetic_rough_heston.yaml / historical_sp500_midquotes.yaml; algorithm
+# hyperparameters live in algo/*.yaml and are shared across price sources.
 
 experiment:
   name: ""           # set by the setting overlay
   setting: ""        # set by the setting overlay
-  episodes: 0        # E; set by the setting overlay (2000 synth / 1000 hist)
+  episodes: 800      # matched confirmation budget across both price sources
   master_seed: 42    # legacy MASTER seed (main.py:1410); scheme rebuilt per D10
   seeds: [42]        # explicit seed list; multi-seed launchers override this list
-  ablation_label: H_on__shaping_on__auction_on
+  ablation_label: H_on__shaping_off__auction_on
   auction_enabled: true
-  results_root: results/revision_v2
-  artifact_schema_version: 2
+  results_root: results/revision_v5
+  artifact_schema_version: 5
 
 grid:
-  tau_op: 120        # tau_op (auction open); main.py:1417 / data.py:1387
-  tau_cl: 150        # tau_cl (clearing time); main.py:1417 / data.py:1387
-  h: 30              # fixed auction horizon in action intervals
-  T_physical: 150.0  # physical session length; dt = T/tau_cl = 1.0
+  tau_op: 120        # auction opens after 120 minutes (two hours)
+  tau_cl: 150        # clearing occurs after 150 minutes
+  h: 30              # 30 one-minute auction action intervals
+  time_unit: minutes # common physical clock for synthetic and historical runs
+  T_physical: 150.0  # physical session length in time_unit; one minute/grid unit
   alpha: 0.01        # tick size alpha; main.py:1422 / data.py:1394
   S0: 100.0          # initial mid S^mid_0; main.py:263 (CSV pre-normalized, D13)
   I0: 100            # initial inventory I_0; ctor arg `I`; main.py:1417
   I_max: 100         # legacy normalization constant (== I0); clipping removed (D8)
 
 clob_flow:
-  lambda0: 1.0       # Poisson intensity lambda_0 per side; main.py:1419 (synthetic
-                     # value; historical_sp500.yaml overrides to 60.0, data.py:1392)
+  lambda0: 1.0       # Poisson intensity lambda_0 per side and per minute
   v_m: 2.0           # Pareto scale v_m; main.py:1418
   gamma_m: 2.5       # Pareto shape gamma_m; main.py:1419
   V: 30              # exogenous market-order cap (strategic V_max is below)
-  V_inf: 15.0        # top-of-book scale V_inf (Beta multiplier); `V_top_max`; main.py:1421
+  V_inf: 2.0         # calibrated top-of-book scale for one aggregate burst/minute
   beta_a: 2.0        # Beta shape a; main.py:1422
   beta_b: 5.0        # Beta shape b; main.py:1422
-  rho_lob: 0.5       # geometric CLOB depth decay
-  L_max: 12          # maximum CLOB book depth
+  rho_lob: 0.96      # joint calibration: robust carry-over for both price sources
+  L_max: 200         # absolute exogenous depth supporting O(10^2)-tick moves
 
 auction_flow:
   p1: 1.0            # new exogenous MM arrival prob. LEGACY/D6 value: 0.3
@@ -74,12 +74,13 @@ algo1:
 
 reward:
   k_star: 1000       # k* in f_c; f_c(u)=min(1,u_+/(k*alpha))
-  lambda_inv: 0.5    # terminal inventory penalty lambda; `lambda_param`; main.py:1417
-  q: 1.0             # wrong-side penalty q in f_a; main.py:1418
+  lambda_inv: 2.0    # shared terminal inventory penalty
+  q: 0.0             # inactive in the centered economic headline objective
   d: 0.1             # cancellation cost unit d (cost d_t*c_t, d_t = (t-n-1)d, D4);
                      # main.py:1418
-  shaping_enabled: true
-  clawback_shaping: false
+  shaping_enabled: false  # headline trains on the reported economic objective
+  clawback_shaping: true  # prevents retained fictive reward in shaping treatments
+  center_initial_inventory_value: true  # exact policy-invariant Bellman centering
   numerical_guard: false  # D8: optional far-out float guard, default OFF
   # numerical_guard_bound: 1.0e9  # |I_tau_cl| threshold when the guard is on
   #                               # (dataclass default; far outside the
@@ -92,9 +93,9 @@ rl:
                                          # never selects the reported policy
   normalizer_fit_episodes: 32  # dedicated training-only random-policy paths;
                                # frozen before learning and saved in checkpoints
-  validation_size: 24
+  validation_size: 100
   validation_frequency_episodes: 100
-  validation_patience_evals: 5
+  validation_patience_evals: 6
   test_size: 100
   h_cl_feature_enabled: true
 
@@ -102,13 +103,18 @@ actions:
   # CLOB: one wait plus v=1..30, delta=0..12 => 391 actions.
   V_max: 30
   L_max: 12
-  # Auction: K=(10/3)k, k=0..10; b=-25..25; canonical K=0 actions.
-  # Enabled cancellation: 2 + 2*10*51 = 1022; disabled: 1 + 10*51 = 511.
-  beta: 3.3333333333333335
-  K_max: 10
-  B_max: 25
+  # Auction: six geometric slopes and 21 local indicative-price offsets.
+  # Enabled cancellation: 2 + 2*6*21 = 254 templates; disabled: 127.
+  beta: 1.0
+  K_max: 32
+  auction_slope_multipliers: [1, 2, 4, 8, 16, 32]
+  B_max: 150
+  auction_offset_step: 1
+  auction_offset_center: indicative
+  auction_local_offset_max: 10
   auction_cancel_mode: enabled  # headline full model; use the no-cancellation
                                 # treatment overlay for the matched sensitivity
+  auction_order_mode: single_replace
 
 features:
   # Exact common manuscript order; phase-inactive coordinates are zero.
@@ -125,6 +131,6 @@ benchmark:
   dust_threshold: 0.01     # q < 1e-2 => no auction order; main.py:1043
   as_n_samples: 5000       # revised manuscript baseline
   as_gamma: 0.0            # AS risk aversion gamma -> 0; main.py:1940
-  as_sigma_rule: ""        # "pooled_paths" | "single_path"; set by the setting overlay
+  as_sigma_rule: pooled_paths
   as_sigma_n_paths: 100    # simulated mid paths pooled for sigma (pooled_paths rule)
   twap_delta_mode: min     # TWAP quotes at delta = min of the grid = 1

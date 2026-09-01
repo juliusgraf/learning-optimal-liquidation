@@ -68,7 +68,7 @@ def load_sac_cfg(*overrides: str):
 def load_historical_cfg(*overrides: str):
     return load_config(
         CONFIGS / "base.yaml",
-        CONFIGS / "historical_sp500.yaml",
+        CONFIGS / "historical_sp500_midquotes.yaml",
         overrides=list(overrides),
     )
 

@@ -136,18 +136,21 @@ def test_dqn_auction_grid_has_unique_canonical_zero_slope_actions():
     cfg = load_dqn_cfg()
     env = new_env(cfg)
     grid = env.auction_grid
-    assert len(grid) == 1022
+    assert len(grid) == 254
     zero = [a for a in grid.actions if a.K_a == 0.0]
     assert zero == [AuctionAction(0.0, 0, 0), AuctionAction(0.0, 0, 1)]
     semantics = {(a.K_a, a.offset if a.K_a > 0.0 else 0, a.cancel) for a in grid.actions}
     assert len(semantics) == len(grid)
 
 
-def test_no_cancel_treatment_has_genuine_511_action_grid_and_rejects_cancel():
-    cfg = load_dqn_cfg("actions.auction_cancel_mode=never")
+def test_no_cancel_treatment_has_genuine_127_action_grid_and_rejects_cancel():
+    cfg = load_dqn_cfg(
+        "actions.auction_cancel_mode=never",
+        "actions.auction_order_mode=multi",
+    )
     env = new_env(cfg)
     grid = env.auction_grid
-    assert len(grid) == 511
+    assert len(grid) == 127
     assert grid.actions[0] == AuctionAction(0.0, 0, 0)
     assert all(a.cancel == 0 for a in grid.actions)
     env.reset(seed=7)
@@ -173,7 +176,10 @@ def test_completed_episode_economic_objective_decomposes_exactly():
 
 
 def test_no_cancel_treatment_has_zero_cancellations_and_fees():
-    cfg = load_dqn_cfg("actions.auction_cancel_mode=never")
+    cfg = load_dqn_cfg(
+        "actions.auction_cancel_mode=never",
+        "actions.auction_order_mode=multi",
+    )
     env = new_env(cfg)
     agent = TWAPBenchmarkAgent(cfg)
     agent.bind(env)

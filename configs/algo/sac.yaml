@@ -5,8 +5,8 @@
 #
 # Phase 7: kept exactly as the Phase 5 tuned defaults. Deviations from
 # configs/algo/dqn.yaml are intentional and standard for continuous control:
-# wider [64,64] nets (DQN uses [16,16]), Polyak target updates, twin critics,
-# and the entropy-temperature schedule (auto_alpha / target_entropy).
+# shared [128,128] networks, Polyak target updates, twin critics, and the
+# entropy-temperature schedule (auto_alpha / target_entropy).
 
 algo:
   name: sac
@@ -14,8 +14,11 @@ algo:
     # -- shared run/eval/replay (mirror configs/algo/dqn.yaml) ---------------
     buffer_size: 50000
     min_buffer: 5000
+    min_buffer_clob: 2000
+    min_buffer_auction: 512
     batch_size: 128
-    hidden_layers: [64, 64]
+    hidden_layers: [128, 128]
+    safe_auction_initialization: true
     grad_clip_norm: 1.0
     updates_per_env_step: 1
     update_every: 1

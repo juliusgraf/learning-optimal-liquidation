@@ -41,7 +41,7 @@ def test_current_book_changes_only_the_next_indicative_price():
     assert info["H_used"] == h_open
     assert info["H_next"] != h_open
     assert env.h_cl == info["H_next"]
-    _, _, _, _, next_info = env.step(AuctionAction(2.0, 0, 0))
+    _, _, _, _, next_info = env.step(AuctionAction(0.0, 0, 0))
     assert next_info["H_used"] == info["H_next"]
 
 
@@ -52,7 +52,9 @@ def test_current_agent_schedule_is_invisible_to_current_H_but_enters_next_H():
     drive_to_auction(b, seed=9)
     h = a.h_cl
     _, _, _, _, ia = a.step(AuctionAction(0.0, 0, 0))
-    _, _, _, _, ib = b.step(AuctionAction(10.0, 20, 0))
+    _, _, _, _, ib = b.step(
+        AuctionAction(cfg.actions.auction_K_grid_max, cfg.actions.B_max, 0)
+    )
     assert ia["H_used"] == ib["H_used"] == h
     assert ia["H_next"] != ib["H_next"]
 
@@ -75,8 +77,13 @@ def test_final_schedule_survives_same_step_cancel_and_is_cleared():
     info = None
     while True:
         final = int(env.t) == env.grid.tau_cl - 1
-        cancel = int(final and env.cancel_admissible)
-        _, _, done, _, info = env.step(AuctionAction(2.0, 2, cancel))
+        if int(env.t) == env.grid.tau_op:
+            action = AuctionAction(2.0, 2, 0)
+        elif final:
+            action = AuctionAction(2.0, 2, 1)
+        else:
+            action = AuctionAction(0.0, 0, 0)
+        _, _, done, _, info = env.step(action)
         if done:
             break
     assert info is not None and info["action"].cancel == 1
@@ -107,7 +114,7 @@ def test_h_cache_chain_across_phase_boundary_and_terminal(synthetic_cfg):
             volume = float(min(5, int(env.inventory)))
             action = ClobAction(volume, 2 if volume else 0)
         else:
-            action = AuctionAction(2.0, 2, 0)
+            action = AuctionAction(2.0, 2, int(env.cancel_admissible))
         _, _, done, _, info = env.step(action)
         assert info["H_used"] == previous
         previous = info["H_next"]

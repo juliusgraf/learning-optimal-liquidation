@@ -59,6 +59,7 @@ class EpisodeResult:
     clob_shaping_adjustment: float = 0.0
     auction_interim_shaping: float = 0.0
     auction_terminal_shaping: float = 0.0
+    reward_baseline_adjustment: float = 0.0
     initial_mid: float = float("nan")
     initial_inventory: float = float("nan")
     clob_exec_qty: float = 0.0
@@ -150,6 +151,7 @@ def run_episode(
     obs = agent.preprocess_observation(raw_obs)
     grid = env.episode_grid
     res.realized_grid = {
+        "time_unit": env.grid.time_unit,
         "clob_times": [float(x) for x in grid.clob_times],
         "auction_times": [float(x) for x in grid.auction_times],
         "terminal_time": float(grid.terminal_time),
@@ -237,6 +239,9 @@ def run_episode(
         ) - float(info.get("auction_shaping_clawback", 0.0))
         res.auction_terminal_shaping += float(
             info.get("auction_terminal_shaping", 0.0)
+        )
+        res.reward_baseline_adjustment += float(
+            info.get("reward_baseline_adjustment", 0.0)
         )
         if phase == "clob":
             res.n_clob_steps += 1

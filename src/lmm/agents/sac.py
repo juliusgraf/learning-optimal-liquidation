@@ -10,6 +10,7 @@ action). Full spec: docs/continuous_action_extension.md.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Optional
 
 import numpy as np
 import torch
@@ -30,6 +31,9 @@ class SACHyperparams(ContinuousHyperparams):
     alpha_lr: float  # temperature Adam lr
     auto_alpha: bool  # auto-tune the entropy temperature
     target_entropy: str  # "auto" => -dim(A) per phase
+    min_buffer_clob: Optional[int] = None
+    min_buffer_auction: Optional[int] = None
+    safe_auction_initialization: bool = False
 
 
 class SACAgent(ContinuousActorCriticAgent):

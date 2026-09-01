@@ -219,7 +219,11 @@ def sample_episode_realization(
     clob_params: ClobFlowParams,
     grid_params: GridParams,
 ) -> EpisodeRealization:
-    """Pre-sample a complete policy-independent CLOB episode tape."""
+    """Pre-sample a complete policy-independent CLOB episode tape.
+
+    Arrival times and ``lambda0`` use ``grid_params.time_unit`` (minutes in all
+    active experiments).
+    """
     buy_times = _sample_poisson_times(rng, clob_params.lambda0, grid_params.tau_op)
     sell_times = _sample_poisson_times(rng, clob_params.lambda0, grid_params.tau_op)
     episode_grid = build_episode_grid(

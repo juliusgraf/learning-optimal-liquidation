@@ -17,10 +17,31 @@ def test_config_carries_closed_form_constants(synthetic_cfg):
     assert (r.k_star, synthetic_cfg.grid.alpha, r.q, r.d, r.lambda_inv) == (
         K_STAR,
         ALPHA,
-        Q,
+        0.0,
         D,
-        LAMBDA,
+        2.0,
     )
+    assert not r.shaping_enabled
+    assert r.center_initial_inventory_value
+
+
+def test_phase_specific_shaping_switches_fall_back_to_shared_contract():
+    baseline = load_synthetic_cfg()
+    assert baseline.reward.effective_clob_shaping is False
+    assert baseline.reward.effective_auction_shaping is False
+
+    shaped = load_synthetic_cfg("reward.shaping_enabled=true")
+    assert shaped.reward.effective_clob_shaping is True
+    assert shaped.reward.effective_auction_shaping is True
+
+    split = load_synthetic_cfg(
+        "reward.clob_shaping_enabled=false",
+        "reward.auction_shaping_enabled=true",
+        "reward.shaping_enabled=true",
+    )
+    assert split.reward.shaping_enabled is True
+    assert split.reward.effective_clob_shaping is False
+    assert split.reward.effective_auction_shaping is True
 
 
 def test_f_c_is_positive_part_ratio_clamped_to_one():
@@ -88,8 +109,13 @@ def test_terminal_inventory_penalty_is_not_clipped():
     assert out == -LAMBDA * huge**2
 
 
-def test_environment_step_rewards_match_pure_formulas(synthetic_cfg):
-    env = new_env(synthetic_cfg)
+def test_environment_step_rewards_match_pure_formulas():
+    cfg = load_synthetic_cfg(
+        "reward.shaping_enabled=true",
+        "reward.center_initial_inventory_value=false",
+        "actions.auction_order_mode=multi",
+    )
+    env = new_env(cfg)
     env.reset(seed=4)
     while True:
         if env.phase == "clob":
@@ -103,15 +129,15 @@ def test_environment_step_rewards_match_pure_formulas(synthetic_cfg):
                 info["S_bullet"],
                 info["E_t"],
                 info["H_used"],
-                synthetic_cfg.reward.k_star,
-                synthetic_cfg.grid.alpha,
+                cfg.reward.k_star,
+                cfg.grid.alpha,
             )
         else:
             expected = auction_reward(
                 action.K_a,
                 info["S_a"],
                 info["H_used"],
-                synthetic_cfg.reward.q,
+                cfg.reward.q,
                 info["d_t"],
                 action.cancel,
             )
@@ -123,8 +149,8 @@ def test_environment_step_rewards_match_pure_formulas(synthetic_cfg):
                         info["Z"],
                         info["I_final"],
                         env.s_mid,
-                        synthetic_cfg.reward.lambda_inv,
-                        synthetic_cfg.reward.q,
+                        cfg.reward.lambda_inv,
+                        cfg.reward.q,
                     )
                 )
         assert reward == pytest.approx(expected)
@@ -144,7 +170,7 @@ def test_numerical_guard_is_diagnostic_only():
             action = (
                 ClobAction(0.0, 0)
                 if env.phase == "clob"
-                else AuctionAction(2.0, 2, 0)
+                else AuctionAction(0.0, 0, 0)
             )
             _, reward, done, _, info = env.step(action)
             rewards.append(reward)

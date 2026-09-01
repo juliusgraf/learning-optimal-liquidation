@@ -81,6 +81,25 @@ class DQNHyperparams:
     # vanilla DQN here (oscillating eval, auction-head TD blow-up). Defaulted
     # (False = vanilla Mnih-2015) so configs predating this knob still load.
     double_q: bool = False
+    # Optional phase-specific replay warm-ups.  Auction episodes contain far
+    # fewer transitions than CLOB episodes, so a shared threshold can defer
+    # auction learning until after the first validation checkpoint.  ``None``
+    # preserves the historical shared ``min_buffer`` behavior.
+    min_buffer_clob: Optional[int] = None
+    min_buffer_auction: Optional[int] = None
+    safe_auction_initialization: bool = False
+    # The auction has many more consequential actions than the CLOB and only
+    # 30 decisions per episode.  A phase-specific multiplier supports
+    # conservative exploration without slowing CLOB exploration.
+    epsilon_auction_scale: float = 1.0
+    # Q-space prior against replacing the canonical auction no-op before data
+    # supports doing so.  Units are replay-scaled reward units.
+    safe_auction_noop_margin: float = 1e-3
+    # Curriculum boundary.  Before this episode the behavior policy holds the
+    # canonical no-op in the auction, while its Q-network still learns from
+    # those transitions.  At the boundary the complete admissible auction
+    # action/cancellation set is unlocked.
+    auction_learning_start_episode: int = 0
 
 
 class DQNAgent(Agent):
@@ -91,6 +110,12 @@ class DQNAgent(Agent):
             raise ValueError("DQNAgent requires algo.name == 'dqn' in the config")
         self.cfg = cfg
         self.hp: DQNHyperparams = build_hyperparams(DQNHyperparams, cfg.algo.hyperparams)
+        if not 0.0 <= self.hp.epsilon_auction_scale <= 1.0:
+            raise ValueError("epsilon_auction_scale must lie in [0,1]")
+        if self.hp.safe_auction_noop_margin < 0.0:
+            raise ValueError("safe_auction_noop_margin must be nonnegative")
+        if self.hp.auction_learning_start_episode < 0:
+            raise ValueError("auction_learning_start_episode must be nonnegative")
         self.artifact_schema_version = int(cfg.experiment.artifact_schema_version)
         self.chi = BELLMAN_FACTOR  # public compatibility; intentionally ignores cfg.rl.chi
         if not np.isclose(self.hp.reward_scale, REWARD_SCALE, rtol=0.0, atol=1e-15):
@@ -113,6 +138,15 @@ class DQNAgent(Agent):
 
         def make_pair(phase: str) -> tuple[nn.Sequential, nn.Sequential]:
             q = mlp(self._obs_dim[phase], hidden, self._n_actions[phase], act_cls).to(self.device)
+            if phase == "auction" and self.hp.safe_auction_initialization:
+                head = q[-1]
+                if not isinstance(head, nn.Linear):
+                    raise AssertionError("DQN output head must be linear")
+                with torch.no_grad():
+                    head.weight.zero_()
+                    head.bias.fill_(-self.hp.safe_auction_noop_margin)
+                    # AuctionActionGrid index zero is the canonical no-op.
+                    head.bias[0] = 0.0
             tgt = mlp(self._obs_dim[phase], hidden, self._n_actions[phase], act_cls).to(self.device)
             tgt.load_state_dict(q.state_dict())
             for p in tgt.parameters():
@@ -175,8 +209,17 @@ class DQNAgent(Agent):
 
     @property
     def epsilon(self) -> float:
-        """Current exploration rate (0 in eval mode by construction of act)."""
+        """Current CLOB exploration rate (evaluation always uses zero)."""
         return self.schedule.value(self._episode)
+
+    def epsilon_for_phase(self, phase: str) -> float:
+        """Return the configured phase-specific exploration probability."""
+        epsilon = self.schedule.value(self._episode)
+        if phase == "auction":
+            return epsilon * self.hp.epsilon_auction_scale
+        if phase != "clob":
+            raise ValueError(f"unknown phase {phase!r}")
+        return epsilon
 
     # -- acting ----------------------------------------------------------------
 
@@ -189,7 +232,17 @@ class DQNAgent(Agent):
         if not bool(np.any(mask)):
             raise ValueError("empty admissible set Adm(x); the MDP guarantees it is nonempty")
         explore = not eval_mode and self._training
-        if explore and self._explore_rng.random() < self.schedule.value(self._episode):
+        if (
+            explore
+            and phase == "auction"
+            and self._episode < self.hp.auction_learning_start_episode
+        ):
+            # Index zero is always the canonical (K,b,c)=(0,0,0), and hence
+            # admissible both before and after a live schedule exists.
+            if not bool(mask[0]):
+                raise AssertionError("canonical auction no-op was masked")
+            return 0
+        if explore and self._explore_rng.random() < self.epsilon_for_phase(phase):
             admissible = np.flatnonzero(mask)
             return int(admissible[self._explore_rng.integers(len(admissible))])
         with torch.no_grad():
@@ -267,7 +320,10 @@ class DQNAgent(Agent):
         self._pending_update_phase = None
         if phase not in self.replay:
             raise ValueError(f"unknown phase {phase!r}")
-        if len(self.replay[phase]) < self.hp.min_buffer:
+        phase_min_buffer = getattr(self.hp, f"min_buffer_{phase}")
+        if phase_min_buffer is None:
+            phase_min_buffer = self.hp.min_buffer
+        if len(self.replay[phase]) < int(phase_min_buffer):
             return {}
         stats = self._gradient_step(phase, self.replay[phase].sample(self.hp.batch_size))
         self._update_count[phase] += 1

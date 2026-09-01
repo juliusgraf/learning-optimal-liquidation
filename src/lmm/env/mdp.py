@@ -22,6 +22,7 @@ from lmm.env.action_spaces import (
     AuctionActionGrid,
     ClobAction,
     ClobActionGrid,
+    round_half_up,
 )
 from lmm.env.features import COMMON_FEATURES, FeatureExtractor
 from lmm.env.rewards import auction_reward, clob_reward, f_a, terminal_reward
@@ -109,6 +110,7 @@ class MarketMakingEnv(gymnasium.Env):
         self._decision_index = 0
         self._t = float(self._episode_grid.clob_times[0])
         self._mid = float(self._clob_mid_values[0])
+        self._initial_mid = self._mid
         self._frozen_mid: float | None = None
         self._inventory = float(self.grid.I0)
         self._I_tau_op: float | None = None
@@ -183,15 +185,21 @@ class MarketMakingEnv(gymnasium.Env):
             self._inventory = 0.0
 
         economic_cash = s_bullet * executed
-        reward = clob_reward(
+        uncentered_reward = clob_reward(
             s_bullet,
             executed,
             h_used,
             self.cfg.reward.k_star,
             self.grid.alpha,
-            shaping_enabled=self.cfg.reward.shaping_enabled,
+            shaping_enabled=self.cfg.reward.effective_clob_shaping,
         )
-        shaping_adjustment = reward - economic_cash
+        shaping_adjustment = uncentered_reward - economic_cash
+        reward_baseline_adjustment = (
+            -self._initial_mid * executed
+            if self.cfg.reward.center_initial_inventory_value
+            else 0.0
+        )
+        reward = uncentered_reward + reward_baseline_adjustment
         book.clear_agent_order()  # every strategic CLOB order lasts one interval
 
         info: dict[str, Any] = {
@@ -214,6 +222,7 @@ class MarketMakingEnv(gymnasium.Env):
             "clob_shaping_adjustment": shaping_adjustment,
             "auction_interim_shaping": 0.0,
             "auction_terminal_shaping": 0.0,
+            "reward_baseline_adjustment": reward_baseline_adjustment,
         }
 
         if i == self._episode_grid.n:
@@ -250,6 +259,12 @@ class MarketMakingEnv(gymnasium.Env):
         residual_mark = frozen_mid * i_final
         penalty = self.cfg.reward.lambda_inv * i_final**2
         r_term = residual_mark - penalty
+        terminal_baseline_adjustment = (
+            -self._initial_mid * i_final
+            if self.cfg.reward.center_initial_inventory_value
+            else 0.0
+        )
+        r_term += terminal_baseline_adjustment
         self._frozen_mid = frozen_mid
         self._mid = frozen_mid
         self._I_tau_op = i_final
@@ -293,6 +308,10 @@ class MarketMakingEnv(gymnasium.Env):
             residual_mark=residual_mark,
             terminal_penalty=penalty,
             auction_terminal_shaping=0.0,
+            reward_baseline_adjustment=float(
+                info.get("reward_baseline_adjustment", 0.0)
+            )
+            + terminal_baseline_adjustment,
             continuous_price=frozen_mid,
             tick_price=frozen_mid,
             clearing_residual=0.0,
@@ -370,7 +389,7 @@ class MarketMakingEnv(gymnasium.Env):
             self.cfg.reward.q,
             d_t,
             a.cancel,
-            shaping_enabled=self.cfg.reward.shaping_enabled,
+            shaping_enabled=self.cfg.reward.effective_auction_shaping,
             external_policy=external,
         )
         interim_shaping = interim_reward + fee
@@ -391,7 +410,7 @@ class MarketMakingEnv(gymnasium.Env):
             quantity_cap=a.quantity_cap,
             reference_price=s_a if external else None,
         )
-        if a.K_a > 0.0 and self.cfg.reward.shaping_enabled and not external:
+        if a.K_a > 0.0 and self.cfg.reward.effective_auction_shaping and not external:
             self._interim_shaping_by_slot[self._auction_index] = interim_shaping
 
         inputs = self._clearing_inputs()
@@ -440,6 +459,7 @@ class MarketMakingEnv(gymnasium.Env):
             "auction_interim_shaping": interim_shaping,
             "auction_shaping_clawback": clawback,
             "auction_terminal_shaping": 0.0,
+            "reward_baseline_adjustment": 0.0,
         }
 
         terminated = self._auction_index == self.grid.h - 1
@@ -495,7 +515,7 @@ class MarketMakingEnv(gymnasium.Env):
             self._frozen_mid,
             self.cfg.reward.lambda_inv,
             self.cfg.reward.q,
-            shaping_enabled=self.cfg.reward.shaping_enabled,
+            shaping_enabled=self.cfg.reward.effective_auction_shaping,
             external_policy=external_policy,
         )
         auction_cash = result.tick_price * z
@@ -503,9 +523,15 @@ class MarketMakingEnv(gymnasium.Env):
         terminal_penalty = self.cfg.reward.lambda_inv * i_final**2
         terminal_shaping = (
             f_a(auction_cash, self.cfg.reward.q)
-            if self.cfg.reward.shaping_enabled and not external_policy
+            if self.cfg.reward.effective_auction_shaping and not external_policy
             else 0.0
         )
+        terminal_baseline_adjustment = (
+            -self._initial_mid * (z + i_final)
+            if self.cfg.reward.center_initial_inventory_value
+            else 0.0
+        )
+        r_term += terminal_baseline_adjustment
 
         leave_agent_out_inputs = ClearingInputs(
             K_exo=inputs.K_exo,
@@ -547,6 +573,7 @@ class MarketMakingEnv(gymnasium.Env):
             residual_mark=residual_mark,
             terminal_penalty=terminal_penalty,
             auction_terminal_shaping=terminal_shaping,
+            reward_baseline_adjustment=terminal_baseline_adjustment,
         )
         return float(r_term)
 
@@ -567,7 +594,17 @@ class MarketMakingEnv(gymnasium.Env):
         if isinstance(action, AuctionAction):
             return action
         if isinstance(action, (int, np.integer)):
-            return self.auction_grid.decode(int(action))
+            template = self.auction_grid.decode(int(action))
+            if (
+                template.K_a > 0.0
+                and self.cfg.actions.auction_offset_center == "indicative"
+            ):
+                return AuctionAction(
+                    K_a=template.K_a,
+                    offset=self._auction_offset_center_ticks() + template.offset,
+                    cancel=template.cancel,
+                )
+            return template
         raise TypeError(
             f"auction action must be an index or AuctionAction, got {type(action).__name__}"
         )
@@ -630,6 +667,16 @@ class MarketMakingEnv(gymnasium.Env):
             raise ValueError("cancellation is disabled in this treatment")
         if a.cancel and not self._ledger.cancel_admissible():
             raise ValueError("cancel-all is ineligible without a live prior schedule")
+        if (
+            not external
+            and self.cfg.actions.auction_order_mode == "single_replace"
+            and a.K_a > 0.0
+            and not a.cancel
+            and self._ledger.cancel_admissible()
+        ):
+            raise ValueError(
+                "single_replace mode requires cancel=1 when replacing a live schedule"
+            )
 
     def action_mask(self) -> np.ndarray:
         if self._phase == "clob":
@@ -640,6 +687,17 @@ class MarketMakingEnv(gymnasium.Env):
             self.cancel_admissible,
             frozen_mid=self._frozen_mid,
             alpha=self.grid.alpha,
+            offset_center_ticks=self._auction_offset_center_ticks(),
+        )
+
+    def _auction_offset_center_ticks(self) -> int:
+        """Resolve the policy offset origin in manuscript tick coordinates."""
+        if self.cfg.actions.auction_offset_center == "frozen_mid":
+            return 0
+        if self._frozen_mid is None:
+            raise AssertionError("auction offset center requested before auction open")
+        return round_half_up(
+            (float(self._h_cache) - float(self._frozen_mid)) / self.grid.alpha
         )
 
     # ------------------------------------------------------------------

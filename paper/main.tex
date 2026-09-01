@@ -13,12 +13,17 @@
 \newcommand{\julius}{\textcolor{purple}}
 
 
- \author{Julius {\sc Graf}\footnote{\texttt{julius.graf@berkeley.edu}} \space and Thibaut {\sc Mastrolia}\footnote{ \texttt{mastrolia@berkeley.edu}}\\[0.3em]
-\small Department of Industrial Engineering and Operations Research\\
-\small University of California, Berkeley, USA.}
+\author{
+  Julius \textsc{Graf}\footnote{\texttt{julius.graf@berkeley.edu}}
+  \and
+  Thibaut \textsc{Mastrolia}\footnote{\texttt{mastrolia@berkeley.edu}}
+}
 
-\date{\today}
-
+\date{
+  UC Berkeley, Department of Industrial Engineering and Operations Research
+  \\[1em]
+  August 31, 2026
+}
 
 \begin{document}
 \maketitle
@@ -120,7 +125,7 @@ Note that as soon as the buying volume of market takers reaches selling index $k
 \end{remark}
 
 For $i\in\llbracket0,n\rrbracket$, let $E_{t_i}$ denote the total number of shares executed over $(t_i,t_{i+1}]$ from the order submitted by the agent at $t_i$. This quantity is observed at $t_{i+1}$ and is given by
-\[\forall i \in \llbracket 0,n \rrbracket, \quad E_{t_i} = \max\left(0, \min\left(v_{t_i}, \sum_{i=N_{t_i}^++1}^{N_{t_{i+1}}^+}\nu_{t_{i+1}}^{+,i}- \sum_{j=1}^{{\delta_{t_i}-1}} V_{t_i}^{+,j}\right)\right).\]
+\[\forall i \in \llbracket 0,n \rrbracket, \quad E_{t_i} = \max\left(0, \min\left(v_{t_i}, \sum_{j=N_{t_i}^++1}^{N_{t_{i+1}}^+}\nu_{t_{i+1}}^{+,j}- \sum_{j=1}^{{\delta_{t_i}-1}} V_{t_i}^{+,j}\right)\right).\]
 We recall that $E_{t_i}$ is a random variable since $v_{t_i}$ and $V_{t_i}^{+,j}$ are random. The inventory of the agent between $t_i$ and $t_{i+1}$ is $I_{t_{i+1}} = I_{t_i}-E_{t_i}$.\vspace{0.5em}
 
 Motivated by the reinforcement learning approach, we assume that the agent will trade during this session until the deterministic physical time $t_n=\tau^\op-1$ before the market switch to the closing auction phase, where $n$ is the final CLOB decision index; hence $t_0,\ldots,t_n$ comprise $n+1$ CLOB decisions.\vspace{0.5em}
@@ -212,18 +217,18 @@ K_{t_s}^a\left(S_{\tau^\cl}^\cl - S_{t_s}^a\right).\]
 Let
 \[\forall p \in \mathbb{R}_+,\quad \Sigma_{\tau^\cl}^a(p) = \sum_{s= n+1}^{m}\left(1-\theta_{t_{m+1}}^{(s-n)}\right)
 K_{t_s}^a\left(p - S_{t_s}^a\right).\]
-At the rounded terminal price $p^\alpha$, total
+At the rounded terminal price $p_\alpha$, total
 supply and demand are
 \[
-Q^S(p^\alpha) = \sum_{i=1}^{M_{t_m}}g_{i,t_m}(p^\alpha)_+ + \Sigma_{\tau^\cl}^a(p^\alpha)_+ + \sum_{i=1}^{N_{t_m}^-}\nu_{t_m}^{-,i},\]
+Q^S(p_\alpha) = \sum_{i=1}^{M_{t_m}}g_{i,t_m}(p_\alpha)_+ + \Sigma_{\tau^\cl}^a(p_\alpha)_+ + \sum_{i=1}^{N_{t_m}^-}\nu_{t_m}^{-,i},\]
 and
 \[
-Q^D(p^\alpha) = \sum_{i=1}^{M_{t_m}}(-g_{i,t_m}(p^\alpha))_+ + (-\Sigma_{\tau^\cl}^a(p^\alpha))_+ + \sum_{i=1}^{N_{t_m}^+}\nu_{t_m}^{+,i}. \]
+Q^D(p_\alpha) = \sum_{i=1}^{M_{t_m}}(-g_{i,t_m}(p_\alpha))_+ + (-\Sigma_{\tau^\cl}^a(p_\alpha))_+ + \sum_{i=1}^{N_{t_m}^+}\nu_{t_m}^{+,i}. \]
 Let
 \[ \rho_S = \left\{\begin{array}{ll} 1 & \text{if }Q^S=0\text{ or }Q^S\leq Q^D\\ Q^D/Q^S & \text{if }Q^S>Q^D \end{array}\right.\]
 and
 \[\rho_D = \left\{ \begin{array}{ll} 1, & \text{if }Q^D=0\text{ or }Q^D\leq Q^S\\ Q^S/Q^D & \text{if }Q^D>Q^S \end{array}\right..\]
-The actual executed volume of the agent at the clearing time is then given by \[Z_{\tau^\cl} = \rho_{\tau^\cl}^S[\tilde Z_{\tau^\cl}]_+ - \rho_{\tau^\cl}^D[-\tilde Z_{\tau^\cl}]_+.\]
+The actual executed volume of the agent at the clearing time is then given by \[Z_{\tau^\cl} = \rho_S(\tilde Z_{\tau^\cl})_+ - \rho_D(-\tilde Z_{\tau^\cl})_+.\]
 The agent's active schedules are aggregated into a single net schedule before this allocation, so no self-trade is counted. A negative terminal inventory is an admissible outcome of the enlarged auction action set rather than a violation of an inventory constraint. Deviations from zero are discouraged through the terminal inventory penalty.
 
 \subsubsection{Projected Hypothetical Clearing Price During the Continuous Session}\label{sec:proj}
@@ -553,10 +558,10 @@ We consider three off-policy actor-critic algorithms: Deep Deterministic Policy 
   \midrule
   \multicolumn{5}{l}{\emph{Shared}}\\
   Replay capacity $M$             & \multicolumn{4}{c}{$50{,}000$} \\
-  Learning starts $N_w$       & \multicolumn{4}{c}{$5{,}000$} \\
+  Learning starts $N_w$       & \multicolumn{4}{c}{$2{,}000/512$ (CLOB/Auction)} \\
   Minibatch size $B$                   & \multicolumn{4}{c}{$128$} \\
   Optimizer                            & \multicolumn{4}{c}{Adam} \\
-  Hidden layers (ReLU)                 & \multicolumn{4}{c}{$2\times 64$} \\
+  Hidden layers (ReLU)                 & \multicolumn{4}{c}{$2\times 128$} \\
   Gradient-norm clip                   & \multicolumn{4}{c}{$1.0$} \\
   Reward scale $c_r$                   & \multicolumn{4}{c}{$10^{-3}$} \\
   Gradient steps per env.\ step        & \multicolumn{4}{c}{$1$} \\
@@ -574,7 +579,7 @@ We consider three off-policy actor-critic algorithms: Deep Deterministic Policy 
   \multicolumn{5}{l}{\emph{Exploration}}\\
   Behaviour policy                     & $\varepsilon$-greedy & Gaussian & Gaussian & Stochastic \\
   Range & $1 \to 0.01$ & - & - & - \\
-  Warm-up/decay (episodes) & $100 / 600$  & - & - & - \\
+  Warm-up/decay (episodes) & $50 / 600$  & - & - & - \\
   Action-noise std & -     & $0.1$ & $0.1$ & - \\
   Target entropy    & -      & -  & -  & $-2$/$-3$ \\
   \midrule
@@ -641,7 +646,7 @@ $v_t = V_\text{max}\wedge \lfloor q_t\rfloor \wedge  \lceil q_t/(T-t+1)\rceil$, 
 This section employs the generative stochastic market model formulated in Section \ref{sec:marketmodel} to simulate continuous trading and closing auctions. We compare the DQN-learned policy against the continuous-control methods and the two stylized reference benchmarks: Avellaneda-Stoikov (AS) strategy, see Section \ref{section:AS} and the TWAP strategy see Section \ref{section:TWAP}. The goal of this section is to emphasize the performance of the baseline DQN-learned policy compared with the continuous-control extended policies and the benchmarks. We start by generating an emulator of the CLOB followed by the closing auction. The algorithm used to generate the market mechanism is defined in Section \ref{sub:generative} with Algorithm \ref{alg:generative_model}. In Section \ref{sub:rough} we generate mid price process values by using the rough-Heston to describe the evolution of the price of a risky asset, see \cite{gatheral2022volatility}. Finally, in Section \ref{sub:historical}
 we train and test our DQN-learned policy to find the optimal trading strategy along a trading day with historical data for CAT, PG, GOOGL, JPM and MSFT. This second simulation is referred to as ``historical'' for simplicity. In both cases (generated or historical mid-price input) we note that our learning algorithm outperform the benchmarks on the mean returns.\vspace{0.5em}
 
-In the synthetic simulations we consider a stylized high-frequency setting: a two-minute CLOB phase (120 nominal one-second steps) followed by a 30-second closing auction (30 steps), with the mid price generated by the rough Heston model presented in Section \ref{subsub:roughheston}. In the simulations with historical mid-price input, each time step is a minute and we consider a two-hour CLOB phase followed by a 30-minute closing auction. This corresponds roughly to what happens at exchanges like Xetra and the CLOB phase can be viewed as the trading sessions leading up to the closing auction. We train the models on 1{,}000 (resp. 500) episodes in the synthetic (resp. ``historical'') simulations and then run an additional 100 episodes keeping the policy fixed for evaluation. The networks receive normalized versions of physical time, decision index and continuous features, with normalization fitted on training data only. Throughout training, we consider a validation set which allows to select the report policy by early stopping.
+In both simulations we consider the following setting: a two-hour CLOB phase (120 nominal one-minute steps) followed by a 30-minute closing auction (30 steps), with the mid price generated by the rough Heston model presented in Section \ref{subsub:roughheston} or with historical mid-price input. This corresponds roughly to what happens at exchanges like Xetra and the CLOB phase can be viewed as the trading sessions leading up to the closing auction. We train the models on 1{,}000 (resp. 500) episodes in the synthetic (resp. ``historical'') simulations and then run an additional 100 episodes keeping the policy fixed for evaluation. The networks receive normalized versions of physical time, decision index and continuous features, with normalization fitted on training data only. Throughout training, we consider a validation set which allows to select the report policy by early stopping.
 
 \subsection{Generative Stochastic Market Model}
 \label{sub:generative}
@@ -762,12 +767,12 @@ After the final action at $t_m$, the controlled environment freezes the post-act
 The inputs of our emulator are given by
 $ (\lambda_0,v_m,\gamma_m,V, \beta_a,\beta_b,V_\infty, \rho, U_1,U_2,M_1,M_2, p_1,p_2,p_3,p_4)$.
 \begin{itemize}
-    \item $\lambda_0$ represents the intensity of the counting processes $N^+$ and $N^-$ on the continuous phase, modeled as independent Poisson processes. The two processes are not observable for the agent during the continuous phase, but only during the auction phase. They are sampled in the first step of the algorithm.
+    \item $\lambda_0$ represents the intensity of the counting processes $N^+$ and $N^-$ on the continuous phase, modeled as independent Poisson processes, that are the arrivals per side per minute. The two processes are not observable for the agent during the continuous phase, but only during the auction phase. They are sampled in the first step of the algorithm.
     \item $(v_m,\gamma_m)$ are the parameters of the Pareto distribution modeling the volumes of the limit orders throughout the whole trading sessions. This reproduces the well-known heavy tail behavior of the density of market order size, see for example \cite{gopikrishnan2000statistical,gabaix2009power,bouchaud2001power}. The market model allows orders of maximum size $V$: greater liquidity takers will accumulate at volume $V$.
     \item $(\beta_a,\beta_b)$ represent the parameters of the Beta distribution modeling the first volume of the limit order book. It is similar to the Beta scaling effect described in for example \cite{jerome2022market,wang2024market}.  Note that $V_\infty$ is a rescaling parameter as the Beta distribution has support $[0,1]$. Further volumes in the limit order book decay geometrically with parameter $\rho \in (0,1]$ and are truncated via the maximum order book depth $L_\text{max}$, that is $V_t^{\zeta,j}=0$ for $j > L_\text{max}$.
     \item $(U_1,U_2)$ represent the bounds between which exogenous market maker sample their supply slopes from during the auction phase.
     \item $(M_1,M_2)$ represent the integer bounds of the price at which exogenous market makers quote during the auction phase. Exogenous market makers during the volume are assumed to be sampled as $S_t^i \sim S_{\tau^\op}^\mathrm{mid} + \alpha \mathcal{U}(\llbracket M_1,M_2 \rrbracket)$ because the auction opening time is the last time market participants see the mid price. Note that this shape of auction price have been introduced in \cite{derchu2023equilibria}. 
-    \item $(p_1,p_2,p_3,p_4)$ represent the independent proposal probabilities that drive the market structure during the auction phase. A new market maker arrives per step with proposal probability $p_1$, one market maker cancels his order with proposal probability $p_2$, a market taker arrives on either side with proposal probability $p_3$, and a market taker cancels his order with proposal probability $p_4$, all the conditioned on the book being still valid. These events are sampled using a Bernoulli distribution.
+    \item $(p_1,p_2,p_3,p_4)$ represent the independent proposal probabilities per one-minute auction decision that drive the market structure during the auction phase. A new market maker arrives per step with proposal probability $p_1$, one market maker cancels his order with proposal probability $p_2$, a market taker arrives on either side with proposal probability $p_3$, and a market taker cancels his order with proposal probability $p_4$, all the conditioned on the book being still valid. These events are sampled using a Bernoulli distribution.
 \end{itemize}
 
 The proposal variables and their marks are sampled independently. The accepted book updates are state-dependent because of the validity screen. We do assume that the limit order book is refreshed from one time step to the next one. Lines 3 to 6 describe the mechanics of the continuous phase. Lines 7 to 24 describe the mechanics of the auction phase. Finally, we precise that all sampled quantities are projected on the grid we fixed in Section \ref{sec:MDP}.\vspace{0.5em}
@@ -786,29 +791,29 @@ We start by simulating the optimal strategies for the Benchmarks in Figure \ref{
 
 \subsection{Rough Heston Model for the Mid Price: Generative Data Approach}
 \label{sub:rough}
-In this section, we generate data from the rough-Heston model. We consider a trading session with a 2 minute continuous phase, followed by a 30 second closing auction.
+In this section, we generate data from the rough-Heston model.
 
 \subsubsection{Numerical Method and Parameter Calibration}
 \label{subsub:roughheston}
 
 In the first numerical implementation, we assume that the mid price $S_t$ follows a rough Heston model. The motivation is based on the so-called rough volatility of financial assets \cite{gatheral2022volatility,bäuerle2020portfolio,abi2019multifactor}. Consider $\rho \in [-1,1]$ a constant, $S_0 = 100$ (which is the numerical value we work with in this section), $V_0$, $H$, $\theta$, $\varsigma$ and $\nu$ be positive constants. Recalling \cite{gatheral2022volatility,richard2023discrete}, the rough Heston model writes
-\[\begin{cases}
-    S_t &= S_0 + \int_0^t S_s \sqrt{V_s}\mathrm{d}\big( \rho B_s + \sqrt{1-\rho^2}B_s^\perp\big), \\
-    V_t &= V_0 + \int_0^t K_H(t-s)\big ((\theta-\varsigma V_s)\mathrm{d}s + \nu \sqrt{V_s}\mathrm{d}B_s \big),
-\end{cases}\]
-where $(B,B^\perp)$ are two independent Brownian motions and $K_H(t) = t^{H-1/2}/\Gamma(H+1/2)$ fpr $t>0$. \vspace{0.5em}
+\[\left\{\begin{array}{l}
+    S_t = S_0 + \int_0^t S_s \sqrt{V_s}\mathrm{d}\big( \rho B_s + \sqrt{1-\rho^2}B_s^\perp\big), \\
+    V_t = V_0 + \int_0^t K_H(t-s)\big ((\theta-\varsigma V_s)\mathrm{d}s + \nu \sqrt{V_s}\mathrm{d}B_s \big),
+\end{array}\right.\]
+where $(B,B^\perp)$ are two independent Brownian motions and $K_H(t) = t^{H-1/2}/\Gamma(H+1/2)$ for $t>0$. \vspace{0.5em}
 
 We used the Euler-type scheme of \cite{richard2023discrete} to approximate this rough Heston model. For each episode, we first construct the realized CLOB grid $0=t_0<\cdots<t_n=\tau^\op-1<t_{n+1}=\tau^\op.$ Conditional on this complete grid, and independently of the order-flow processes, we simulate the rough-Heston approximation on the resulting
-nonuniform mesh. We use the model time measured in trading years. Thus, for $s^\star = 252\cdot 6.5\cdot 3{,}600$, let $\bar{t}_i = t_i/s^\star$. We set $\Delta \bar{t}_{i+1}^n=\bar{t}_{i+1}-\bar{t}_i$ for $i\in \llbracket 0,n \rrbracket$ and generate the Brownian increments with variance $\Delta \bar{t}_{i+1}^n$. The midprice is simulated through $t_{n+1}=\tau^\op$, projected to the tick grid, and then frozen throughout the auction. Then $S_{k} = \exp(Y_k)$ for $k \in \llbracket 0,n+1 \rrbracket$ where
-\[\begin{cases}
-    Y_k &=  \displaystyle Y_0 + \sum_{i=0}^{k-1} \left( -\frac{1}{2} (V_i)_+ \Delta \bar{t}_{i+1}^n + \rho \sqrt{(V_i)_+}\left(B_{\bar{t}_{i+1}}-B_{\bar{t}_i}\right) + \sqrt{1-\rho^2}\sqrt{(V_i)_+}\left(B_{\bar{t}_{i+1}}^\perp-B_{\bar{t}_i}^\perp\right)\right), \\
-    V_k &=  \displaystyle V_0 + \sum_{i=0}^{k-1} \left( K_H(\bar{t}_k - \bar{t}_i)(\theta - \varsigma (V_i)_+)\Delta \bar{t}_{i+1}^n + K_H(\bar{t}_k - \bar{t}_i)\nu\sqrt{(V_i)_+}\left(B_{\bar{t}_{i+1}}-B_{\bar{t}_i}\right) \right ).\end{cases}
+nonuniform mesh. We use the model time measured in trading years. Thus, for $s^\star = 252\cdot 6.5\cdot 60$, let $\bar{t}_i = t_i/s^\star$. We set $\Delta \bar{t}_{i+1}^n=\bar{t}_{i+1}-\bar{t}_i$ for $i\in \llbracket 0,n \rrbracket$ and generate the Brownian increments with variance $\Delta \bar{t}_{i+1}^n$. The midprice is simulated through $t_{n+1}=\tau^\op$, projected to the tick grid, and then frozen throughout the auction. Then $S_{k} = \exp(Y_k)$ for $k \in \llbracket 0,n+1 \rrbracket$ where
+\[\left\{\begin{array}{l}
+    Y_k =  \displaystyle Y_0 + \sum_{i=0}^{k-1} \left( -\frac{1}{2} (V_i)_+ \Delta \bar{t}_{i+1}^n + \rho \sqrt{(V_i)_+}\left(B_{\bar{t}_{i+1}}-B_{\bar{t}_i}\right) + \sqrt{1-\rho^2}\sqrt{(V_i)_+}\left(B_{\bar{t}_{i+1}}^\perp-B_{\bar{t}_i}^\perp\right)\right), \\
+    V_k =  \displaystyle V_0 + \sum_{i=0}^{k-1} \left( K_H(\bar{t}_k - \bar{t}_i)(\theta - \varsigma (V_i)_+)\Delta \bar{t}_{i+1}^n + K_H(\bar{t}_k - \bar{t}_i)\nu\sqrt{(V_i)_+}\left(B_{\bar{t}_{i+1}}-B_{\bar{t}_i}\right) \right ).\end{array}\right.
 \]
 At time $t_k$, the midprice revealed to the trading environment is $S_{t_k}^{\mathrm{mid}} = \alpha \lfloor S_k/\alpha+1/2\rfloor$. In numerical applications, we used the illustrative parameters $H=0.1$, $\rho = -0.7$, $V_0 = 0.02$, $\theta=0.02$, $\varsigma = 0.3$ and $\nu = 0.3$ adapted from \cite{abi2019lifting}.\vspace{0.5em}
 
 Now, one may notice that the AS stylized reference benchmark assumes that $\mathrm{d}S_t = \sigma \mathrm{d}B_t$, instead of the rough Heston model. In this sense, the goal of the numerical simulation is to compare how our deep reinforcement learning policies performs against a stylized reference benchmark, without claiming optimality of this benchmark. The benchmark is deliberately stylized and is not optimal for the simulated rough-Heston environment; it is therefore interpreted as a reference policy rather than as an oracle comparator.\vspace{0.5em}
 
-We calibrated the value $\sigma$ by estimating the standard deviation of the mid price on the trading period. From \cite{avellaneda2008high}, we have $A = \lambda_0/\gamma_m$ and $k = \alpha K$. Here, $K$ is the proportionality constant in the empirical relationship $K\Delta p = \ln(Q)$, where $\Delta p$ is the move in price when a market order of size $Q$ arrives. We did a least squares regression to determine $K$, by simulating 5{,}000 samples of the limit order book and market orders $Q \sim \mathrm{Pareto}(v_m,\gamma_m)$.
+We calibrated the value $\sigma$ by estimating the standard deviation of the mid price on the trading period. From \cite{avellaneda2008high}, we have $A = \lambda_0/\gamma_m$ and $k = \alpha K$. Note that $A$ is per minute and the estimated volatility $\sigma$ is per square-root minute. Here, $K$ is the proportionality constant in the empirical relationship $K\Delta p = \ln(Q)$, where $\Delta p$ is the move in price when a market order of size $Q$ arrives. We did a least squares regression to determine $K$, by simulating 5{,}000 samples of the limit order book and market orders $Q \sim \mathrm{Pareto}(v_m,\gamma_m)$.
 
 \subsection{Simulation with Historical Mid-Price Input}
 \label{sub:historical}

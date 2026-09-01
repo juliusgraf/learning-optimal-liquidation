@@ -1,0 +1,32 @@
+# Publication-candidate historical setting.  The source artifact contains raw
+# SIP bid/ask midpoints in provider price units; the environment then rebases
+# each selected session to S0=100 as an explicit modeling-coordinate transform.
+# Generate and validate the artifact before any pilot (data/README.md).
+
+experiment:
+  name: historical_sp500_midquotes
+  setting: historical_sp500_midquotes
+
+# Market mechanics, actions, reward, and learning controls are inherited
+# unchanged from base.yaml. Only the exogenous mid-price source differs from
+# synthetic_rough_heston.yaml.
+
+midprice:
+  model: historical
+  historical:
+    csv_path: data/historical_sp500_midquotes_1m.csv
+    symbols: [MSFT, JPM, PG, GOOGL, CAT]
+    normalize_first: 100.0       # model transform only; source CSV is raw USD
+    n_rows: 121
+    date: "2026-08-03..2026-08-28"
+    path_policy: split_pool
+    timezone: America/New_York
+    missing_data_treatment: error
+    split_id: sp500_midquotes_sip_2026-08_v1
+    train_date_range: ["2026-08-03", "2026-08-14"]
+    validation_date_range: ["2026-08-17", "2026-08-21"]
+    test_date_range: ["2026-08-24", "2026-08-28"]
+    source: alpaca_market_data_api
+    price_type: quote_midpoint
+    quote_feed: sip
+    artifact_normalization: none

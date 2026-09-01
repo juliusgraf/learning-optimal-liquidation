@@ -62,12 +62,15 @@ def test_mlp_shapes_and_structure():
     assert sum(isinstance(m, nn.ReLU) for m in net.modules()) == 2
 
 
-def test_no_cancel_config_builds_511_output_auction_head():
-    cfg = load_dqn_cfg("actions.auction_cancel_mode=never")
+def test_no_cancel_config_builds_127_output_auction_head():
+    cfg = load_dqn_cfg(
+        "actions.auction_cancel_mode=never",
+        "actions.auction_order_mode=multi",
+    )
     agent = make_agent(cfg)
     x = torch.zeros(3, len(cfg.features.auction))
-    assert len(agent.auction_grid) == 511
-    assert agent.q["auction"](x).shape == (3, 511)
+    assert len(agent.auction_grid) == 127
+    assert agent.q["auction"](x).shape == (3, 127)
 
 
 # -- schedule -------------------------------------------------------------------
@@ -81,6 +84,33 @@ def test_epsilon_schedule_is_flat_then_exactly_linear():
     assert sched.value(400) == pytest.approx((1.0 + 0.01) / 2.0)
     assert sched.value(700) == pytest.approx(0.01)  # reaches end exactly
     assert sched.value(10_000) == 0.01  # clipped at end thereafter
+
+
+def test_phase_specific_auction_exploration_multiplier():
+    cfg = load_dqn_cfg("algo.hyperparams.epsilon_auction_scale=0.1")
+    agent = make_agent(cfg)
+    agent.start_episode(0)
+    assert agent.epsilon_for_phase("clob") == pytest.approx(1.0)
+    assert agent.epsilon_for_phase("auction") == pytest.approx(0.1)
+
+
+def test_auction_curriculum_holds_noop_then_unlocks_full_policy():
+    cfg = load_dqn_cfg(
+        "algo.hyperparams.auction_learning_start_episode=10",
+        "algo.hyperparams.epsilon_warmup_episodes=20",
+    )
+    agent = make_agent(cfg)
+    mask = np.ones(len(agent.auction_grid), dtype=bool)
+    obs = np.zeros(len(cfg.features.auction), dtype=np.float32)
+    agent.start_episode(9)
+    assert agent.act(obs, mask, "auction", eval_mode=False) == 0
+
+    # Warm-up epsilon is one at episode 10, so after the curriculum boundary
+    # the behavior policy samples the complete admissible set rather than
+    # being structurally pinned to index zero.
+    agent.start_episode(10)
+    draws = {agent.act(obs, mask, "auction", eval_mode=False) for _ in range(20)}
+    assert any(a != 0 for a in draws)
 
 
 # -- replay -----------------------------------------------------------------------
@@ -350,7 +380,12 @@ def test_greedy_ties_use_first_lexicographic_action(dqn_cfg):
 
 
 def test_checkpoint_round_trip(dqn_cfg, tmp_path):
-    cfg = load_dqn_cfg("algo.hyperparams.min_buffer=8", "algo.hyperparams.batch_size=8")
+    cfg = load_dqn_cfg(
+        "algo.hyperparams.min_buffer=8",
+        "algo.hyperparams.min_buffer_clob=8",
+        "algo.hyperparams.min_buffer_auction=8",
+        "algo.hyperparams.batch_size=8",
+    )
     agent = make_agent(cfg, master_seed=5)
     agent.set_feature_normalizer(
         FeatureNormalizer(cfg.grid.tau_cl).fit(
@@ -409,6 +444,8 @@ def test_dqn_converges_on_deterministic_bandit():
     targets reduce to y = r on done rows; pure regression sanity)."""
     cfg = load_dqn_cfg(
         "algo.hyperparams.min_buffer=64",
+        "algo.hyperparams.min_buffer_clob=64",
+        "algo.hyperparams.min_buffer_auction=64",
         "algo.hyperparams.batch_size=64",
         "algo.hyperparams.lr=3.0e-3",
     )

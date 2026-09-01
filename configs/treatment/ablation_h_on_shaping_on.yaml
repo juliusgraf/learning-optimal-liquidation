@@ -5,4 +5,4 @@ rl:
   h_cl_feature_enabled: true
 reward:
   shaping_enabled: true
-
+  q: 1.0

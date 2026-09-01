@@ -1,20 +1,11 @@
-# Historical-midprice setting.  The frozen local dataset contains 20 complete
-# one-minute sessions for the manuscript's five S&P 500 assets, partitioned
-# chronologically into 10 training, 5 validation, and 5 test sessions.  The
-# sidecar digest and split contract are verified whenever an environment or run
-# is created.
+# LEGACY DATA-PROXY SETTING. It retains normalized Yahoo close bars only for
+# data-pipeline regression checks. Market mechanics inherit the same shared
+# simulator as every other setting. Publication runs use true SIP midquotes in
+# historical_sp500_midquotes.yaml.
 
 experiment:
   name: historical_sp500
   setting: historical_sp500
-  episodes: 500           # 2026-06-15: denser flow (lambda0=60 => ~149 decisions
-                          # /ep, ~2x synthetic) + fixed mid path => fewer episodes
-                          # suffice; all four beat AS/TWAP by 500 ep on MSFT.
-                          # (legacy data.py:1677 used 1000.)
-
-clob_flow:
-  lambda0: 60.0           # data.py:1392 — 1-minute bars => ~1 arrival/s/side;
-                          # the decision grid is always the integer grid (AUDIT A.1)
 
 midprice:
   model: historical
@@ -32,6 +23,5 @@ midprice:
     train_date_range: ["2026-08-03", "2026-08-14"]
     validation_date_range: ["2026-08-17", "2026-08-21"]
     test_date_range: ["2026-08-24", "2026-08-28"]
-
-benchmark:
-  as_sigma_rule: pooled_paths   # fitted only from the training-session pool
+    source: yfinance
+    artifact_normalization: first=100

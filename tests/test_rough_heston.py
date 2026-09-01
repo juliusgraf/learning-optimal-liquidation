@@ -62,7 +62,7 @@ def test_first_steps_match_independent_reference(cfg):
 
     # Reference: replay the same Gaussian stream.
     rng = np.random.default_rng(42)
-    dt_unit = 1.0 / p.seconds_per_year
+    dt_unit = 1.0 / p.time_units_per_year
     gamma_const = 1.0 / math.gamma(p.H + 0.5)
 
     def kernel(u):
@@ -119,10 +119,12 @@ def test_draws_consumed_when_variance_truncated(cfg):
 
 
 def test_annualized_time_scaling(cfg):
-    """The manuscript uses bar(t)=t/s_star, independent of T_physical."""
+    """Minute-clock model time uses bar(t)=t/s_star in trading years."""
     p, g = cfg.midprice.rough_heston, cfg.grid
     model = RoughHestonMidPrice(p, g)
     model.reset(np.random.default_rng(0))
     model.advance_to(1.0)
-    expected_dt_years = 1.0 / p.seconds_per_year
+    expected_dt_years = 1.0 / p.time_units_per_year
     assert model._times[1] == pytest.approx(expected_dt_years, rel=1e-15)
+    assert cfg.grid.time_unit == "minutes"
+    assert p.s_star == pytest.approx(252 * 6.5 * 60)

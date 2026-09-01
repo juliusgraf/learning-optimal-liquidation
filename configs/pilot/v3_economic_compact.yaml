@@ -1,0 +1,18 @@
+# Short structural pilot budget, shared by DQN/DDPG/TD3/SAC. The calibrated
+# simulator, action space, and economic objective now live in base.yaml, so a
+# pilot cannot accidentally use different market mechanics from a full run.
+
+experiment:
+  episodes: 100
+  results_root: results/pilots_v5
+  artifact_schema_version: 5
+  ablation_label: centered_economic_reward__local_indicative_grid__cancel_enabled
+
+rl:
+  # The 32-path panel selected visibly overfit checkpoints in the structural
+  # pilots.  A fixed 100-path panel correctly selected the earlier, stable
+  # checkpoint on a disjoint 100-path test.
+  validation_size: 100
+  validation_frequency_episodes: 50
+  validation_patience_evals: 3
+  test_size: 100
