@@ -310,7 +310,7 @@ The latent state is denoted by $X$ and defined for any time $t\in \mathcal{T}$ a
 \begin{itemize}
     \item Inventory: $X_t^1 = I_t$ represents the inventory of the market maker at time $t$: per construction, we restrict $I_t \geqslant 0$ for $t< \tau^\op$ and $I_t$ frozen for $\tau^\op\leqslant t<\tau^\cl$ with $I_{\tau^\cl}\in \mathbb{R}$;
     \item Volume executed at the clearing: $X_t^2 =0$ for $t<\tau^{\cl}$ with $X_{\tau^{\cl}}^2=Z_{\tau^{\cl}}$ and $H_{\tau^\cl}^\cl = S_{\tau^\cl}^\cl$; 
-    \item Hypothetical/estimated auction's clearing price: $X_t^3 = H_t^\cl$ represents the hypothetical clearing price as defined in Section \ref{sec:proj} during the continuous trading phase for $t<\tau^{\op}$ or the estimated clearing price as defined in Section \ref{sec:clearing} as the solution to Equation \eqref{eq:hyp_cl_auction_estimation} during the auction trading phase for $\tau^{\op}< t<\tau^{\cl}$ and $H_{\tau^\op}^\cl = H_{t_n}^\cl$;
+    \item Hypothetical/estimated auction's clearing price: $X_t^3 = (H_{s}^\cl)_{\mathcal{T}\ni s\leqslant t}$ represents the history of hypothetical clearing prices as defined in Section \ref{sec:proj} during the continuous trading phase for $t<\tau^{\op}$ or the estimated clearing price as defined in Section \ref{sec:clearing} as the solution to Equation \eqref{eq:hyp_cl_auction_estimation} during the auction trading phase for $\tau^{\op}< t<\tau^{\cl}$ and $H_{\tau^\op}^\cl = H_{t_n}^\cl$;
     \item Limit order book depth: $X_t^4 = L_t^+ \mathbf{1}_{\{0 \leqslant t \leqslant \tau^\op-1\}}$ and $X_t^5 = L_t^- \mathbf{1}_{\{0 \leqslant t \leqslant \tau^\op-1\}}$ represent respectively the depth in the limit order book on the ask (resp. bid) side;
     \item Number of limit order in the auction: $X_t^6 = M_t\mathbf{1}_{\{t \geqslant  \tau^\op\}}$;
     \item Number of investors in the auction: $X_t^7 = N_{t}^+ \mathbf{1}_{\{t \geqslant  \tau^\op\}}$ and $X_t^8 = N_{t}^-\mathbf{1}_{\{t \geqslant  \tau^\op\}}$ represents respectively the number of aggressive order sent in the auction to buy (resp. sell) the asset;
@@ -334,7 +334,7 @@ Note that $X^{16},X^{17}$ are vectors of size $h=m-n$ with $0$ components after 
 \end{remark}
 
 The state vector $X_t$ is viewed as an element of the state space $\mathcal{X}$ induced by the above variables, that is
-\[\mathcal{X} = [0,\tau^\cl]\times  \mathbb{R}^2\times \mathbb{R}_+ \times \mathbb{N}^5 \times \{0,1\}^h \times \alpha\mathbb{N}\times \Psi(\mathbb{R}_+)^4 \times \Psi(\mathcal{G}) \times  (\alpha \mathbb{N})^h\times \mathbb{R}_+^h\times \mathbb{N}\]
+\[\mathcal{X} = [0,\tau^\cl]\times  \mathbb{R}^2\times \Psi(\mathbb{R}_+)\times \mathbb{N}^5 \times \{0,1\}^h \times \alpha\mathbb{N}\times \Psi(\mathbb{R}_+)^4 \times \Psi(\mathcal{G}) \times  (\alpha \mathbb{N})^h\times \mathbb{R}_+^h\times \mathbb{N}\]
 where
 \[\mathcal{G} = \left\{ g \in \mathcal{C}(\mathbb{R}_+):g \text{ is strictly increasing}, \lim_{p\to+\infty}g(p)=+\infty\right\}\]
 is the space of functions that satisfy the assumptions of Theorem \ref{th:clearing}, and for a set $E$, the space $\Psi(E)$ is defined as
@@ -360,26 +360,26 @@ Let $\mathcal{Y} = \varphi(\mathcal{X})$.
     \item Volume set in the limit order: $A_t^1 = v_t \mathbf{1}_{\{0 \leqslant t \leqslant \tau^\op-1\}}$;
     \item Depth offset in the limit order book: $A_t^2 =\delta_t\mathbf{1}_{\{0 \leqslant t \leqslant \tau^\op-1\}}$;
     \item Supply/demand slope and reference price: $A_t^3 =K_t^a\mathbf{1}_{\{\tau^\op \leqslant t \leqslant \tau^\cl-1\}}$;
-   and $A_t^4 = b_t^a\mathbf{1}_{\{\tau^\op \leqslant t \leqslant \tau^\cl-1\}}$ such that $S_t^a = S_{\tau^\op}^\mathrm{mid}+\alpha b_t^a$;
+   and $A_t^4 = \ell_t^a\mathbf{1}_{\{\tau^\op \leqslant t \leqslant \tau^\cl-1\}}$ such that $S_t^a = S_{\tau^\op}^\mathrm{mid}+\alpha b_t^a$ with \[b_t^a=\left\lfloor \frac{H_t^\cl-S_{\tau^\op}^\text{mid}}{\alpha}+\frac{1}{2}\right\rfloor+\ell_t^a\]
     \item Order cancellation in the auction: $A_t^5 =c_t\mathbf{1}_{\{\tau^\op \leqslant t \leqslant \tau^\cl-1\}}$.
 \end{itemize}
 We view such actions as part of the ambient action set
 \[
 \begin{aligned}
 \mathcal A =
-\llbracket0,V_{\max}\rrbracket \times \llbracket0,L_{\max}\rrbracket \times \beta \llbracket0,K_{\max}\rrbracket \times \llbracket-B_{\max},B_{\max}\rrbracket \times \{0,1\}
+\llbracket0,V_{\max}\rrbracket \times \llbracket0,L_{\max}\rrbracket \times \beta \llbracket0,K_{\max}\rrbracket \times \llbracket-B_\text{max},B_\text{max}\rrbracket \times \{0,1\}
 \end{aligned}
 \]
-where $V_\text{max}, L_\text{max}, B_\text{max}, K_\text{max} \in \mathbb{N}^\star$ are numerical bounds defining the finite action grid. In particular, $B_\text{max}$ is a numerical truncation parameter chosen sufficiently large for the simulated price range.\vspace{0.5em}
+where $V_\text{max}, L_\text{max}, B_\text{max}, K_\text{max} \in \mathbb{N}^\star$ are numerical bounds defining the finite action grid.\vspace{0.5em}
 
 Recalling that on the limit order book the market maker is liquidating his inventory, hence submits a volume $A_t^1 \leqslant I_t = X_t^1$, at a price $S_t^\mathrm{mid}+\alpha A_t^2 \geqslant S_t^\mathrm{mid}$. During the auction phase, the market makers can cancel previous orders exactly once, thus $A_t^5 = c_t \leqslant \max_{1\leqslant i \leqslant t-\tau^\op}(1-\theta_t^{(i)}) = :C_t$ with the convention that $\max_\emptyset = 0$ (for $t\leqslant \tau^\op$).
 \begin{definition}[Admissible actions]
     Given an observed state $y \in \mathcal{Y}$, the set $\operatorname{Adm}(y)$ of admissible actions is defined as
     \begin{align*}
-        \operatorname{Adm}(y) &= \{a\in \mathcal{A}: a_1 \leqslant y_2, a_5  \leqslant y_{13}, y_4 +\alpha a_4 \geqslant 0,a_1=0\implies a_2 = 0, \\
-        &\qquad a_3=0\implies a_4 = 0, (a_1,a_2)\mathbf{1}_{\{y_1\geqslant\tau^\op\}}=0, (a_3,a_4,a_5)\mathbf{1}_{\{y_1<\tau^\op\}} = 0\}
+        \operatorname{Adm}(y) &= \{a\in \mathcal{A}: a_1 \leqslant y_2, a_5  \leqslant y_{13}, y_4 +\alpha a_4 \geqslant 0,a_1=0\implies a_2 = 0, a_3=0\implies a_4 = 0,\\
+        &\qquad  |a^4+\lfloor (y_3-y_4)/\alpha+1/2\rfloor|\leqslant B_\infty,(a_1,a_2)\mathbf{1}_{\{y_1\geqslant\tau^\op\}}=0, (a_3,a_4,a_5)\mathbf{1}_{\{y_1<\tau^\op\}} = 0\}
     \end{align*}
-    where the last two components embed the phase compatibility of admissible actions.
+    where $B_\infty>0$ and the last two components embed the phase compatibility of admissible actions.
 \end{definition}
 
 
@@ -403,9 +403,11 @@ Recalling that on the limit order book the market maker is liquidating his inven
     \[(H_t^{\cl}-S_t^\bullet)_+\leqslant k^\star\alpha,\]
 the market maker still get a profit from the execution on the limit order. We thus introduce a penalty function $f^c:\mathbb R\longrightarrow [0,1]$ continuous and increasing such that $f^c$ is zero on $\mathbb{R}_-$ and $f^c(k^\star\alpha)=1$, such that the reward of the market maker is given by 
 \[r_t(X_t,A_t)= S_t^\bullet E_t f^c(k^\star \alpha -( H_t^\cl -S_t^\bullet)_+).\]
-\item During the auction trading session for $\tau^{\op}\leqslant t<\tau^{\cl}$. The market maker submits a slope $K_t^a = A_t^3$ and a price $S_t^a = S_{\tau^\op}^\mathrm{mid}+\alpha A_t^4$. The agent receives a ``fictive'' reward $K_t^aH_t^\cl(H_t^\cl-S_t^a)$, where $H_t^\cl$ is the anticipated clearing price (were the auction to close at time $t$). The agent is penalized for canceling previous orders at cost $d_t$ at time $t$, yielding a penalty $-d_tc_t$. Here, $d_t$ is an exchange cancellation fee. Because the auction action set is two-sided, a submitted schedule may imply a projected purchase at the indicative price. This happens when $H_t^\cl \leqslant S_t^a$: the market maker is willing to buy $K_t^a(S_t^a-H_t^\cl)$ shares at price $H_t^\cl$ or below. To retain a liquidation preference in the training signal, we optionally attenuate the negative shaping term associated with such projected purchases. We hence introduce a function $f^a:\mathbb R\longrightarrow \mathbb R_+$ convex, continuous and decreasing such that $f^a$ is zero on $\mathbb{R}_+$ and $f^a(x) \leqslant (-x)_+$. The term $f^a(K_t^a H_t^\cl(H_t^\cl-S_t^a))$ attenuates or even removes the adverse consequence of buying. This attenuation is neither an admissibility constraint nor an economic cash flow. The reward of the market maker is given by
-\[r_t(X_t,A_t) = K_t^a H_t^\cl (H_t^\cl-S_t^a) + f^a(K_t^a H_t^\cl(H_t^\cl-S_t^a)) - d_tc_t.\]
-The ``fictive'' reward during the auction is a training-shaping term designed to provide a denser learning signal for actions that improve the agent's position relative to the current indicative clearing price. We consider here that the fictive reward is not restored in hindsight after cancellation of an order. Moreover, to retain a liquidation preference while permitting two-sided auction actions, we optionally attenuate the shaping reward associated with projected purchases. This term is a modeling choice in the training signal and is neither an admissibility constraint nor an economic cash flow.
+\item During the auction trading session for $\tau^{\op}\leqslant t<\tau^{\cl}$. The market maker submits a slope $K_t^a = A_t^3$ and a price
+\[S_t^a = S_{\tau^\op}^\mathrm{mid}+\alpha \left(\left\lfloor \frac{H_t^\cl-S_{\tau^\op}^\text{mid}}{\alpha}+\frac{1}{2}\right\rfloor+A_t^4\right).\]
+The agent receives a ``fictive'' reward $K_t^aH_t^\cl(H_t^\cl-S_t^a)$, where $H_t^\cl$ is the anticipated clearing price (were the auction to close at time $t$). The agent is penalized for canceling previous orders at cost $d_t$ at time $t$, yielding a penalty $-d_tc_t$. Here, $d_t$ is an exchange cancellation fee. Because the auction action set is two-sided, a submitted schedule may imply a projected purchase at the indicative price. This happens when $H_t^\cl \leqslant S_t^a$: the market maker is willing to buy $K_t^a(S_t^a-H_t^\cl)$ shares at price $H_t^\cl$ or below. To retain a liquidation preference in the training signal, we optionally attenuate the negative shaping term associated with such projected purchases. We hence introduce a function $f^a:\mathbb R\longrightarrow \mathbb R_+$ convex, continuous and decreasing such that $f^a$ is zero on $\mathbb{R}_+$ and $f^a(x) \leqslant (-x)_+$. The term $f^a(K_t^a H_t^\cl(H_t^\cl-S_t^a))$ attenuates or even removes the adverse consequence of buying. This attenuation is neither an admissibility constraint nor an economic cash flow. To simplify notation, introduce $u_t = K_t^a H_t^\cl (H_t^\cl-S_t^a) + f^a(K_t^a H_t^\cl(H_t^\cl-S_t^a))$ The reward of the market maker is given by
+\[r_t(X_t,A_t) = u_t - c_t\left[d_t+ \sum_{s<t}\mathbf{1}_{\{K_s^a>0\}}\left(1-\theta_t^{(s-\tau^\op+1)}\right)u_s\right].\]
+The ``fictive'' reward during the auction is a training-shaping term designed to provide a denser learning signal for actions that improve the agent's position relative to the current indicative clearing price. We consider here that the fictive reward is restored in hindsight after cancellation of an order, i.e. there is clawback.
 \item Final reward at the clearing for $t=\tau^{\cl}$. At the clearing time, the clearing price $S_{\tau^\cl}^\cl$ is determined and orders are matched. The market maker makes the profit or loss $S_{\tau^\cl}^\cl Z_{\tau^\cl}$ based on the orders she sent to the market and did not cancel by the clearing time. The agent is furthermore penalized for holding inventory. We introduce $\lambda > 0$ as a penalization parameter. Furthermore, the agent's reward associated with purchases is once again attenuated. Since the midprice is frozen throughout the auction phase in our model, any inventory remaining after the auction is priced at the last exogenous midprice $S^\text{mid}_{\tau^\op}$ rather than at the auction clearing price. This separates the valuation of residual inventory from the endogenous auction price, which may be affected by the agent's own submitted schedules. The final reward of the market maker is given by
 \begin{align*}
     G(X_{\tau^\cl}) &= S_{\tau^\cl}^\cl Z_{\tau^\cl}- \lambda |I_{\tau^\cl}|^2 + f^a\left (S_{\tau^\cl}^\cl Z_{\tau^\cl}\right) + S^\text{mid}_{\tau^\op}I_{\tau^\cl}.
@@ -422,7 +424,7 @@ To summarize, at time $t<\tau^\cl$ the random one-step reward is
 \displaystyle
 S_t^\bullet E_t f^c(k^\star \alpha -( H_t^\cl -S_t^\bullet)_+), & 
 \text{if } t< \tau^\op,\\
-\displaystyle K_t^a H_t^\cl (H_t^\cl-S_t^a) + f^a(K_t^a H_t^\cl(H_t^\cl-S_t^a)) - d_tc_t, & \text{if }
+\displaystyle u_t - d_tc_t - \sum_{s<t}\mathbf{1}_{\{K_s^a>0\}}\left(1-\theta_t^{(s-\tau^\op+1)}\right)u_s, & \text{if }
  \tau^\op\leqslant t< \tau^\cl.
 \end{array}\right.
 \]
@@ -544,7 +546,7 @@ Q_{\theta_{\kappa(y)}}(y,a)$ for $y\in\mathcal Y$ where $\kappa(y) = c \mathbf{1
 
 \subsection{Continuous-Action Control}
 
-The Deep Q-Network approach described above is adapted to the discrete action space of $(\mathbf{P})$. Discrete actions are naturally adapted for variables like a price, who is submitted according to a tick size anyway. For other variables however, like the supply/demand slope during the auction, it may be more effective to allow continuous actions. In this work, DQN is viewed as the discrete-RL baseline method and we want to compare it to different continuous-action methods. We hence consider a continuous relaxation of the action space. For each state $y \in \mathcal{Y}$, we introduce a relaxed continuous box of actions $\mathcal{A}^{\mathrm{rel}}(y)\supseteq \mathrm{Adm}(y)$. Before a relaxed action is ``sent'' to the environment, it is transformed into an admissible market making action through a projection $\Gamma_y: \mathcal{A}^{\mathrm{rel}}(y) \longrightarrow \mathrm{Adm}(y)$. Informally, for $y \in \mathcal{Y}$ and an action $u\in \mathcal{A}^{\mathrm{rel}}(y)$, the environment executes $a= \Gamma_y(u)$, the replay buffer stores $u$ and the critic is trained on $u$. The precise componentwise projection $\Gamma_y$ used in the numerical implementation is provided with the accompanying code. The continuous-control algorithms interact with the same constrained market making environment as DQN, but they optimize over a continuous parametrization of the action. The environment executes $\Gamma_y(u)$, while the critic is parameterized on the raw action $u$. Because $\Gamma_y$ includes clipping, rounding and a binary cancellation threshold, it is generally nonsmooth and many-to-one. We therefore do not invoke the standard smooth-action convergence interpretation of these algorithms. \vspace{0.5em}
+The Deep Q-Network approach described above is adapted to the discrete action space of $(\mathbf{P})$. Discrete actions are naturally adapted for variables like a price, who is submitted according to a tick size anyway. For other variables however, like the supply/demand slope during the auction, it may be more effective to allow continuous actions. In this work, DQN is viewed as the discrete-RL baseline method and we want to compare it to different continuous-action methods. We hence consider a continuous relaxation of the action space. For each state $y \in \mathcal{Y}$, we introduce a relaxed continuous box of actions $\mathcal{A}^{\mathrm{rel}}(y)\supseteq \mathrm{Adm}(y)$. Before a relaxed action is ``sent'' to the environment, it is transformed into an admissible market making action through a projection $\Gamma_y: \mathcal{A}^{\mathrm{rel}}(y) \longrightarrow \mathrm{Adm}(y)$. Informally, for $y \in \mathcal{Y}$ and an action $a\in \mathcal{A}^{\mathrm{rel}}(y)$, the environment executes $\Gamma_y(a)$, the replay buffer stores $a$ and the critic is trained on $a$. The precise componentwise projection $\Gamma_y$ used in the numerical implementation is provided with the accompanying code. The continuous-control algorithms interact with the same constrained market making environment as DQN, but they optimize over a continuous parametrization of the action. The environment executes $\Gamma_y(a)$, while the critic is parameterized on the raw action $a$. Because $\Gamma_y$ includes clipping, rounding and a binary cancellation threshold, it is generally nonsmooth and many-to-one. We therefore do not invoke the standard smooth-action convergence interpretation of these algorithms. \vspace{0.5em}
 
 We consider three off-policy actor-critic algorithms: Deep Deterministic Policy Gradient (DDPG), Twin Delayed DDPG (TD3), and Soft Actor-Critic (SAC), see respectively \cite{lillicrap2020continuous}, \cite{fujimoto2018addressing}, and \cite{haarnoja2018soft}. DDPG uses a deterministic actor with exploration noise. TD3 adds twin critics, target-policy smoothing, and delayed actor updates. Finally, SAC uses a stochastic actor and entropy regularization. These methods are natural continuous-control counterparts to Q-learning and they all learn both the critic $Q_\theta$ and an actor $\mu_\omega \colon y\in \mathcal{Y}\longmapsto \mu_\omega(y)\in \mathcal A^{\mathrm{rel}}(y)$ with weights $\omega \in \mathbb{R}^l$ with $l\geqslant 1$ (such that $\Gamma_y(\mu_\omega(y)) \in \mathrm{Adm}(y)$). Note that SAC's actor is stochastic, that is $\pi_\omega(\cdot\mid y) \in \mathcal{P}(\mathcal A^{\mathrm{rel}}(y))$, and not a point map. The main difference with DQN is that the maximization over actions in the Bellman target is no longer computed by enumerating all admissible actions. Instead, the next action is produced by a learned policy. We refer to \cite{achiam2018spinningup} for details on each of DDPG, TD3 and SAC and summarized in the following parameter table used for all numerical simulations. Each actor–critic method uses separate phase-specific actors, critics, target networks and replay buffers, and uses the auction critic for the continuation target at the phase boundary.
 
@@ -646,7 +648,7 @@ $v_t = V_\text{max}\wedge \lfloor q_t\rfloor \wedge  \lceil q_t/(T-t+1)\rceil$, 
 This section employs the generative stochastic market model formulated in Section \ref{sec:marketmodel} to simulate continuous trading and closing auctions. We compare the DQN-learned policy against the continuous-control methods and the two stylized reference benchmarks: Avellaneda-Stoikov (AS) strategy, see Section \ref{section:AS} and the TWAP strategy see Section \ref{section:TWAP}. The goal of this section is to emphasize the performance of the baseline DQN-learned policy compared with the continuous-control extended policies and the benchmarks. We start by generating an emulator of the CLOB followed by the closing auction. The algorithm used to generate the market mechanism is defined in Section \ref{sub:generative} with Algorithm \ref{alg:generative_model}. In Section \ref{sub:rough} we generate mid price process values by using the rough-Heston to describe the evolution of the price of a risky asset, see \cite{gatheral2022volatility}. Finally, in Section \ref{sub:historical}
 we train and test our DQN-learned policy to find the optimal trading strategy along a trading day with historical data for CAT, PG, GOOGL, JPM and MSFT. This second simulation is referred to as ``historical'' for simplicity. In both cases (generated or historical mid-price input) we note that our learning algorithm outperform the benchmarks on the mean returns.\vspace{0.5em}
 
-In both simulations we consider the following setting: a two-hour CLOB phase (120 nominal one-minute steps) followed by a 30-minute closing auction (30 steps), with the mid price generated by the rough Heston model presented in Section \ref{subsub:roughheston} or with historical mid-price input. This corresponds roughly to what happens at exchanges like Xetra and the CLOB phase can be viewed as the trading sessions leading up to the closing auction. We train the models on 1{,}000 (resp. 500) episodes in the synthetic (resp. ``historical'') simulations and then run an additional 100 episodes keeping the policy fixed for evaluation. The networks receive normalized versions of physical time, decision index and continuous features, with normalization fitted on training data only. Throughout training, we consider a validation set which allows to select the report policy by early stopping.
+In both simulations we consider the following setting: a two-hour CLOB phase (120 nominal one-minute steps) followed by a 30-minute closing auction (30 steps), with the mid price generated by the rough Heston model presented in Section \ref{subsub:roughheston} or with historical mid-price input. This corresponds roughly to what happens at exchanges like Xetra and the CLOB phase can be viewed as the trading sessions leading up to the closing auction. We train the models on 800 episodes in the synthetic (resp. ``historical'') simulations and then run an additional 100 episodes keeping the policy fixed for evaluation. The networks receive normalized versions of physical time, decision index and continuous features, with normalization fitted on training data only. Throughout training, we consider a validation set which allows to select the report policy by early stopping.
 
 \subsection{Generative Stochastic Market Model}
 \label{sub:generative}
@@ -654,13 +656,13 @@ In both simulations we consider the following setting: a two-hour CLOB phase (12
 We now explain in details our market emulator to generate the financial market in our setting. 
 The algorithm is described in Algorithm \ref{alg:generative_model}. It specifies only the exogenous random variables and accepted exogenous book updates. Let us precise that we say that a candidate exogenous linear auction book is valid if the aggregate slope $G_t \geqslant D_\mu$ for a numerical lower slope bound $D_\mu >0$ and there is a nonnegative continuous clearing root, as in Proposition \ref{prop:linear}.\vspace{0.5em} 
 
-\begin{algorithm}[ht!]
+\begin{algorithm}[H]
 \caption{Exogenous stochastic market generator}
 \label{alg:generative_model}
 \begin{algorithmic}[1]
 \REQUIRE Parameter vector
 $(\lambda_0,v_m,\gamma_m,V,\beta_a,\beta_b,V_\infty,
-\rho,U_1,U_2,M_1,M_2,p_1,p_2,p_3,p_4)$
+\rho,U_1,U_2,B_\infty,p_1,p_2,p_3,p_4)$
 \STATE Sample the independent CLOB counting processes
 $N^+,N^-\sim\mathrm{PP}(\lambda_0)$ on $[0,\tau^\op]$
 
@@ -710,7 +712,7 @@ and set $H_{t_{n+1}}^\cl\gets H_{t_n}^\cl$
         \sim
         S_{\tau^\op}^{\mathrm{mid}}
         +
-        \alpha\mathcal U(\llbracket M_1,M_2\rrbracket)$
+        \alpha\mathcal U(\llbracket -B_\infty,B_\infty\rrbracket)$
         and add the new exogenous schedule
     \ENDIF
 
@@ -765,13 +767,13 @@ At each auction decision time, the accepted exogenous update returned by Algorit
 After the final action at $t_m$, the controlled environment freezes the post-action book and applies the clearing and allocation rule of Section \ref{sec:clearing}.\vspace{0.5em}
 
 The inputs of our emulator are given by
-$ (\lambda_0,v_m,\gamma_m,V, \beta_a,\beta_b,V_\infty, \rho, U_1,U_2,M_1,M_2, p_1,p_2,p_3,p_4)$.
+$ (\lambda_0,v_m,\gamma_m,V, \beta_a,\beta_b,V_\infty, \rho, U_1,U_2,B_\infty, p_1,p_2,p_3,p_4)$.
 \begin{itemize}
     \item $\lambda_0$ represents the intensity of the counting processes $N^+$ and $N^-$ on the continuous phase, modeled as independent Poisson processes, that are the arrivals per side per minute. The two processes are not observable for the agent during the continuous phase, but only during the auction phase. They are sampled in the first step of the algorithm.
     \item $(v_m,\gamma_m)$ are the parameters of the Pareto distribution modeling the volumes of the limit orders throughout the whole trading sessions. This reproduces the well-known heavy tail behavior of the density of market order size, see for example \cite{gopikrishnan2000statistical,gabaix2009power,bouchaud2001power}. The market model allows orders of maximum size $V$: greater liquidity takers will accumulate at volume $V$.
     \item $(\beta_a,\beta_b)$ represent the parameters of the Beta distribution modeling the first volume of the limit order book. It is similar to the Beta scaling effect described in for example \cite{jerome2022market,wang2024market}.  Note that $V_\infty$ is a rescaling parameter as the Beta distribution has support $[0,1]$. Further volumes in the limit order book decay geometrically with parameter $\rho \in (0,1]$ and are truncated via the maximum order book depth $L_\infty$, that is $V_t^{\zeta,j}=0$ for $j > L_\infty$.
     \item $(U_1,U_2)$ represent the bounds between which exogenous market maker sample their supply slopes from during the auction phase.
-    \item $(M_1,M_2)$ represent the integer bounds of the price at which exogenous market makers quote during the auction phase. Exogenous market makers during the volume are assumed to be sampled as $S_t^i \sim S_{\tau^\op}^\mathrm{mid} + \alpha \mathcal{U}(\llbracket M_1,M_2 \rrbracket)$ because the auction opening time is the last time market participants see the mid price. Note that this shape of auction price have been introduced in \cite{derchu2023equilibria}. 
+    \item $B_\infty$ represent the integer bound of the price at which exogenous market makers quote during the auction phase. Exogenous market makers during the volume are assumed to be sampled as $S_t^i \sim S_{\tau^\op}^\mathrm{mid} + \alpha \mathcal{U}(\llbracket -B_\infty,B_\infty \rrbracket)$ because the auction opening time is the last time market participants see the mid price. Note that this shape of auction price have been introduced in \cite{derchu2023equilibria}. 
     \item $(p_1,p_2,p_3,p_4)$ represent the independent proposal probabilities per one-minute auction decision that drive the market structure during the auction phase. A new market maker arrives per step with proposal probability $p_1$, one market maker cancels his order with proposal probability $p_2$, a market taker arrives on either side with proposal probability $p_3$, and a market taker cancels his order with proposal probability $p_4$, all the conditioned on the book being still valid. These events are sampled using a Bernoulli distribution.
 \end{itemize}
 
@@ -813,7 +815,7 @@ At time $t_k$, the midprice revealed to the trading environment is $S_{t_k}^{\ma
 
 Now, one may notice that the AS stylized reference benchmark assumes that $\mathrm{d}S_t = \sigma \mathrm{d}B_t$, instead of the rough Heston model. In this sense, the goal of the numerical simulation is to compare how our deep reinforcement learning policies performs against a stylized reference benchmark, without claiming optimality of this benchmark. The benchmark is deliberately stylized and is not optimal for the simulated rough-Heston environment; it is therefore interpreted as a reference policy rather than as an oracle comparator.\vspace{0.5em}
 
-We calibrated the value $\sigma$ by estimating the standard deviation of the mid price on the trading period. From \cite{avellaneda2008high}, we have $A = \lambda_0/\gamma_m$ and $k = \alpha K$. Note that $A$ is per minute and the estimated volatility $\sigma$ is per square-root minute. Here, $K$ is the proportionality constant in the empirical relationship $K\Delta p = \ln(Q)$, where $\Delta p$ is the move in price when a market order of size $Q$ arrives. We did a least squares regression to determine $K$, by simulating 5{,}000 samples of the limit order book and market orders $Q \sim \mathrm{Pareto}(v_m,\gamma_m)$.
+We calibrated the value $\sigma$ by estimating the standard deviation of the mid price on the trading period. From \cite{avellaneda2008high}, we have $A = \lambda_0/\gamma_m$ and $k = \gamma_m \hat{K}$. Note that $A$ is per minute and the estimated volatility $\sigma$ is per square-root minute. Here, $\hat{K}$ is the proportionality constant in the empirical relationship $\hat{K}\Delta p = \ln(Q)$, where $\Delta p$ is the move in price when a market order of size $Q$ arrives. We did a least squares regression to determine $\hat{K}$, by simulating 5{,}000 samples of the limit order book and market orders $Q \sim \mathrm{Pareto}(v_m,\gamma_m)$.
 
 \subsection{Simulation with Historical Mid-Price Input}
 \label{sub:historical}
@@ -831,4 +833,3 @@ The model is a single-agent best-response problem against fixed stochastic backg
 \bibliography{references}
 
 \end{document}
-
