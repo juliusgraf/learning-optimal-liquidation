@@ -78,10 +78,22 @@ integer `v=1..30`, `delta=0..12`, for 391 actions. The state mask enforces
 order lives only for the current realized interval and is removed before the
 next snapshot/carry-over.
 
-Auction actions use `beta=1` and slope indices `{1,2,4,8,16,32}`. The policy
-enumerates 21 local offsets within ten ticks of the observed indicative price;
-the environment translates each template to the absolute manuscript offset
-inside the ambient `[-150,150]` bound. With cancellation enabled the grid has
+Auction actions use `beta=1` and slope indices `{1,2,4,8,16,32}`. The ambient
+manuscript coordinate is the absolute frozen-mid offset
+`b in [-B_max,B_max]=[-150,150]`, so
+`S_t^a=S_{tau_op}^{mid}+alpha*b_t^a`. The policy head remains compact by
+enumerating 21 local templates `ell in [-10,10]`. At decision time it resolves
+
+```text
+b_t = round_half_up((H_t^cl-S_{tau_op}^mid)/alpha) + ell_t,
+```
+
+and masks a discrete template if the resulting absolute `b_t` is outside the
+ambient band. Thus the indicative price changes the numerical policy
+parameterization, not the definition of the executed manuscript action. The
+separate `B_inf=150` sets the exogenous quote bounds `M_1=-B_inf` and
+`M_2=B_inf`; it happens to equal `B_max` but has a distinct role. With
+cancellation enabled the grid has
 `2 + 2*6*21 = 254` actions. Without cancellation it has
 `1 + 6*21 = 127`. Zero slope has zero offset. Cancellation removes every live
 strategic schedule submitted strictly before the current action; the new
@@ -105,6 +117,13 @@ these proposals to the same market action semantics used by DQN:
 - auction slope/offset are half-up rounded, the nonnegative-reference condition
   is enforced, and the cancellation threshold is applied only when admissible.
 
+Consequently all four learned methods use the same 21 local indicative-centred
+integer templates, while every executed order still carries an absolute
+frozen-mid `b`. DQN uses six positive slope levels `{1,2,4,8,16,32}`; the
+continuous actors' projected support contains all 33 integer slope levels
+`0,...,32`. A continuous proposal is clipped to the nearest ambient boundary;
+a discrete proposal outside that boundary is masked.
+
 Replay stores the committed normalized proposal, not a reconstructed market
 action. DDPG/TD3 exploration noise and TD3 target smoothing are applied in
 normalized proposal coordinates before projection. Projection statistics are
@@ -127,12 +146,33 @@ contract is shared.
 
 ## Reward and accounting separation
 
-Headline training uses the centered economic objective with `lambda_inv=2`;
-the manuscript's three-regime shaping is retained as an explicit treatment.
-Centering removes the policy-invariant initial inventory value incrementally,
-so it changes target scale but not complete-episode policy ordering. Evaluation
-separately records CLOB cash, terminal auction cash, cancellation fees,
-residual mark, inventory penalty, and each shaping adjustment.
+Headline training uses the manuscript's three-regime shaped reward with
+`q=1`, `lambda_inv=2`, `d=0.1`, and exact cancellation clawback. For an auction
+order submitted at decision `s`, define
+
+```text
+x_s   = K_s * H_s * (H_s - S_s)
+phi_s = x_s + f_a(x_s).
+```
+
+If `L_t` is the set of strategic schedules live immediately before action
+`t`, the implemented interim reward is
+
+```text
+r_t = phi_t - d_t*c_t - c_t * sum(phi_s for s in L_t).
+```
+
+The subtraction uses each order's original signed credit, not a revaluation at
+the current indicative price. Cancellation occurs before the current schedule
+is inserted, so a replacement does not cancel itself. Under `single_replace`,
+a replacement of `s` by `t` therefore earns `phi_t-phi_s-d_t`. Pathwise over
+the undiscounted auction, the interim rewards telescope to the sum of `phi_s`
+for schedules still live at clearing, less all cancellation fees. Centering
+removes the policy-invariant initial inventory value incrementally, so it
+changes target scale but not complete-episode policy ordering. Validation and
+final evaluation instantiate a separate economic-only reward contract and
+record CLOB cash, terminal auction cash, cancellation fees, residual mark, and
+the inventory penalty.
 
 Primary policy selection and comparison use:
 
@@ -142,15 +182,46 @@ pnl = CLOB cash + auction cash + residual mark
 risk_adjusted_pnl = pnl - lambda_inv * I_final^2
 ```
 
-No shaping term enters either field. With headline centering and shaping
-disabled, the episode return equals `risk_adjusted_pnl` to numerical tolerance.
+No shaping term enters either field. With centering in the economic validation
+and test environments, the episode return equals `risk_adjusted_pnl` to
+numerical tolerance.
+
+The shaped objective is not the economic objective. Clawback removes the
+specific repeated-replacement accumulation: with `q=1`, every `phi_s` is
+nonnegative and a replacement earns only the increment in surviving fictive
+value, less its fee. It does not alter the fact that `q=1` neutralizes
+purchase-side auction cash in the terminal training signal. Economic
+validation ranks eligible checkpoints, but the untrained policy and
+pre-maturity policies are diagnostic references only. Benchmark-superiority
+claims still require held-out confirmation and are not implied by enabling
+shaping or clawback.
 
 ## Validation, testing, and comparison
 
 The normalizer and benchmark calibration use training-only streams. Periodic
-validation uses a fixed validation seed set and chooses `best.pt` exclusively
-by mean `risk_adjusted_pnl`. Final evaluation uses a separate fixed test seed
-set and defaults to `best.pt`.
+validation replays the policy under the economic-only reward on a fixed
+validation seed set. A candidate becomes reportable only after the CLOB and
+auction learners reach `5,000` and `2,000` maturity-counted optimizer updates,
+respectively. For DQN, auction updates made before the full auction behavior
+policy unlocks at episode 200 are excluded from this count. Before both gates
+pass, validation scores are diagnostics: they neither create `best.pt` nor
+consume patience. The first eligible validation initializes the race, after
+which ordinary joint-policy patience applies. The untrained policy's economic
+score is retained only as a safety floor: an eligible mature policy must beat
+it before `best.pt` is created. The best mature policy is saved separately for
+diagnosis; if no mature policy beats the floor, the run fails selection rather
+than reporting either the untrained or collapsed policy. Among reportable
+candidates, `best.pt` maximizes mean `risk_adjusted_pnl`. Final evaluation uses
+the same economic-only contract on a separate fixed test seed set and defaults
+to `best.pt`.
+
+The two phase networks are not checkpointed independently. The CLOB Bellman
+target bootstraps from the auction network at the junction, while the auction
+policy is evaluated under inventories generated by the CLOB policy. Splicing
+phase networks selected at different episodes would therefore evaluate a pair
+that was never jointly validated and can create an out-of-distribution phase
+boundary. Phase-specific maturity with joint economic selection preserves the
+coupled control problem without changing its rewards or transition law.
 
 Within each test episode, the learned policy, initial network, AS, and TWAP see
 the same policy-independent realized CLOB tape, midprice path, and auction

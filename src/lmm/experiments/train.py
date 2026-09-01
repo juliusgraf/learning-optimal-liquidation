@@ -1,6 +1,6 @@
 """Train any agent on any setting from config (Phase 4).
 
-Writes the configured results root (currently results/revision_v5) with config_resolved.yaml,
+Writes the configured results root (currently results/revision_v9) with config_resolved.yaml,
 seed.txt, git_sha.txt, metrics.csv (per-episode), checkpoints/, logs/run.log
 (engineering conventions, CLAUDE.md). Figures/tables are produced separately
 by make_figures.py / make_tables.py from these saved outputs.
@@ -8,7 +8,9 @@ by make_figures.py / make_tables.py from these saved outputs.
 Checkpoints: ``initial.pt`` BEFORE any training (the "initial-DQN" baseline
 evaluated by evaluate.py), periodic resumable ``ckpt_ep{N}.pt`` (+ sidecar
 ``ckpt_ep{N}_trainstate.pt`` with the loop's own RNG/counters), ``best.pt``
-on eval improvement, ``final.pt`` at the end. metrics.csv schema is
+on eligible economic-validation improvement, ``final.pt`` at the end. The
+untrained and pre-maturity policies remain diagnostics and cannot become
+``best.pt``. metrics.csv schema is
 documented in docs/metrics_schema.md; floats are written with repr-exact
 "%.17g" so byte-identical files certify determinism (ruling D10), except the
 final wall_clock_s column which is excluded from comparisons.
@@ -36,6 +38,7 @@ from lmm.config import (
     ExperimentConfig,
     add_config_cli,
     config_from_args,
+    economic_evaluation_config,
     load_config,
     to_dict,
 )
@@ -72,6 +75,7 @@ METRICS_COLUMNS = [
     "terminal_penalty",
     "clob_shaping_adjustment",
     "auction_interim_shaping",
+    "auction_shaping_clawback",
     "auction_terminal_shaping",
     "reward_baseline_adjustment",
     "clob_reward_sum",
@@ -134,10 +138,14 @@ METRICS_COLUMNS = [
     "td_abs_max_auction",
     "n_grad_steps_auction",
     "buffer_auction",
+    "checkpoint_updates_clob",
+    "checkpoint_updates_auction",
     "eval_return_mean",
     "eval_pnl_mean",
     "eval_risk_adjusted_pnl_mean",
     "eval_checkpoint_score",
+    "eval_checkpoint_eligible",
+    "eval_checkpoint_reportable",
     "wall_clock_s",  # LAST column; excluded from determinism comparisons
 ]
 
@@ -232,10 +240,13 @@ def _metrics_row(
     res: EpisodeResult,
     epsilon: float,
     buffer_sizes: dict[str, int],
+    checkpoint_update_counts: dict[str, int],
     eval_return_mean: Optional[float],
     eval_pnl_mean: Optional[float],
     eval_risk_adjusted_pnl_mean: Optional[float],
     eval_checkpoint_score: Optional[float],
+    eval_checkpoint_eligible: Optional[bool],
+    eval_checkpoint_reportable: Optional[bool],
     wall_clock_s: float,
 ) -> list[str]:
     d = res.diagnostics
@@ -253,6 +264,7 @@ def _metrics_row(
         "terminal_penalty": res.terminal_penalty,
         "clob_shaping_adjustment": res.clob_shaping_adjustment,
         "auction_interim_shaping": res.auction_interim_shaping,
+        "auction_shaping_clawback": res.auction_shaping_clawback,
         "auction_terminal_shaping": res.auction_terminal_shaping,
         "reward_baseline_adjustment": res.reward_baseline_adjustment,
         "clob_reward_sum": res.clob_reward_sum,
@@ -315,10 +327,18 @@ def _metrics_row(
         "td_abs_max_auction": d.get("td_abs_max_auction"),
         "n_grad_steps_auction": int(d.get("n_grad_steps_auction", 0)),
         "buffer_auction": buffer_sizes["auction"],
+        "checkpoint_updates_clob": checkpoint_update_counts["clob"],
+        "checkpoint_updates_auction": checkpoint_update_counts["auction"],
         "eval_return_mean": eval_return_mean,
         "eval_pnl_mean": eval_pnl_mean,
         "eval_risk_adjusted_pnl_mean": eval_risk_adjusted_pnl_mean,
         "eval_checkpoint_score": eval_checkpoint_score,
+        "eval_checkpoint_eligible": (
+            None if eval_checkpoint_eligible is None else int(eval_checkpoint_eligible)
+        ),
+        "eval_checkpoint_reportable": (
+            None if eval_checkpoint_reportable is None else int(eval_checkpoint_reportable)
+        ),
         "wall_clock_s": wall_clock_s,
     }
     return [_fmt(values[c]) for c in METRICS_COLUMNS]
@@ -344,6 +364,85 @@ def _run_eval(
     if not all(np.isfinite(v) for v in out.values()):
         raise ValueError(f"non-finite validation summary: {out}")
     return out
+
+
+def _checkpoint_eligibility(
+    cfg: ExperimentConfig, agent: Agent
+) -> dict[str, object]:
+    """Return the auditable joint maturity test for a reportable checkpoint.
+
+    The learned policy is a coupled pair of phase networks, so eligibility is
+    joint even though optimizer progress is phase-specific.  In the no-auction
+    treatment only the CLOB threshold applies.
+    """
+    observed = agent.checkpoint_update_counts
+    required = {
+        "clob": int(cfg.rl.checkpoint_min_clob_updates),
+        "auction": (
+            int(cfg.rl.checkpoint_min_auction_updates)
+            if cfg.experiment.auction_enabled
+            else 0
+        ),
+    }
+    deficits = {
+        phase: max(0, required[phase] - observed.get(phase, 0))
+        for phase in ("clob", "auction")
+    }
+    return {
+        "eligible": not any(deficits.values()),
+        "required_updates": required,
+        "observed_updates": {
+            phase: int(observed.get(phase, 0))
+            for phase in ("clob", "auction")
+        },
+        "update_deficits": deficits,
+        "auction_enabled": bool(cfg.experiment.auction_enabled),
+    }
+
+
+def _write_best_selection(
+    path: Path,
+    *,
+    cfg: ExperimentConfig,
+    metric: str,
+    value: float,
+    episode: int,
+    eval_seeds: list[int],
+    eligibility: dict[str, object],
+    safety_reference_score: float,
+    reportable: bool,
+    candidate: str = "periodic_validation",
+) -> None:
+    """Write the complete mature-checkpoint selection provenance."""
+    path.write_text(
+        yaml.safe_dump(
+            {
+                "metric": metric,
+                "mode": "max",
+                "value": float(value),
+                "episode": int(episode),
+                "n_validation_seeds": len(eval_seeds),
+                "validation_seeds": eval_seeds,
+                "validation_frequency_episodes": cfg.rl.validation_frequency_episodes,
+                "patience_evals": cfg.rl.validation_patience_evals,
+                "patience_starts_after_first_eligible_validation": True,
+                "seed_stream": "env_eval",
+                "candidate": candidate,
+                "eligibility": eligibility,
+                "economic_safety": {
+                    "require_improvement_over_initial": bool(
+                        cfg.rl.checkpoint_require_initial_improvement
+                    ),
+                    "initial_validation_score": float(safety_reference_score),
+                    "candidate_beats_initial": bool(
+                        value > safety_reference_score
+                    ),
+                    "reportable": bool(reportable),
+                },
+            },
+            sort_keys=False,
+        )
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -397,8 +496,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     env = wrap_env_for_agent(
         make_env(cfg, symbol=args.symbol, data_split="train"), cfg
     )
+    economic_cfg = economic_evaluation_config(cfg)
     validation_env = wrap_env_for_agent(
-        make_env(cfg, symbol=args.symbol, data_split="validation"), cfg
+        make_env(economic_cfg, symbol=args.symbol, data_split="validation"), cfg
     )
     agent = make_agent(cfg, seeds)
     hp = agent.hp
@@ -416,6 +516,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     eval_seeds = [draw_seed(eval_seed_rng) for _ in range(cfg.rl.validation_size)]
 
     start_episode = 0
+    reference_validation_score: float | None = None
+    best_mature_validation_score = -np.inf
+    best_mature_episode: int | None = None
     best_validation_score = -np.inf
     best_episode: int | None = None
     validation_evals_without_improvement = 0
@@ -437,6 +540,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             )
         best_validation_score = float(train_state["best_validation_score"])
         best_episode = train_state.get("best_episode")
+        reference_validation_score = float(
+            train_state["reference_validation_score"]
+        )
+        best_mature_validation_score = float(
+            train_state["best_mature_validation_score"]
+        )
+        best_mature_episode = train_state.get("best_mature_episode")
         validation_evals_without_improvement = int(
             train_state.get("validation_evals_without_improvement", 0)
         )
@@ -462,39 +572,39 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         # The "initial-DQN" baseline: the untrained networks, saved BEFORE
         # any training (evaluated by evaluate.py as the initial reference).
         agent.save(paths.checkpoints / "initial.pt")
-        # A safety-aware initialization is a legitimate policy candidate.  It
-        # must enter the same fixed-seed economic validation race as later
-        # checkpoints; otherwise the first trained checkpoint can replace a
-        # superior no-op initialization merely because no baseline score was
-        # recorded.
+        # Retain the untrained policy as a diagnostic reference, but never let
+        # it become the reportable best checkpoint.  It has, by definition,
+        # not passed either phase's learning-maturity gate.
         initial_validation = _run_eval(
             validation_env, agent, eval_seeds, chi, checkpoint_metric
         )
-        best_validation_score = initial_validation["checkpoint_score"]
-        best_episode = -1
-        agent.save(paths.checkpoints / "best.pt")
-        (paths.checkpoints / "best_selection.yaml").write_text(
+        reference_validation_score = initial_validation["checkpoint_score"]
+        initial_eligibility = _checkpoint_eligibility(cfg, agent)
+        (paths.checkpoints / "initial_validation.yaml").write_text(
             yaml.safe_dump(
                 {
                     "metric": checkpoint_metric,
-                    "mode": "max",
-                    "value": best_validation_score,
-                    "episode": best_episode,
+                    "value": initial_validation["checkpoint_score"],
+                    "episode": -1,
                     "n_validation_seeds": len(eval_seeds),
                     "validation_seeds": eval_seeds,
-                    "validation_frequency_episodes": cfg.rl.validation_frequency_episodes,
-                    "patience_evals": cfg.rl.validation_patience_evals,
                     "seed_stream": "env_eval",
                     "candidate": "initial_untrained_policy",
+                    "reportable": False,
+                    "economic_safety_floor": reference_validation_score,
+                    "eligibility": initial_eligibility,
                 },
                 sort_keys=False,
             )
         )
         logger.info(
-            "initial validation %s %.6f",
+            "initial diagnostic validation %s %.6f (non-reportable safety floor)",
             checkpoint_metric,
-            best_validation_score,
+            initial_validation["checkpoint_score"],
         )
+
+    if reference_validation_score is None:
+        raise AssertionError("initial economic safety reference was not initialized")
 
     new_csv = start_episode == 0 or not paths.metrics_csv.exists()
     csv_file = paths.metrics_csv.open("w" if new_csv else "a", newline="")
@@ -552,6 +662,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         eval_pnl_mean: Optional[float] = None
         eval_risk_adjusted_pnl_mean: Optional[float] = None
         eval_checkpoint_score: Optional[float] = None
+        eval_checkpoint_eligible: Optional[bool] = None
+        eval_checkpoint_reportable: Optional[bool] = None
         stop_after_episode = False
         if (episode + 1) % cfg.rl.validation_frequency_episodes == 0:
             validation = _run_eval(
@@ -561,41 +673,83 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             eval_pnl_mean = validation["pnl_mean"]
             eval_risk_adjusted_pnl_mean = validation["risk_adjusted_pnl_mean"]
             eval_checkpoint_score = validation["checkpoint_score"]
-            if eval_checkpoint_score > best_validation_score:
-                best_validation_score = eval_checkpoint_score
-                best_episode = episode
-                validation_evals_without_improvement = 0
-                agent.save(paths.checkpoints / "best.pt")
-                (paths.checkpoints / "best_selection.yaml").write_text(
-                    yaml.safe_dump(
-                        {
-                            "metric": checkpoint_metric,
-                            "mode": "max",
-                            "value": best_validation_score,
-                            "episode": best_episode,
-                            "n_validation_seeds": len(eval_seeds),
-                            "validation_seeds": eval_seeds,
-                            "validation_frequency_episodes": cfg.rl.validation_frequency_episodes,
-                            "patience_evals": cfg.rl.validation_patience_evals,
-                            "seed_stream": "env_eval",
-                        },
-                        sort_keys=False,
-                    )
+            eligibility = _checkpoint_eligibility(cfg, agent)
+            eval_checkpoint_eligible = bool(eligibility["eligible"])
+            eval_checkpoint_reportable = bool(
+                eval_checkpoint_eligible
+                and (
+                    not cfg.rl.checkpoint_require_initial_improvement
+                    or eval_checkpoint_score > reference_validation_score
                 )
-            else:
+            )
+            mature_improved = bool(
+                eval_checkpoint_eligible
+                and eval_checkpoint_score > best_mature_validation_score
+            )
+            if mature_improved:
+                best_mature_validation_score = eval_checkpoint_score
+                best_mature_episode = episode
+                validation_evals_without_improvement = 0
+                agent.save(paths.checkpoints / "best_mature.pt")
+                _write_best_selection(
+                    paths.checkpoints / "best_mature_selection.yaml",
+                    cfg=cfg,
+                    metric=checkpoint_metric,
+                    value=best_mature_validation_score,
+                    episode=best_mature_episode,
+                    eval_seeds=eval_seeds,
+                    eligibility=eligibility,
+                    safety_reference_score=reference_validation_score,
+                    reportable=eval_checkpoint_reportable,
+                    candidate="periodic_mature_validation",
+                )
+            elif eval_checkpoint_eligible:
                 validation_evals_without_improvement += 1
                 stop_after_episode = (
                     validation_evals_without_improvement
                     >= cfg.rl.validation_patience_evals
                 )
-            logger.info(
-                "episode %d: validation %s %.6f (best %.6f); shaped return %.4f",
-                episode,
-                checkpoint_metric,
-                eval_checkpoint_score,
-                best_validation_score,
-                eval_return_mean,
-            )
+            if (
+                eval_checkpoint_reportable
+                and eval_checkpoint_score > best_validation_score
+            ):
+                best_validation_score = eval_checkpoint_score
+                best_episode = episode
+                agent.save(paths.checkpoints / "best.pt")
+                _write_best_selection(
+                    paths.checkpoints / "best_selection.yaml",
+                    cfg=cfg,
+                    metric=checkpoint_metric,
+                    value=best_validation_score,
+                    episode=best_episode,
+                    eval_seeds=eval_seeds,
+                    eligibility=eligibility,
+                    safety_reference_score=reference_validation_score,
+                    reportable=True,
+                )
+            if eval_checkpoint_eligible:
+                logger.info(
+                    "episode %d: mature validation %s %.6f (best mature %.6f; "
+                    "safety floor %.6f; reportable=%s); economic return %.4f; "
+                    "maturity updates=%s",
+                    episode,
+                    checkpoint_metric,
+                    eval_checkpoint_score,
+                    best_mature_validation_score,
+                    reference_validation_score,
+                    eval_checkpoint_reportable,
+                    eval_return_mean,
+                    eligibility["observed_updates"],
+                )
+            else:
+                logger.info(
+                    "episode %d: diagnostic validation %s %.6f is not eligible; "
+                    "update deficits=%s",
+                    episode,
+                    checkpoint_metric,
+                    eval_checkpoint_score,
+                    eligibility["update_deficits"],
+                )
 
         if (episode + 1) % hp.checkpoint_interval_episodes == 0:
             ckpt = paths.checkpoints / f"ckpt_ep{episode + 1}.pt"
@@ -606,6 +760,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                     "checkpoint_metric": checkpoint_metric,
                     "best_validation_score": best_validation_score,
                     "best_episode": best_episode,
+                    "reference_validation_score": reference_validation_score,
+                    "best_mature_validation_score": best_mature_validation_score,
+                    "best_mature_episode": best_mature_episode,
                     "validation_evals_without_improvement": validation_evals_without_improvement,
                     "env_seed_rng_state": env_seed_rng.bit_generator.state,
                 },
@@ -619,10 +776,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 res,
                 agent.epsilon,
                 {p: len(agent.replay[p]) for p in ("clob", "auction")},
+                agent.checkpoint_update_counts,
                 eval_return_mean,
                 eval_pnl_mean,
                 eval_risk_adjusted_pnl_mean,
                 eval_checkpoint_score,
+                eval_checkpoint_eligible,
+                eval_checkpoint_reportable,
                 wall,
             )
         )
@@ -638,6 +798,85 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             break
 
     agent.save(paths.checkpoints / "final.pt")
+    checkpoint_failure: str | None = None
+    if best_episode is None:
+        final_eligibility = _checkpoint_eligibility(cfg, agent)
+        if not bool(final_eligibility["eligible"]):
+            checkpoint_failure = (
+                "training ended before any checkpoint became reportable; "
+                f"phase-update deficits={final_eligibility['update_deficits']}"
+            )
+        else:
+            # This covers a budget whose final mature state falls between
+            # periodic validation boundaries. It uses the same fixed split.
+            validation = _run_eval(
+                validation_env, agent, eval_seeds, chi, checkpoint_metric
+            )
+            final_score = validation["checkpoint_score"]
+            final_episode = max(
+                0, start_episode + len(training_episode_seeds) - 1
+            )
+            final_reportable = bool(
+                not cfg.rl.checkpoint_require_initial_improvement
+                or final_score > reference_validation_score
+            )
+            if final_score > best_mature_validation_score:
+                best_mature_validation_score = final_score
+                best_mature_episode = final_episode
+                agent.save(paths.checkpoints / "best_mature.pt")
+                _write_best_selection(
+                    paths.checkpoints / "best_mature_selection.yaml",
+                    cfg=cfg,
+                    metric=checkpoint_metric,
+                    value=best_mature_validation_score,
+                    episode=best_mature_episode,
+                    eval_seeds=eval_seeds,
+                    eligibility=final_eligibility,
+                    safety_reference_score=reference_validation_score,
+                    reportable=final_reportable,
+                    candidate="end_of_run_mature_validation",
+                )
+            if final_reportable:
+                best_validation_score = final_score
+                best_episode = final_episode
+                agent.save(paths.checkpoints / "best.pt")
+                _write_best_selection(
+                    paths.checkpoints / "best_selection.yaml",
+                    cfg=cfg,
+                    metric=checkpoint_metric,
+                    value=best_validation_score,
+                    episode=best_episode,
+                    eval_seeds=eval_seeds,
+                    eligibility=final_eligibility,
+                    safety_reference_score=reference_validation_score,
+                    reportable=True,
+                    candidate="end_of_run_validation",
+                )
+            else:
+                checkpoint_failure = (
+                    "no mature checkpoint beat the non-reportable initial "
+                    f"economic safety floor: best_mature="
+                    f"{best_mature_validation_score:.12g}, "
+                    f"initial={reference_validation_score:.12g}"
+                )
+    if checkpoint_failure is not None:
+        (paths.checkpoints / "selection_failure.yaml").write_text(
+            yaml.safe_dump(
+                {
+                    "reason": checkpoint_failure,
+                    "metric": checkpoint_metric,
+                    "initial_validation_score": reference_validation_score,
+                    "best_mature_validation_score": (
+                        None
+                        if not np.isfinite(best_mature_validation_score)
+                        else best_mature_validation_score
+                    ),
+                    "best_mature_episode": best_mature_episode,
+                    "maturity": _checkpoint_eligibility(cfg, agent),
+                },
+                sort_keys=False,
+            )
+        )
     csv_file.close()
     grids_file.close()
     forecast_file.close()
@@ -667,6 +906,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         completed_episodes,
         paths.checkpoints,
     )
+    if checkpoint_failure is not None:
+        raise RuntimeError(checkpoint_failure)
     return 0
 
 

@@ -1,6 +1,6 @@
 """Run-directory creation and experiment metadata dumping (fully functional).
 
-Every current run writes ``results/revision_v5/<experiment_name>/<run_name>/`` containing
+Every current run writes ``results/revision_v9/<experiment_name>/<run_name>/`` containing
 ``config_resolved.yaml``, ``seed.txt``, ``git_sha.txt``, ``metrics.csv``,
 ``eval/``, ``checkpoints/``, ``logs/run.log``, ``figures/``, ``tables/``
 (engineering conventions, CLAUDE.md). Figures and tables are always
@@ -90,8 +90,8 @@ def write_run_metadata(paths: RunPaths, cfg: ExperimentConfig, master_seed: int)
     paths.seed_txt.write_text(f"{master_seed}\n")
     paths.git_sha_txt.write_text(f"{_git_sha()}\n")
     historical = cfg.midprice.historical
-    if historical is not None and not historical.split_id.startswith("legacy_"):
-        from lmm.data.load_yfinance_data import validate_historical_artifact
+    if historical is not None:
+        from lmm.data.historical_artifact import validate_historical_artifact
 
         data_manifest = validate_historical_artifact(
             historical,
@@ -102,7 +102,7 @@ def write_run_metadata(paths: RunPaths, cfg: ExperimentConfig, master_seed: int)
             json.dumps(data_manifest, indent=2, sort_keys=True) + "\n"
         )
     packages: dict[str, str] = {}
-    for package in ("numpy", "pandas", "torch", "gymnasium", "PyYAML", "yfinance"):
+    for package in ("numpy", "pandas", "torch", "gymnasium", "PyYAML", "certifi"):
         try:
             packages[package] = metadata.version(package)
         except metadata.PackageNotFoundError:

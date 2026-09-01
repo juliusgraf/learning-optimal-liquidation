@@ -34,6 +34,8 @@ __all__ = [
     "POLICY_LABELS",
     "POLICY_ORDER",
     "ALGO_ORDER",
+    "HISTORICAL_SETTING",
+    "is_historical_setting",
     "read_metrics",
     "read_records",
     "read_policy_difference",
@@ -69,6 +71,12 @@ POLICY_LABELS = {
 POLICY_ORDER = ["initial", "as", "twap", "dqn", "ddpg", "td3", "sac"]
 # Learned algorithms compared in figure (f) / per-ticker tables.
 ALGO_ORDER = ["dqn", "ddpg", "td3", "sac"]
+HISTORICAL_SETTING = "historical_sp500_midquotes"
+
+
+def is_historical_setting(setting: str) -> bool:
+    """Return whether a run uses the publication true-midquote setting."""
+    return setting == HISTORICAL_SETTING
 
 
 def apply_style() -> None:
@@ -144,7 +152,7 @@ class RunInfo:
 
     run_dir: Path
     cfg: ExperimentConfig
-    setting: str        # cfg.experiment.name ("synthetic_rough_heston" | "historical_sp500")
+    setting: str        # cfg.experiment.name (synthetic or true-midquote historical)
     algo: str           # cfg.algo.name ("dqn" | "ddpg" | "td3" | "sac")
     symbol: Optional[str]
     records: Optional[pd.DataFrame]

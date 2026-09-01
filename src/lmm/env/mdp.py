@@ -25,7 +25,13 @@ from lmm.env.action_spaces import (
     round_half_up,
 )
 from lmm.env.features import COMMON_FEATURES, FeatureExtractor
-from lmm.env.rewards import auction_reward, clob_reward, f_a, terminal_reward
+from lmm.env.rewards import (
+    auction_fictive_reward,
+    auction_reward,
+    clob_reward,
+    f_a,
+    terminal_reward,
+)
 from lmm.market.auction import AgentOrderLedger, AuctionEvents
 from lmm.market.clearing import (
     Algo1Diagnostics,
@@ -120,7 +126,11 @@ class MarketMakingEnv(gymnasium.Env):
         self._last_clearing_result: ClearingResult | None = None
         self._pending_auction_events: AuctionEvents | None = None
         self._current_algo1_diag: Algo1Diagnostics | None = None
-        self._interim_shaping_by_slot = np.zeros(self.grid.h, dtype=float)
+        # Latent per-order state needed by r_t(X_t,A_t) under cancellation
+        # clawback. It is intentionally not part of the reduced policy feature
+        # map: the manuscript already treats that map as a feature-based,
+        # potentially non-Markov approximation.
+        self._auction_shaping_credit_by_slot = np.zeros(self.grid.h, dtype=float)
 
         self.algo1.reset(self.cfg.algo1.H0)
         self._h_cache = self.algo1.h
@@ -344,7 +354,7 @@ class MarketMakingEnv(gymnasium.Env):
         self._mid = self._frozen_mid
         self._I_tau_op = self._inventory
         self._ledger.reset()
-        self._interim_shaping_by_slot.fill(0.0)
+        self._auction_shaping_credit_by_slot.fill(0.0)
         self.generator.auction_flow.reset(self._frozen_mid, carryover)
         self._carryover_slope = float(carryover.total_slope)
         self._fallback_used = any(
@@ -382,6 +392,24 @@ class MarketMakingEnv(gymnasium.Env):
         h_used = self._h_cache
         d_t = float(self._auction_index) * self.cfg.reward.d
         fee = d_t * int(a.cancel)
+        prior_live = self._ledger.live.copy()
+        clawback = 0.0
+        if a.cancel == 1 and self.cfg.reward.clawback_shaping:
+            # Reverse the exact signed credits assigned when the currently
+            # live schedules were submitted. Re-marking them with H_t would
+            # not telescope and would define a different reward.
+            clawback = float(
+                np.sum(self._auction_shaping_credit_by_slot[prior_live])
+            )
+
+        shaping_active = (
+            self.cfg.reward.effective_auction_shaping and not external
+        )
+        interim_shaping = (
+            auction_fictive_reward(a.K_a, s_a, h_used, self.cfg.reward.q)
+            if shaping_active
+            else 0.0
+        )
         interim_reward = auction_reward(
             a.K_a,
             s_a,
@@ -391,16 +419,13 @@ class MarketMakingEnv(gymnasium.Env):
             a.cancel,
             shaping_enabled=self.cfg.reward.effective_auction_shaping,
             external_policy=external,
+            cancelled_interim_shaping=clawback,
         )
-        interim_shaping = interim_reward + fee
 
-        prior_live = self._ledger.live.copy()
-        clawback = 0.0
         if a.cancel == 1:
-            if self.cfg.reward.clawback_shaping:
-                clawback = float(np.sum(self._interim_shaping_by_slot[prior_live]))
-                interim_reward -= clawback
-                self._interim_shaping_by_slot[prior_live] = 0.0
+            # A canceled slot cannot be clawed back a second time, including
+            # in the legacy no-clawback treatment.
+            self._auction_shaping_credit_by_slot[prior_live] = 0.0
             self._ledger.apply_cancel_all(t)
         self._ledger.submit(
             t,
@@ -410,8 +435,10 @@ class MarketMakingEnv(gymnasium.Env):
             quantity_cap=a.quantity_cap,
             reference_price=s_a if external else None,
         )
-        if a.K_a > 0.0 and self.cfg.reward.effective_auction_shaping and not external:
-            self._interim_shaping_by_slot[self._auction_index] = interim_shaping
+        if a.K_a > 0.0 and shaping_active:
+            self._auction_shaping_credit_by_slot[self._auction_index] = (
+                interim_shaping
+            )
 
         inputs = self._clearing_inputs()
         external_schedule = self._ledger.external_schedule()
@@ -655,7 +682,8 @@ class MarketMakingEnv(gymnasium.Env):
             raise ValueError("auction offset must be integer-valued")
         if not external and abs(int(a.offset)) > self.cfg.actions.B_max:
             raise ValueError(
-                f"auction offset must lie in [-{self.cfg.actions.B_max},{self.cfg.actions.B_max}]"
+                "auction offset must lie in "
+                f"[-{self.cfg.actions.B_max},{self.cfg.actions.B_max}]"
             )
         if a.K_a == 0.0 and int(a.offset) != 0:
             raise ValueError("the canonical zero-slope action has offset=0")

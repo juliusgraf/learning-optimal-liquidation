@@ -127,9 +127,11 @@ def diagnose(
             "rho_lob": cfg.clob_flow.rho_lob,
             "L_max": cfg.clob_flow.L_max,
             "D_mu": cfg.auction_flow.D_mu,
-            "agent_B_max": cfg.actions.B_max,
+            "auction_B_inf": cfg.auction_flow.B_inf,
             "agent_slope_choices": list(cfg.actions.auction_K_multipliers),
-            "agent_local_offset_max": cfg.actions.auction_template_offset_max,
+            "agent_B_max": cfg.actions.B_max,
+            "agent_offset_center": cfg.actions.auction_offset_center,
+            "agent_template_offset_max": cfg.actions.auction_template_offset_max,
         },
         "pooled": {
             "fallback_rate": float(np.mean(pooled_array < cfg.auction_flow.D_mu)),

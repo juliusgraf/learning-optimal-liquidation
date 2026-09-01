@@ -29,7 +29,7 @@ from lmm.agents.dqn import DQNAgent
 from lmm.agents.sac import SACAgent
 from lmm.agents.td3 import TD3Agent
 from lmm.config import load_config, save_resolved
-from lmm.data.load_yfinance_data import validate_historical_artifact
+from lmm.data.historical_artifact import validate_historical_artifact
 from lmm.env import mdp as mdp_module
 from lmm.env.action_spaces import AuctionAction, ClobAction
 from lmm.env.features import COMMON_FEATURES
@@ -552,7 +552,7 @@ def test_auction_has_no_inventory_bound_or_terminal_clipping():
     )
     env = new_env(cfg)
     _drive_to_auction(env)
-    env.generator.auction_flow.inject_taker(+1, 2_000.0)
+    env.generator.auction_flow.inject_taker(+1, 10_000.0)
     _, _, done, _, info = env.step(
         AuctionAction(cfg.actions.auction_K_grid_max, -cfg.actions.B_max, 0)
     )

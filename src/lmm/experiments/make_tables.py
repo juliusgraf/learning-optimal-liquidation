@@ -76,7 +76,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             if n_seeds < 2:
                 warnings.warn(f"--multiseed: {setting} has <2 seeds; skipping", stacklevel=2)
                 continue
-            if setting == "historical_sp500":
+            if P.is_historical_setting(setting):
                 def _hist_ms(group=group):
                     table = T.build_historical_results_multiseed(group)
                     written.extend(T.write_table(table, out, "dqn_results_multiseed"))
@@ -93,7 +93,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                     written.extend(T.write_table(table, out, "eval_summary_multiseed"))
                 safe(_eval_ms, what=f"eval_summary_multiseed[{setting}]")
             continue
-        if setting == "historical_sp500":
+        if P.is_historical_setting(setting):
             def _hist(group=group):
                 ret_t, imp_t = T.build_historical_results(group)
                 written.extend(T.write_table(ret_t, out, "dqn_results_full"))

@@ -227,7 +227,7 @@ diagnosis and binding resolution follow in the entries beneath this table.
 | D10 — fresh per-component seeding | 2 | `utils/seeding.py` | `test_determinism` |
 | D11 — internal state + `paper_state()` | 3 | `env/{mdp,features}.py` | `test_admissibility`, `test_agent_env_contract` |
 | D12 — one library (no main/data dup) | 3 | `src/lmm` (whole package) | full suite |
-| D13 — historical data loader | 6 | `data/load_yfinance_data.py`, `configs/historical_sp500.yaml` | `test_data_loader` |
+| D13 — historical data loader (retired) | 6 | superseded by true-midquote loader/config | see current `test_midquote_data` |
 | D14 — vectorized rough Heston/book | 3 | `market/{midprice,clob}.py` | `test_rough_heston` (allclose vs naive) |
 | D15 — τ = 0.95, χ = 0.99 both settings | 2 | `configs/base.yaml`, `market/clearing.py` | `test_algorithm1` + config (cite D15) |
 | D16 — one-sided benchmark curve (superseded by D23) | 3–4 | `market/clearing.py`, `agents/benchmarks.py` | historical: `test_clearing`, `test_agent_env_contract` |
@@ -837,8 +837,8 @@ Section-4 rewrite.
   historical), `target_soft_tau` 0.005→0.0025, `eval_n_seeds` 8→24. The
   structural cure is clipped double-Q (= TD3, already provided); this is the
   within-DDPG fix so DDPG stands as a non-collapsing baseline.
-- **Episode counts**: synthetic 2000→1000, historical 1000→500
-  (`configs/{synthetic_rough_heston,historical_sp500}.yaml`). All four plateau
+- **Episode counts (superseded contract)**: synthetic 2000→1000, historical
+  1000→500 (the retired `historical_sp500` close-proxy setting). All four plateau
   well before these budgets; historical needs fewer (lambda0=60 ⇒ ~2× decisions
   /ep and a fixed mid path ⇒ lower variance). TD3/SAC unchanged (already stable).
 
@@ -874,3 +874,42 @@ return diagnostics, and treat the multi-seed IQM/CI as the headline rather than
 any single-seed point estimate. Reward decomposition remains diagnostic for
 explaining how the shaped learning objective differs from the reported economic
 objective.
+
+### F.5 Mature economic checkpoint selection (2026-09-01; learner-side only)
+
+The earlier selector admitted the untrained safe policy and checkpoints created
+before DQN exposed the complete auction action set. This prevented a collapsed
+policy from being reported, but could label a pre-learning policy as the learned
+result. Revision v9 separates the two conditions:
+
+- CLOB and auction maturity require 5,000 and 2,000 optimizer updates;
+- DQN auction updates before `auction_learning_start_episode=200` do not count;
+- validation before joint maturity is diagnostic and does not consume patience;
+- the untrained economic score is a non-reportable safety floor;
+- a mature policy must beat that floor before `best.pt` exists; otherwise the
+  run writes `best_mature.pt` and `selection_failure.yaml` and fails selection.
+
+The phase networks are not selected independently. The CLOB Bellman target uses
+the auction network at the junction, and the auction policy is tested under the
+inventory distribution induced by the CLOB policy. Splicing snapshots from two
+episodes would produce an unvalidated pair. The maturity gates are phase-specific,
+but economic checkpoint selection remains joint. This changes no transition,
+reward, clearing, or accounting equation.
+
+### F.6 Indicative-centred policy templates restored (2026-09-01)
+
+The attempted 21-point absolute frozen-mid grid `b in [-10,10]` was rejected.
+Across 500 policy-free episodes it failed to cover the contemporaneous indicative
+center in 73.0% of synthetic and 69.5% of historical-MSFT auction states. In
+matched seed-42 bounded DQN comparisons, restoring local indicative-centred
+templates improved held-out mean risk-adjusted PnL by 70.81 (synthetic) and
+71.38 (historical MSFT). Neither bounded policy beat AS/TWAP.
+
+The executable action remains the manuscript coordinate
+`S_t^a=S_tau_op^mid+alpha*b_t^a`, with ambient `B_max=150`. The network emits
+`ell in [-10,10]` and the environment resolves
+`b=round_half_up((H_t^cl-S_tau_op^mid)/alpha)+ell`, masking/projecting only at
+the ambient boundary. `B_inf=150` independently defines exogenous bounds
+`M1=-B_inf`, `M2=B_inf`. Their equal numerical values do not identify their
+roles. DQN still has 254 templates with cancellation; all four learned methods
+share the same local offset parameterization.

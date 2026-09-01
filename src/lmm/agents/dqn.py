@@ -194,6 +194,14 @@ class DQNAgent(Agent):
         self._episode = 0
         self._env_steps = 0
         self._update_count = {phase: 0 for phase in ("clob", "auction")}
+        # Checkpoint maturity is stricter than raw optimizer activity.  The
+        # auction network receives no-order replay updates during the safety
+        # curriculum, but those steps cannot establish that the full auction
+        # policy has learned.  Count auction updates only after its complete
+        # action set has been exposed to the behavior policy.
+        self._checkpoint_update_count = {
+            phase: 0 for phase in ("clob", "auction")
+        }
         self._pending_update_phase: str | None = None
         self._training = True
 
@@ -327,6 +335,11 @@ class DQNAgent(Agent):
             return {}
         stats = self._gradient_step(phase, self.replay[phase].sample(self.hp.batch_size))
         self._update_count[phase] += 1
+        if (
+            phase != "auction"
+            or self._episode >= self.hp.auction_learning_start_episode
+        ):
+            self._checkpoint_update_count[phase] += 1
         self._sync_target_after_update(phase)
         return {
             **{f"{k}_{phase}": v for k, v in stats.items()},
@@ -422,6 +435,7 @@ class DQNAgent(Agent):
             "episode": self._episode,
             "env_steps": self._env_steps,
             "update_count": dict(self._update_count),
+            "checkpoint_update_count": dict(self._checkpoint_update_count),
             "pending_update_phase": self._pending_update_phase,
             "q": {p: self.q[p].state_dict() for p in self.q},
             "q_target": {p: self.q_target[p].state_dict() for p in self.q_target},
@@ -460,6 +474,10 @@ class DQNAgent(Agent):
         self._episode = int(state["episode"])
         self._env_steps = int(state["env_steps"])
         self._update_count = {p: int(state["update_count"][p]) for p in ("clob", "auction")}
+        self._checkpoint_update_count = {
+            p: int(state["checkpoint_update_count"][p])
+            for p in ("clob", "auction")
+        }
         self._pending_update_phase = state.get("pending_update_phase")
         for p in ("clob", "auction"):
             self.q[p].load_state_dict(state["q"][p])

@@ -1,4 +1,4 @@
 # Comparator terminating at auction open with residual inventory marked there.
 experiment:
-  ablation_label: H_on__shaping_off__auction_off
+  ablation_label: H_on__shaping_on__auction_off
   auction_enabled: false

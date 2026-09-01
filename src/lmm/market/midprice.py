@@ -241,8 +241,8 @@ def load_mid_paths(
     """
     import pandas as pd
 
-    if split is not None and not params.split_id.startswith("legacy_"):
-        from lmm.data.load_yfinance_data import validate_historical_artifact
+    if split is not None:
+        from lmm.data.historical_artifact import validate_historical_artifact
 
         validate_historical_artifact(
             params,
@@ -288,7 +288,7 @@ def load_mid_paths(
             if end < start:
                 raise ValueError(f"{split} date range ends before it starts")
             selected = df[(dates >= start) & (dates <= end)]
-        elif not params.split_id.startswith("legacy_"):
+        else:
             raise ValueError(
                 f"historical split {split!r} has no configured chronological date range"
             )
@@ -340,10 +340,9 @@ def _load_regularized_mid_paths(
     """Materialize one-minute paths by latest observation at or before time."""
     import pandas as pd
 
-    if not params.split_id.startswith("legacy_"):
-        from lmm.data.load_yfinance_data import validate_historical_artifact
+    from lmm.data.historical_artifact import validate_historical_artifact
 
-        validate_historical_artifact(params, repo_root, horizon=horizon)
+    validate_historical_artifact(params, repo_root, horizon=horizon)
 
     csv_path = Path(repo_root) / params.csv_path
     df = pd.read_csv(csv_path)
@@ -373,7 +372,7 @@ def _load_regularized_mid_paths(
         start, end = (pd.Timestamp(value).date() for value in bounds)
         local_dates = df["_timestamp"].dt.date
         df = df[(local_dates >= start) & (local_dates <= end)]
-    elif not params.split_id.startswith("legacy_"):
+    else:
         raise ValueError(f"historical split {split!r} has no configured date range")
     if df.empty:
         raise ValueError(f"historical split {split!r} contains no rows in {csv_path}")

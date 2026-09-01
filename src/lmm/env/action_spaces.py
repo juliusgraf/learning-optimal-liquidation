@@ -154,9 +154,9 @@ class ClobActionGrid:
 class AuctionActionGrid:
     """Lexicographic auction policy templates with exact slopes ``beta*k``.
 
-    With the default ``frozen_mid`` center, a template offset is the absolute
-    manuscript coordinate ``b``.  With ``indicative`` centering, it is a local
-    displacement that the environment resolves to ``b`` at decision time.
+    With ``frozen_mid`` centering, a template offset is the absolute manuscript
+    coordinate ``b``.  With ``indicative`` centering, it is a local displacement
+    that the environment resolves to absolute ``b`` at decision time.
     """
 
     def __init__(self, params: ActionGridParams) -> None:
@@ -214,11 +214,11 @@ class AuctionActionGrid:
         alpha: float | None = None,
         offset_center_ticks: int = 0,
     ) -> np.ndarray:
-        """Mask cancellation and absolute offset/price admissibility.
+        """Mask cancellation and resolved absolute-offset admissibility.
 
         ``frozen_mid`` and ``alpha`` are optional for compatibility with the
-        direct-offset default.  ``offset_center_ticks`` resolves local policy
-        templates to the absolute manuscript coordinate ``b``.  Supplying
+        direct action grid. ``offset_center_ticks`` resolves local policy
+        templates to the absolute manuscript coordinate ``b``. Supplying
         exactly one of the price inputs is an error.
         """
         if cancel_admissible:
@@ -472,9 +472,9 @@ class ContinuousActionAdapter:
             center_offset = 0
         offset = 0 if k == 0 else center_offset + template_offset
         if k > 0:
-            # At the edge of the ambient admissible band, continuous actors
-            # are projected to the nearest valid absolute b.  Discrete actors
-            # use an exact state-dependent mask instead.
+            # Continuous actors project a local indicative-centred proposal to
+            # the nearest valid absolute b at an ambient boundary.  Discrete
+            # actors mask templates whose exact resolution is inadmissible.
             offset = int(np.clip(offset, -self._offset_max, self._offset_max))
         offset_before_admissibility = offset
         if k > 0:

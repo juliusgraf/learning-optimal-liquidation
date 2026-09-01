@@ -3,9 +3,8 @@
 This repository implements the revised manuscript environment for the
 synthetic rough-Heston setting and the historical-midprice setting, with DQN
 and the DDPG/TD3/SAC continuous-action relaxations. Current minute-clock
-artifacts are written below `results/revision_v5/` (bounded pilots below
-`results/pilots_v5/`); checkpoints and results from earlier environment
-contracts are rejected.
+artifacts are written below `results/revision_v9/`; checkpoints and results
+from earlier environment contracts are rejected.
 
 ## Setup
 
@@ -31,7 +30,7 @@ The checklist covers the realized grid and interval partition, leak-free
 chronology, residual-book carry-over, transactional auction validity,
 indicative-price lags, action counts and canonical no-ops, cross-phase Bellman
 targets, one update per transition, common unclipped reward scaling, pro-rata
-fills, inventory conservation, self-trade exclusion, unshaped accounting,
+fills, inventory conservation, self-trade exclusion, shaped-training/economic-evaluation accounting,
 annualized minute-clock rough-Heston time, the capped benchmark schedule, and rejection of
 stale artifacts.
 
@@ -60,6 +59,15 @@ algorithm-specific hyperparameters from `configs/base.yaml` and
 same 254-template cancellation-enabled DQN auction head. The acceptance suite
 compares every shared resolved section for all four learners.
 
+The exogenous auction quote support is `B_inf=150` ticks, so the exogenous
+bounds are `M1=-150` and `M2=150`. The strategic manuscript coordinate remains
+the absolute frozen-mid offset `b in [-B_max,B_max]`, with `B_max=150` and
+`S_t^a=S_{tau_op}^{mid}+alpha*b_t^a`. For tractability, every learned policy
+uses 21 local templates `ell in [-10,10]` around the lagged observable
+indicative price and resolves them at decision time to an absolute `b` inside
+the ambient band. `B_inf` and `B_max` happen to be numerically equal but have
+different exogenous and strategic roles.
+
 ## Historical data requirement
 
 New historical experiments require
@@ -71,8 +79,8 @@ midquote during the call and rebases a selected session to `S0=100` only as an
 explicit model-coordinate transformation. Order flow, books, auction
 proposals, clearing, and allocation remain simulated.
 
-The exact credential-safe build command, raw-event archive contract, and the
-legacy Yahoo reproduction path are documented in `data/README.md`:
+The exact credential-safe build command and raw-event archive contract are
+documented in `data/README.md`:
 
 ```bash
 python3 -m lmm.data.load_midquote_data --help
@@ -96,39 +104,25 @@ python3 -m lmm.experiments.diagnose_simulator \
   --episodes 100 --assert-ready
 ```
 
-`historical_sp500_1m.csv` is a normalized Yahoo one-minute close proxy and is
-retained only for revision-v2 reproduction; it is not a publication input.
-
-## Minute-clock staged historical runs
-
-After the true-midquote artifact and simulator gate exist, the default launcher
-runs only the bounded 100-episode DQN stage-1 pilot:
-
-```bash
-scripts/run_historical_midquote_dqn.sh --symbol MSFT --seed 42
-```
-
-Omit `--symbol` to run the pilot over all five assets. The launcher runs the
-simulator gate first, then training, held-out evaluation, paired AS/TWAP
-differences, and tables. It refuses to start if either the quote CSV or sidecar
-is missing.
-
-The longer 800-episode confirmation is never selected implicitly. Launch it
-only after every asset passes the stage-1 gates:
-
-```bash
-scripts/run_historical_midquote_dqn.sh --confirm --symbol MSFT --seed 42
-```
-
-Numerical rationale, the cancellation contract, bounded pilot evidence, and
-paper-promotion criteria are in `docs/revision_v3_calibration.md`.
-
 ## Canonical runs
 
 The matched confirmation budget is 800 episodes in both settings.
-Each run fits its feature normalizer on training-only paths, selects `best.pt`
-on validation risk-adjusted PnL, and evaluates that fixed checkpoint on 100
-held-out test episodes per seed/configuration.
+Each run fits its feature normalizer on training-only paths. A checkpoint can
+enter the validation race only after both phase learners pass their configured
+optimizer-update maturity thresholds; DQN auction updates made while its
+behavior policy is locked to no-order do not count. Early-stopping patience
+starts with the first eligible validation. The initial economic score is a
+non-reportable safety floor; if no mature candidate beats it, the run records
+selection failure instead of creating `best.pt`. Otherwise `best.pt` is
+selected on validation risk-adjusted PnL and evaluated on 100 held-out test
+episodes.
+
+Normal training uses the manuscript-shaped reward with `q=1`, `lambda_inv=2`,
+and exact cancellation clawback: canceling an order reverses the fictive
+interim shaping credited when that order was submitted, in addition to the
+unchanged fee with `d=0.1`. Validation, checkpoint selection, and final
+learned/AS/TWAP comparisons all use the common economic-only reward. Centering
+subtracts the same policy-invariant initial-inventory value in both contracts.
 
 One synthetic run:
 
@@ -190,7 +184,7 @@ both in currency units and in basis points of initial notional.
 For a synthetic DQN run named `dqn_seed42`:
 
 ```bash
-RUN=results/revision_v5/synthetic_rough_heston/dqn_seed42
+RUN=results/revision_v9/synthetic_rough_heston/dqn_seed42
 
 python3 -m lmm.experiments.train \
   --config configs/base.yaml \

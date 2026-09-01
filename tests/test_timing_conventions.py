@@ -46,7 +46,8 @@ def test_current_book_changes_only_the_next_indicative_price():
 
 
 def test_current_agent_schedule_is_invisible_to_current_H_but_enters_next_H():
-    cfg = quiet_cfg()
+    # A coarser tick makes the otherwise sub-cent rounding difference explicit.
+    cfg = quiet_cfg("grid.alpha=0.1")
     a, b = new_env(cfg), new_env(cfg)
     drive_to_auction(a, seed=9)
     drive_to_auction(b, seed=9)

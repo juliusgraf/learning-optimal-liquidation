@@ -25,7 +25,7 @@ __all__ = [
 # implementations from silently drifting apart.
 BELLMAN_FACTOR: Final[float] = 1.0
 REWARD_SCALE: Final[float] = 1.0e-3
-ENVIRONMENT_CONTRACT: Final[str] = "unified-minute-auction-mdp-2026-08-31-v2"
+ENVIRONMENT_CONTRACT: Final[str] = "unified-minute-auction-mdp-2026-09-01-v6"
 
 Action = Union[int, np.ndarray]  # discrete index (DQN) or continuous vector
 
@@ -121,6 +121,24 @@ class Agent(ABC):
 
     def set_train(self, training: bool) -> None:
         """Toggle train/eval mode (network .train()/.eval(), exploration)."""
+
+    @property
+    def checkpoint_update_counts(self) -> dict[str, int]:
+        """Phase-specific optimizer steps that count toward model maturity.
+
+        Most agents count every optimizer step.  DQN overrides the underlying
+        counter for the auction phase so updates made while its behavior policy
+        is locked to the safe no-order action do not make a checkpoint eligible.
+        """
+        counts = getattr(
+            self,
+            "_checkpoint_update_count",
+            getattr(self, "_update_count", {}),
+        )
+        return {
+            phase: int(counts.get(phase, 0))
+            for phase in ("clob", "auction")
+        }
 
     # -- common frozen observation transform --------------------------------
 

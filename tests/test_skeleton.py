@@ -44,7 +44,8 @@ ALL_MODULES = [
     "lmm.rl.replay",
     "lmm.rl.networks",
     "lmm.rl.schedules",
-    "lmm.data.load_yfinance_data",
+    "lmm.data.historical_artifact",
+    "lmm.data.load_midquote_data",
     "lmm.experiments.train",
     "lmm.experiments.evaluate",
     "lmm.experiments.policy_differences",
@@ -80,7 +81,13 @@ def test_config_binding_values_synthetic() -> None:
     assert cfg.algo1.tau == 0.95  # D15: smoothing, both settings
     assert cfg.rl.chi == 1.0
     assert cfg.rl.checkpoint_metric == "risk_adjusted_pnl"
-    assert cfg.reward.d == 0.1 and cfg.reward.lambda_inv == 2.0 and cfg.reward.q == 0.0
+    assert (
+        cfg.rl.checkpoint_min_clob_updates,
+        cfg.rl.checkpoint_min_auction_updates,
+    ) == (5000, 2000)
+    assert cfg.rl.checkpoint_require_initial_improvement
+    assert cfg.reward.d == 0.1 and cfg.reward.lambda_inv == 2.0 and cfg.reward.q == 1.0
+    assert cfg.reward.shaping_enabled and cfg.reward.clawback_shaping
     assert cfg.reward.k_star == 1000 and cfg.grid.alpha == 0.01  # kappa=0.1 <=> k*alpha=10
     assert cfg.reward.numerical_guard is False  # D8: default OFF
     assert cfg.clob_flow.lambda0 == 1.0 and cfg.experiment.episodes == 800
@@ -92,6 +99,11 @@ def test_config_binding_values_synthetic() -> None:
     assert cfg.grid.time_unit == "minutes"
     assert (cfg.grid.tau_op, cfg.grid.tau_cl, cfg.grid.h) == (120, 150, 30)
     assert cfg.grid.T_physical == 150.0
+    assert cfg.auction_flow.B_inf == 150
+    assert (cfg.auction_flow.M1, cfg.auction_flow.M2) == (-150, 150)
+    assert cfg.actions.B_max == 150
+    assert cfg.actions.auction_offset_center == "indicative"
+    assert cfg.actions.auction_local_offset_max == 10
     assert cfg.midprice.model == "rough_heston"
     rh = cfg.midprice.rough_heston
     assert rh is not None and (rh.H, rh.rho, rh.v0, rh.theta) == (0.1, -0.7, 0.02, 0.02)
@@ -153,6 +165,32 @@ def test_config_rejects_incoherent_physical_clock() -> None:
         _load_synthetic(overrides=["grid.T_physical=149.0"])
     with pytest.raises(ConfigError, match="grid.time_unit"):
         _load_synthetic(overrides=["grid.time_unit=hours"])
+
+
+def test_indicative_centering_requires_an_explicit_local_width() -> None:
+    with pytest.raises(ConfigError, match="auction_local_offset_max"):
+        _load_synthetic(
+            overrides=[
+                "actions.auction_offset_center=indicative",
+                "actions.auction_local_offset_max=null",
+            ]
+        )
+    cfg = _load_synthetic(
+        overrides=[
+            "actions.B_max=150",
+            "actions.auction_offset_center=indicative",
+            "actions.auction_local_offset_max=10",
+        ]
+    )
+    assert cfg.actions.auction_template_offset_max == 10
+    with pytest.raises(ConfigError, match="cannot exceed"):
+        _load_synthetic(
+            overrides=[
+                "actions.B_max=10",
+                "actions.auction_offset_center=indicative",
+                "actions.auction_local_offset_max=11",
+            ]
+        )
 
 
 # ---------------------------------------------------------------------------

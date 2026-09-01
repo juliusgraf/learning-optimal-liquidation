@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import argparse
 import csv
-from dataclasses import replace
 import json
 from pathlib import Path
 from typing import Optional, Sequence
@@ -29,7 +28,7 @@ import yaml
 
 from lmm.agents.benchmarks import ASBenchmarkAgent, TWAPBenchmarkAgent
 from lmm.agents.base import ENVIRONMENT_CONTRACT
-from lmm.config import load_config, to_dict
+from lmm.config import economic_evaluation_config, load_config, to_dict
 from lmm.env.mdp import make_env
 from lmm.experiments.tracing import EpisodeTraceRecorder
 from lmm.experiments.train import draw_seed, make_agent, wrap_env_for_agent
@@ -55,6 +54,7 @@ RECORD_COLUMNS = [
     "terminal_penalty",
     "clob_shaping_adjustment",
     "auction_interim_shaping",
+    "auction_shaping_clawback",
     "auction_terminal_shaping",
     "reward_baseline_adjustment",
     "clob_reward_sum",
@@ -126,6 +126,7 @@ def _record_row(policy: str, episode: int, res: EpisodeResult) -> list[str]:
         fmt(res.terminal_penalty),
         fmt(res.clob_shaping_adjustment),
         fmt(res.auction_interim_shaping),
+        fmt(res.auction_shaping_clawback),
         fmt(res.auction_terminal_shaping),
         fmt(res.reward_baseline_adjustment),
         fmt(res.clob_reward_sum),
@@ -188,8 +189,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--checkpoint",
         default="best",
-        help="checkpoint to evaluate (without .pt). Default 'best' = early "
-        "stopping: the best-validation snapshot (selected on the env_eval "
+        help="checkpoint to evaluate (without .pt). Default 'best' = the best "
+        "mature validation snapshot above the initial economic safety floor "
+        "(selected on the env_eval "
         "stream, disjoint from the env_final_eval test seeds). Pass 'final' "
         "for the last-episode checkpoint.",
     )
@@ -234,34 +236,32 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 f"selection={selection.get('metric')!r}, "
                 f"config={cfg.rl.checkpoint_metric!r}"
             )
+        if not bool(selection.get("eligibility", {}).get("eligible", False)):
+            raise ValueError("best.pt provenance does not establish phase maturity")
+        if not bool(selection.get("economic_safety", {}).get("reportable", False)):
+            raise ValueError(
+                "best.pt provenance does not establish improvement over the "
+                "configured economic safety floor"
+            )
 
     # Disjoint final-eval seed stream (D10); the SAME list for every policy
     # is the CRN coupling (the env's exogenous draws are policy-independent).
     eval_rng = seeds.generators["env_final_eval"]
     eval_seeds = [draw_seed(eval_rng) for _ in range(n_episodes)]
 
-    # One env per policy, all from the SAME resolved config => identical
-    # RewardParams for all policies (AUDIT C.4; asserted in tests). The
-    # learned-policy envs (dqn/initial) are wrapped in the continuous adapter
-    # for DDPG/TD3/SAC runs; the benchmark envs stay raw (benchmarks submit
-    # ClobAction/AuctionAction objects directly).
+    # Every policy is replayed on the same economic-only reward contract. The
+    # learned policy was optimized with the resolved training reward, but no
+    # shaping term enters final comparison or checkpoint selection.
     learned = {learned_name, "initial"}
-    benchmark_cfg = replace(
-        cfg,
-        reward=replace(
-            cfg.reward,
-            shaping_enabled=False,
-            clawback_shaping=False,
-        ),
-    )
+    economic_cfg = economic_evaluation_config(cfg)
     envs = {
         p: (
             wrap_env_for_agent(
-                make_env(cfg, symbol=args.symbol, data_split="test"), cfg
+                make_env(economic_cfg, symbol=args.symbol, data_split="test"), cfg
             )
             if p in learned
             else make_env(
-                benchmark_cfg, symbol=args.symbol, data_split="test"
+                economic_cfg, symbol=args.symbol, data_split="test"
             )
         )
         for p in policies
@@ -271,18 +271,18 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     learned_agent.load(run_dir / "checkpoints" / f"{args.checkpoint}.pt")
     initial = make_agent(cfg, seeds)
     initial.load(run_dir / "checkpoints" / "initial.pt")
-    as_agent = ASBenchmarkAgent(benchmark_cfg)
+    as_agent = ASBenchmarkAgent(economic_cfg)
     # AS calibration is an estimated policy parameter.  It is fitted on the
     # training split and then frozen before the held-out test episodes below.
     as_calibration_env = make_env(
-        benchmark_cfg, symbol=args.symbol, data_split="train"
+        economic_cfg, symbol=args.symbol, data_split="train"
     )
     calibration = as_agent.calibrate(
         as_calibration_env,
         rng_k=seeds.generators["as_calibration"],
         rng_sigma=seeds.generators["as_sigma_paths"],
     )
-    twap = TWAPBenchmarkAgent(benchmark_cfg)
+    twap = TWAPBenchmarkAgent(economic_cfg)
     agents = {
         learned_name: learned_agent,
         "initial": initial,
@@ -607,12 +607,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "economic_objective_formula": "liquidation_pnl_gross - cancel_cost - inventory_penalty",
         "auction_cancel_mode": cfg.actions.auction_cancel_mode,
         "residual_inventory_convention": "deemed liquidated at the frozen, policy-independent auction-open mid",
-        "return_convention": "return_undisc/return_disc are shaped training returns; "
-        f"discount mode={cfg.rl.discount_mode}, chi={cfg.rl.chi}",
+        "return_convention": "return_undisc/return_disc use the common economic-only "
+        f"evaluation reward; discount mode={cfg.rl.discount_mode}, chi={cfg.rl.chi}",
         "checkpoint_selection": selection,
         "learned_reward_params": to_dict(cfg.reward),
-        "benchmark_reward_params": to_dict(benchmark_cfg.reward),
-        "benchmarks_use_economic_rewards_only": True,
+        "evaluation_reward_params": to_dict(economic_cfg.reward),
+        "all_policies_use_economic_evaluation_rewards": True,
         "as_calibration": {k: float(v) for k, v in calibration.items()},
         "trace_episodes": n_trace,
         "setting": cfg.experiment.name,

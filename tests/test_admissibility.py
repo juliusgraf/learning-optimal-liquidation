@@ -139,7 +139,38 @@ def test_single_replace_mode_requires_cancellation_before_a_new_live_schedule():
     assert env.cancel_admissible
 
 
-def test_indicative_centered_grid_maps_to_absolute_manuscript_offset():
+def test_absolute_frozen_mid_grid_is_independent_of_indicative_price():
+    cfg = load_synthetic_cfg(
+        "actions.beta=6.666666666666667",
+        "actions.K_max=5",
+        "actions.auction_slope_multipliers=[1,2,3,4,5]",
+        "auction_flow.B_inf=150",
+        "actions.B_max=10",
+        "actions.auction_offset_center=frozen_mid",
+        "actions.auction_local_offset_max=null",
+        "actions.auction_order_mode=single_replace",
+    )
+    env = new_env(cfg)
+    drive_to_auction(env, seed=2)
+    assert len(env.auction_grid) == 212
+
+    # The observed indicative price does not recenter b: both indexed and
+    # direct actions execute at the manuscript's absolute frozen-mid offset.
+    env._h_cache = env.s_mid + 37 * cfg.grid.alpha
+    idx = next(
+        i
+        for i, a in enumerate(env.auction_grid.actions)
+        if a.K_a == pytest.approx(cfg.actions.beta)
+        and a.offset == -4
+        and a.cancel == 0
+    )
+    assert env.action_mask()[idx]
+    assert env._decode_auction(idx) == AuctionAction(cfg.actions.beta, -4, 0)
+    direct = AuctionAction(cfg.actions.beta, -4, 0)
+    assert env._decode_auction(direct) is direct
+
+
+def test_indicative_centered_template_resolves_to_absolute_manuscript_offset():
     cfg = load_synthetic_cfg(
         "actions.beta=6.666666666666667",
         "actions.K_max=5",
@@ -153,9 +184,8 @@ def test_indicative_centered_grid_maps_to_absolute_manuscript_offset():
     drive_to_auction(env, seed=2)
     assert len(env.auction_grid) == 212
 
-    # A template at local displacement -4 is executed at the manuscript
-    # offset b=33 when the observed indicative price is 37 ticks above the
-    # frozen mid.  Direct AuctionAction objects remain absolute b actions.
+    # The indexed policy coordinate is local (-4); the executable manuscript
+    # coordinate remains absolute (37-4=33 ticks from the frozen mid).
     env._h_cache = env.s_mid + 37 * cfg.grid.alpha
     idx = next(
         i
@@ -166,26 +196,12 @@ def test_indicative_centered_grid_maps_to_absolute_manuscript_offset():
     )
     assert env.action_mask()[idx]
     assert env._decode_auction(idx) == AuctionAction(cfg.actions.beta, 33, 0)
+    # Direct AuctionAction objects always carry absolute b.
     direct = AuctionAction(cfg.actions.beta, -4, 0)
     assert env._decode_auction(direct) is direct
 
 
-def test_nonuniform_slope_subset_keeps_small_and_large_actions_compact():
-    cfg = load_synthetic_cfg(
-        "actions.beta=1.0",
-        "actions.K_max=32",
-        "actions.auction_slope_multipliers=[1,2,4,8,16,32]",
-        "actions.B_max=150",
-        "actions.auction_offset_center=indicative",
-        "actions.auction_local_offset_max=10",
-    )
-    env = new_env(cfg)
-    slopes = sorted({a.K_a for a in env.auction_grid.actions if a.K_a > 0.0})
-    assert slopes == [1.0, 2.0, 4.0, 8.0, 16.0, 32.0]
-    assert len(env.auction_grid) == 254
-
-
-def test_indicative_centered_grid_masks_templates_outside_ambient_band():
+def test_indicative_templates_are_masked_at_the_ambient_absolute_boundary():
     cfg = load_synthetic_cfg(
         "actions.B_max=30",
         "actions.auction_offset_center=indicative",
@@ -199,6 +215,47 @@ def test_indicative_centered_grid_masks_templates_outside_ambient_band():
         [a.K_a > 0.0 and a.offset > 2 for a in env.auction_grid.actions]
     )
     assert not mask[outside].any()
+
+
+def test_nonuniform_slope_subset_keeps_small_and_large_actions_compact():
+    cfg = load_synthetic_cfg(
+        "actions.beta=1.0",
+        "actions.K_max=32",
+        "actions.auction_slope_multipliers=[1,2,4,8,16,32]",
+        "auction_flow.B_inf=150",
+        "actions.B_max=10",
+        "actions.auction_offset_center=frozen_mid",
+        "actions.auction_local_offset_max=null",
+    )
+    env = new_env(cfg)
+    slopes = sorted({a.K_a for a in env.auction_grid.actions if a.K_a > 0.0})
+    assert slopes == [1.0, 2.0, 4.0, 8.0, 16.0, 32.0]
+    assert len(env.auction_grid) == 254
+
+
+def test_strategic_B_max_is_independent_of_exogenous_B_inf():
+    cfg = load_synthetic_cfg(
+        "auction_flow.B_inf=3",
+        "actions.B_max=10",
+        "actions.auction_offset_center=frozen_mid",
+        "actions.auction_local_offset_max=null",
+    )
+    env = new_env(cfg)
+    drive_to_auction(env, seed=2)
+    env._h_cache = env.s_mid + 28 * cfg.grid.alpha
+    before = env.action_mask().copy()
+    env._h_cache = env.s_mid - 41 * cfg.grid.alpha
+    np.testing.assert_array_equal(env.action_mask(), before)
+    assert sorted({a.offset for a in env.auction_grid.actions if a.K_a > 0.0}) == list(
+        range(-10, 11)
+    )
+    assert env._decode_auction(
+        next(
+            i
+            for i, a in enumerate(env.auction_grid.actions)
+            if a.K_a > 0.0 and a.offset == -10 and a.cancel == 0
+        )
+    ).offset == -10
 
 
 def test_cancel_admissibility_is_in_the_auction_observation(synthetic_cfg):

@@ -4,9 +4,17 @@ from __future__ import annotations
 
 import pytest
 
-from helpers import load_synthetic_cfg, new_env
+from helpers import drive_to_auction, load_synthetic_cfg, new_env
+from lmm.config import economic_evaluation_config
 from lmm.env.action_spaces import AuctionAction, ClobAction
-from lmm.env.rewards import auction_reward, clob_reward, f_a, f_c, terminal_reward
+from lmm.env.rewards import (
+    auction_fictive_reward,
+    auction_reward,
+    clob_reward,
+    f_a,
+    f_c,
+    terminal_reward,
+)
 
 
 K_STAR, ALPHA, Q, D, LAMBDA = 1000, 0.01, 1.0, 0.1, 0.5
@@ -17,22 +25,23 @@ def test_config_carries_closed_form_constants(synthetic_cfg):
     assert (r.k_star, synthetic_cfg.grid.alpha, r.q, r.d, r.lambda_inv) == (
         K_STAR,
         ALPHA,
-        0.0,
+        Q,
         D,
         2.0,
     )
-    assert not r.shaping_enabled
+    assert r.shaping_enabled
+    assert r.clawback_shaping
     assert r.center_initial_inventory_value
 
 
 def test_phase_specific_shaping_switches_fall_back_to_shared_contract():
     baseline = load_synthetic_cfg()
-    assert baseline.reward.effective_clob_shaping is False
-    assert baseline.reward.effective_auction_shaping is False
+    assert baseline.reward.effective_clob_shaping is True
+    assert baseline.reward.effective_auction_shaping is True
 
-    shaped = load_synthetic_cfg("reward.shaping_enabled=true")
-    assert shaped.reward.effective_clob_shaping is True
-    assert shaped.reward.effective_auction_shaping is True
+    unshaped = load_synthetic_cfg("reward.shaping_enabled=false")
+    assert unshaped.reward.effective_clob_shaping is False
+    assert unshaped.reward.effective_auction_shaping is False
 
     split = load_synthetic_cfg(
         "reward.clob_shaping_enabled=false",
@@ -42,6 +51,20 @@ def test_phase_specific_shaping_switches_fall_back_to_shared_contract():
     assert split.reward.shaping_enabled is True
     assert split.reward.effective_clob_shaping is False
     assert split.reward.effective_auction_shaping is True
+
+
+def test_economic_evaluation_contract_disables_all_shaping_overrides():
+    training = load_synthetic_cfg(
+        "reward.clob_shaping_enabled=true",
+        "reward.auction_shaping_enabled=true",
+    )
+    evaluation = economic_evaluation_config(training)
+    assert training.reward.effective_clob_shaping
+    assert training.reward.effective_auction_shaping
+    assert not evaluation.reward.effective_clob_shaping
+    assert not evaluation.reward.effective_auction_shaping
+    assert not evaluation.reward.clawback_shaping
+    assert evaluation.reward.center_initial_inventory_value
 
 
 def test_f_c_is_positive_part_ratio_clamped_to_one():
@@ -84,6 +107,90 @@ def test_auction_interim_reward_and_fee_hand_cases():
     assert auction_reward(
         2.0, 99.9, 100.0, Q, 1.5, 1, external_policy=True
     ) == -1.5
+
+
+def test_auction_reward_subtracts_the_exact_signed_cancelled_shaping():
+    current = auction_fictive_reward(2.0, 99.9, 100.0, Q)
+    cancelled = auction_fictive_reward(3.0, 99.8, 100.0, Q)
+    assert auction_reward(
+        2.0,
+        99.9,
+        100.0,
+        Q,
+        1.5,
+        1,
+        cancelled_interim_shaping=cancelled,
+    ) == pytest.approx(current - cancelled - 1.5)
+    with pytest.raises(ValueError, match="requires cancel=1"):
+        auction_reward(
+            2.0,
+            99.9,
+            100.0,
+            Q,
+            0.0,
+            0,
+            cancelled_interim_shaping=cancelled,
+        )
+    with pytest.raises(ValueError, match="shaping is disabled"):
+        auction_reward(
+            2.0,
+            99.9,
+            100.0,
+            Q,
+            1.5,
+            1,
+            shaping_enabled=False,
+            cancelled_interim_shaping=cancelled,
+        )
+
+
+def test_single_replace_clawback_telescopes_to_the_surviving_credit_and_fees():
+    cfg = load_synthetic_cfg(
+        "reward.center_initial_inventory_value=false",
+        "actions.auction_order_mode=single_replace",
+    )
+    env = new_env(cfg)
+    drive_to_auction(env, seed=19)
+
+    _, r1, _, _, i1 = env.step(AuctionAction(2.0, -10, 0))
+    phi1 = i1["auction_interim_shaping"]
+    assert phi1 > 0.0
+    assert i1["auction_shaping_clawback"] == 0.0
+    assert r1 == pytest.approx(phi1)
+
+    _, r2, _, _, i2 = env.step(AuctionAction(4.0, -9, 1))
+    phi2 = i2["auction_interim_shaping"]
+    assert phi2 > 0.0
+    assert i2["auction_shaping_clawback"] == pytest.approx(phi1)
+    assert r2 == pytest.approx(phi2 - phi1 - i2["cancellation_fee"])
+    assert env.own_slope == pytest.approx(4.0)  # current replacement remains live
+
+    _, r3, _, _, i3 = env.step(AuctionAction(0.0, 0, 1))
+    assert i3["auction_interim_shaping"] == 0.0
+    assert i3["auction_shaping_clawback"] == pytest.approx(phi2)
+    assert r3 == pytest.approx(-phi2 - i3["cancellation_fee"])
+    assert not env.cancel_admissible
+
+    # Every canceled phi appears once with + sign and once with - sign.
+    assert r1 + r2 + r3 == pytest.approx(
+        -i2["cancellation_fee"] - i3["cancellation_fee"]
+    )
+
+
+def test_cancel_all_claws_back_every_live_credit_in_multi_order_mode():
+    cfg = load_synthetic_cfg(
+        "reward.center_initial_inventory_value=false",
+        "actions.auction_order_mode=multi",
+    )
+    env = new_env(cfg)
+    drive_to_auction(env, seed=2)
+    _, r1, _, _, i1 = env.step(AuctionAction(1.0, -10, 0))
+    _, r2, _, _, i2 = env.step(AuctionAction(2.0, -9, 0))
+    _, r3, _, _, i3 = env.step(AuctionAction(0.0, 0, 1))
+    phi1 = i1["auction_interim_shaping"]
+    phi2 = i2["auction_interim_shaping"]
+    assert i3["auction_shaping_clawback"] == pytest.approx(phi1 + phi2)
+    assert r1 + r2 + r3 == pytest.approx(-i3["cancellation_fee"])
 
 
 def test_terminal_reward_uses_actual_aggregate_fill_once():

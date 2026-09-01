@@ -113,6 +113,41 @@ def test_auction_curriculum_holds_noop_then_unlocks_full_policy():
     assert any(a != 0 for a in draws)
 
 
+def test_checkpoint_maturity_excludes_auction_updates_before_unlock():
+    cfg = load_dqn_cfg(
+        "algo.hyperparams.auction_learning_start_episode=10",
+        "algo.hyperparams.min_buffer=1",
+        "algo.hyperparams.min_buffer_auction=1",
+        "algo.hyperparams.batch_size=1",
+    )
+    agent = make_agent(cfg)
+    obs = np.zeros(len(cfg.features.auction), dtype=np.float32)
+    mask = np.ones(len(agent.auction_grid), dtype=bool)
+
+    def one_update(episode: int) -> None:
+        agent.start_episode(episode)
+        agent.observe(
+            Transition(
+                obs=obs,
+                action=0,
+                reward=0.0,
+                next_obs=obs,
+                done=False,
+                phase="auction",
+                next_phase="auction",
+                next_mask=mask,
+            )
+        )
+        assert agent.update()["n_grad_steps_auction"] == 1.0
+
+    one_update(9)
+    assert agent._update_count["auction"] == 1
+    assert agent.checkpoint_update_counts["auction"] == 0
+    one_update(10)
+    assert agent._update_count["auction"] == 2
+    assert agent.checkpoint_update_counts["auction"] == 1
+
+
 # -- replay -----------------------------------------------------------------------
 
 
@@ -415,6 +450,7 @@ def test_checkpoint_round_trip(dqn_cfg, tmp_path):
     restored = make_agent(cfg, master_seed=6)  # different init/seeds everywhere
     restored.load(path)
     assert restored._env_steps == agent._env_steps
+    assert restored.checkpoint_update_counts == agent.checkpoint_update_counts
     for phase in ("clob", "auction"):
         for (ka, va), (kb, vb) in zip(
             agent.q[phase].state_dict().items(), restored.q[phase].state_dict().items()

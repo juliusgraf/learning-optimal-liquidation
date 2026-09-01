@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Regenerate every figure and table from the saved outputs of all FINISHED runs
-# (those with checkpoints/final.pt). Backfills paired-difference CSVs if missing, produces
+# (those with a reportable checkpoints/best.pt). Backfills paired-difference CSVs if missing, produces
 # per-run figures/tables, then the cross-algorithm combined figures/tables per
 # setting under results/<setting>/_combined/. Does NOT train.
 #
@@ -29,7 +29,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-RESULTS_ROOT="results/revision_v5"
+RESULTS_ROOT="results/revision_v9"
 if [[ ! -d "$RESULTS_ROOT" ]]; then
   echo "no $RESULTS_ROOT directory; run a run_*.sh script first" >&2
   exit 1
@@ -38,14 +38,14 @@ fi
 # Read a run's master seed from seed.txt (the authoritative provenance file).
 run_seed() { tr -dc '0-9' < "$1/seed.txt" 2>/dev/null || true; }
 
-echo "== discovering finished runs (checkpoints/final.pt) =="
+echo "== discovering successful runs (checkpoints/best.pt) =="
 finished=()
 while IFS= read -r ckpt; do
   finished+=("$(dirname "$(dirname "$ckpt")")")
-done < <(find "$RESULTS_ROOT" -type f -path '*/checkpoints/final.pt' 2>/dev/null | sort)
+done < <(find "$RESULTS_ROOT" -type f -path '*/checkpoints/best.pt' 2>/dev/null | sort)
 
 if [[ ${#finished[@]} -eq 0 ]]; then
-  echo "no finished runs found (need checkpoints/final.pt)" >&2
+  echo "no successful runs found (need a mature, reportable checkpoints/best.pt)" >&2
   exit 1
 fi
 printf '  %s\n' "${finished[@]}"

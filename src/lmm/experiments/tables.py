@@ -632,7 +632,7 @@ def build_eval_summary_multiseed(runs: list[RunInfo], *, rng: int = 0) -> Table:
         caption=f"Cross-seed aggregate (synthetic; {n_seeds} seeds). IQM of the "
         f"per-seed mean {outcome_caption} with percentile-bootstrap 95\\% CIs over seeds; "
         "policy-minus-benchmark intervals use paired seed-level differences. "
-        "Reported policy = best-validation checkpoint (early stopping).",
+        "Reported policy = best mature validation checkpoint above the initial economic safety floor.",
         label="tab:eval_summary_multiseed",
         row_label_header="Metric",
         section_breaks=section_breaks,
@@ -741,7 +741,7 @@ def build_historical_results_multiseed(
         f"the per-seed mean {outcome_caption}; aggregate rows pool all ticker$\\times$seed "
         "runs into an IQM with a bootstrap 95\\% CI. Policy-minus-benchmark "
         "intervals use paired seed-level differences, per ticker and pooled. "
-        "Best-validation checkpoint (early stopping).",
+        "Best mature validation checkpoint above the initial economic safety floor.",
         label=(
             "tab:dqn_results_multiseed_bps"
             if normalized
@@ -783,12 +783,14 @@ PARAM_SYMBOLS: list[tuple[str, Any, str]] = [
     ("$V$", "clob_flow.V_max", "Maximum volume admitted by the market"),
     ("$L_{\\mathrm{book}}$", "clob_flow.L_max", "Maximum exogenous CLOB depth"),
     ("$L_{\\mathrm{agent}}$", "actions.L_max", "Maximum strategic CLOB quote offset"),
-    ("$B_{\\mathrm{max}}$", "actions.B_max", "Ambient strategic auction offset bound"),
+    ("$B_\\infty$", "auction_flow.B_inf", "Exogenous auction quote-support half-width"),
+    ("$B_{\\mathrm{max}}$", "actions.B_max", "Ambient absolute strategic offset bound"),
+    ("$B_{\\mathrm{loc}}$", "actions.auction_template_offset_max", "Indicative-centred policy-template half-width"),
     ("$D_\\mu$", "auction_flow.D_mu", "Minimum active exogenous auction slope"),
     ("$U_1$", "auction_flow.K_min", "Exogenous supply slope lower bound"),
     ("$U_2$", "auction_flow.K_max", "Exogenous supply slope upper bound"),
-    ("$M_1$", lambda c: -c.auction_flow.price_band_ticks, "Exogenous supply spread lower bound"),
-    ("$M_2$", "auction_flow.price_band_ticks", "Exogenous supply spread upper bound"),
+    ("$M_1$", "auction_flow.M1", "Exogenous supply spread lower bound"),
+    ("$M_2$", "auction_flow.M2", "Exogenous supply spread upper bound"),
     ("$p_1$", "auction_flow.p1", "New market maker arrival probability"),
     ("$p_2$", "auction_flow.p2", "Market maker cancellation probability"),
     ("$p_3$", "auction_flow.p3", "New market taker arrival probability"),
@@ -797,11 +799,12 @@ PARAM_SYMBOLS: list[tuple[str, Any, str]] = [
     ("$q$", "reward.q", "Wrong-side dealing penalty"),
     ("$k^\\star$", "reward.k_star", "Tolerance"),
     ("$d$", "reward.d", "Cancellation cost per unit"),
+    ("$H_0$", "algo1.H0", "Initial projected clearing signal"),
+    ("$\\eta_H$", "algo1.eta_H", "Projected clearing-signal smoothing coefficient"),
     ("$\\alpha$", "grid.alpha", "Tick size"),
     ("$\\beta$", lambda c: c.actions.auction_K_grid_max / c.actions.auction_K_grid_n, "Tick size of grid on $K^a$"),
     ("$\\mathcal{K}$", "actions.auction_K_grid_n", "Upper bound on $K^a/\\beta$"),
     ("Slope indices", "actions.auction_K_multipliers", "Strategic auction slope subset"),
-    ("Local offset", "actions.auction_template_offset_max", "Policy offset half-width around its center"),
 ]
 
 ROUGH_HESTON_SYMBOLS: list[tuple[str, Any, str]] = [
@@ -871,8 +874,16 @@ def build_param_tables(cfg: ExperimentConfig) -> dict[str, Table]:
         hist_rows = [
             ("CSV", "midprice.historical.csv_path", "Frozen mid-price input (ruling D13)"),
             ("Symbols", "midprice.historical.symbols", "S\\&P 500 tickers"),
-            ("Norm.", "midprice.historical.normalize_first", "Session-start normalization"),
-            ("Rows", "midprice.historical.n_rows", "Rows consumed ($= \\tau^{\\mathrm{op}}$)"),
+            (
+                "Model rebase",
+                "midprice.historical.normalize_first",
+                "In-environment session-start level; source artifact remains raw",
+            ),
+            (
+                "Rows",
+                "midprice.historical.n_rows",
+                "Rows consumed through auction open ($= \\tau^{\\mathrm{op}}+1$)",
+            ),
         ]
         tables["params_midprice"] = _param_table(
             cfg,
@@ -888,6 +899,23 @@ def build_hyperparam_table(cfg: ExperimentConfig) -> Optional[Table]:
     if cfg.algo is None:
         return None
     rows: list[Row] = [Row("$\\chi$ (discount)", [HP_SYMBOLS.get("chi", "$\\chi$"), _val_str(cfg.rl.chi)], "raw")]
+    for key in (
+        "normalizer_fit_episodes",
+        "validation_size",
+        "validation_frequency_episodes",
+        "validation_patience_evals",
+        "checkpoint_min_clob_updates",
+        "checkpoint_min_auction_updates",
+        "checkpoint_require_initial_improvement",
+        "test_size",
+    ):
+        rows.append(
+            Row(
+                f"rl.{key}".replace("_", "\\_"),
+                ["", _val_str(getattr(cfg.rl, key))],
+                "raw",
+            )
+        )
     for key, value in cfg.algo.hyperparams.items():
         rows.append(Row(key.replace("_", "\\_"), [HP_SYMBOLS.get(key, ""), _val_str(value)], "raw"))
     return Table(

@@ -15,9 +15,16 @@ import pytest
 
 from lmm.experiments import make_figures as F
 from lmm.experiments import tables as T
-from lmm.experiments.plotting import RunInfo
+from lmm.experiments.plotting import HISTORICAL_SETTING, RunInfo, is_historical_setting
 
 _BENCH = {"as": 10000.0, "twap": 6000.0, "initial": -3000.0}
+
+
+def test_current_true_midquote_setting_routes_as_historical():
+    assert HISTORICAL_SETTING == "historical_sp500_midquotes"
+    assert is_historical_setting("historical_sp500_midquotes")
+    assert not is_historical_setting("synthetic_rough_heston")
+    assert not is_historical_setting("historical_sp500")
 
 
 def _records(learned_mean: float, *, n: int = 8) -> pd.DataFrame:
@@ -152,7 +159,9 @@ def test_historical_results_multiseed(tmp_path):
     for seed in (42, 7):
         for sym, base in (("MSFT", 15000.0), ("GOOGL", 18000.0)):
             for a, m in (("dqn", 0.0), ("ddpg", 3000.0), ("td3", 2000.0), ("sac", 5000.0)):
-                runs.append(_run("historical_sp500", a, seed, base + m, symbol=sym))
+                runs.append(
+                    _run("historical_sp500_midquotes", a, seed, base + m, symbol=sym)
+                )
 
     table = T.build_historical_results_multiseed(runs)
     row_labels = [r.label for r in table.rows]

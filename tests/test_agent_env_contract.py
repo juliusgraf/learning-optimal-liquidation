@@ -66,6 +66,23 @@ def test_as_delta_table_matches_closed_form(cfg):
         assert agent.delta_ticks[t, q] == pytest.approx(expected, rel=1e-12)
 
 
+def test_as_k_uses_order_size_tail_exponent_not_price_tick(cfg, monkeypatch):
+    env = new_env(cfg)
+    agent = ASBenchmarkAgent(cfg)
+    monkeypatch.setattr(agent, "_estimate_K_hat", lambda rng: 3.0)
+    monkeypatch.setattr(agent, "_estimate_sigma", lambda env, rng: 0.2)
+    calibration = agent.calibrate(
+        env,
+        rng_k=np.random.default_rng(1),
+        rng_sigma=np.random.default_rng(2),
+    )
+    assert calibration["A"] == pytest.approx(
+        cfg.clob_flow.lambda0 / cfg.clob_flow.gamma_m
+    )
+    assert calibration["k"] == pytest.approx(cfg.clob_flow.gamma_m * 3.0)
+    assert calibration["k"] != pytest.approx(cfg.grid.alpha * 3.0)
+
+
 def test_benchmark_without_clob_fills_uses_H_fallback_and_submits_once(cfg):
     env = new_env(cfg)
     agent = TWAPBenchmarkAgent(cfg)
@@ -112,6 +129,9 @@ EXPECTED_FILES = (
     "feature_normalizer.yaml",
     "logs/run.log",
     "checkpoints/initial.pt",
+    "checkpoints/initial_validation.yaml",
+    "checkpoints/best_mature.pt",
+    "checkpoints/best_mature_selection.yaml",
     "checkpoints/best.pt",
     "checkpoints/final.pt",
 )
@@ -129,6 +149,9 @@ def _train(tmp_path, run_name: str) -> str:
         "-o", "rl.validation_frequency_episodes=1",
         "-o", "rl.validation_size=1",
         "-o", "rl.validation_patience_evals=10",
+        "-o", "rl.checkpoint_min_clob_updates=0",
+        "-o", "rl.checkpoint_min_auction_updates=0",
+        "-o", "rl.checkpoint_require_initial_improvement=false",
         "-o", "rl.test_size=2",
         "-o", "algo.hyperparams.checkpoint_interval_episodes=2",
         "-o", "algo.hyperparams.min_buffer=200",
@@ -140,6 +163,45 @@ def _train(tmp_path, run_name: str) -> str:
     ]
     assert train_mod.main(argv) == 0
     return str(tmp_path / "synthetic_rough_heston" / run_name)
+
+
+@pytest.mark.slow
+def test_mature_policy_below_initial_floor_is_not_reported(tmp_path, monkeypatch):
+    scores = iter((10.0, -5.0, -5.0))
+
+    def fixed_eval(*_args, **_kwargs):
+        score = next(scores)
+        return {
+            "return_mean": score,
+            "pnl_mean": score,
+            "risk_adjusted_pnl_mean": score,
+            "checkpoint_score": score,
+        }
+
+    monkeypatch.setattr(train_mod, "_run_eval", fixed_eval)
+    argv = [
+        "--config", "configs/base.yaml",
+        "--config", "configs/synthetic_rough_heston.yaml",
+        "--config", "configs/algo/dqn.yaml",
+        "--run-name", "selection_failure",
+        "-o", f"experiment.results_root={tmp_path}",
+        "-o", "experiment.episodes=1",
+        "-o", "rl.normalizer_fit_episodes=1",
+        "-o", "rl.validation_frequency_episodes=1",
+        "-o", "rl.validation_size=1",
+        "-o", "rl.validation_patience_evals=10",
+        "-o", "rl.checkpoint_min_clob_updates=0",
+        "-o", "rl.checkpoint_min_auction_updates=0",
+        "-o", "algo.hyperparams.checkpoint_interval_episodes=10",
+    ]
+    with pytest.raises(RuntimeError, match="no mature checkpoint beat"):
+        train_mod.main(argv)
+    checkpoints = (
+        tmp_path / "synthetic_rough_heston" / "selection_failure" / "checkpoints"
+    )
+    assert not (checkpoints / "best.pt").exists()
+    assert (checkpoints / "best_mature.pt").exists()
+    assert (checkpoints / "selection_failure.yaml").exists()
 
 
 @pytest.mark.slow
@@ -160,6 +222,9 @@ def test_short_end_to_end_pipeline_uses_revised_artifacts(tmp_path):
     assert metadata["normalization_and_benchmark_calibration_split"] == "train"
     assert metadata["checkpoint_selection_split"] == "validation"
     assert metadata["policy_evaluation_split"] == "test"
+    selection = metadata["checkpoint_selection"]
+    assert selection["eligibility"]["eligible"]
+    assert selection["economic_safety"]["reportable"]
     for benchmark in ("as", "twap"):
         assert differences_mod.main(["--run-dir", run, "--benchmark", benchmark]) == 0
         path = f"{run}/eval/policy_difference_{benchmark}.csv"

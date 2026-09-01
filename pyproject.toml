@@ -16,7 +16,6 @@ dependencies = [
     "pyyaml>=6.0",
     "torch>=2.11",
     "gymnasium>=1.2",
-    "yfinance>=0.2",
 ]
 
 [project.optional-dependencies]
@@ -28,7 +27,6 @@ lmm-evaluate = "lmm.experiments.evaluate:main"
 lmm-make-figures = "lmm.experiments.make_figures:main"
 lmm-make-tables = "lmm.experiments.make_tables:main"
 lmm-policy-differences = "lmm.experiments.policy_differences:main"
-lmm-load-data = "lmm.data.load_yfinance_data:main"
 lmm-load-midquotes = "lmm.data.load_midquote_data:main"
 lmm-diagnose-simulator = "lmm.experiments.diagnose_simulator:main"
 
@@ -40,5 +38,5 @@ testpaths = ["tests"]
 markers = [
     "slow: slow integration tests (deselect with -m 'not slow')",
     "legacy: characterization tests of the legacy main.py/data.py emulators (pre-refactor golden values)",
-    "network: tests that hit the network (e.g. a live yfinance download; deselect with -m 'not network')",
+    "network: tests that hit an external data API (deselect with -m 'not network')",
 ]

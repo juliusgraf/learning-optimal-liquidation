@@ -11,7 +11,7 @@ Conventions from the revised manuscript:
   H at auction open as the no-execution fallback;
 - the benchmark's external one-sided schedule retains
   ``K*(p-S_tilde)_+``, is capped by remaining inventory, and is not projected
-  into the learned agent's +/-25-tick action range;
+  onto the learned agent's indicative-centred policy-template grid;
 - shaping is disabled for benchmarks, while genuine cancellation fees remain.
 
 Benchmarks run on the SAME env through the same episode loop as the DQN
@@ -98,7 +98,8 @@ class _LiquidationBenchmark(Agent):
         alpha = env.grid.alpha
         # Diagnostic five-coordinate offset only.  The environment consumes
         # the exact unprojected reference_price metadata for this external
-        # schedule, so no learned-policy +/-B_max clipping is applied.
+        # schedule, so the learned-policy template map and ambient B_max bound
+        # are not applied.
         offset = round_half_up((s_tilde - env.s_mid) / alpha)
         K = min(self.params.z * q, self.cfg.actions.auction_K_grid_max)
         return AuctionAction(
@@ -140,7 +141,10 @@ class ASBenchmarkAgent(_LiquidationBenchmark):
     grid); volume = full inventory exposure capped at V_max. Calibration:
     A = lambda_0 / gamma_m; k = gamma_m * K_hat with K_hat the least-squares
     coefficient of ln Q = K_hat * Delta p over ``as_n_samples`` simulated
-    executions on refreshed exogenous books (legacy main.py:1887-1939);
+    executions on refreshed exogenous books. Avellaneda--Stoikov call the
+    order-size tail exponent ``alpha``; this repository calls it ``gamma_m``
+    because ``grid.alpha`` is already the price tick. Thus ``grid.alpha`` is
+    not the multiplier in the calibration of k;
     sigma = std(pooled log-returns, ddof=1)/sqrt(dt) over simulated mid
     paths per ``as_sigma_rule`` (sigma only enters for gamma > 0; recorded
     for completeness, as_gamma = 0 in all published runs).
@@ -169,8 +173,9 @@ class ASBenchmarkAgent(_LiquidationBenchmark):
             raise NotImplementedError(
                 "only the gamma -> 0 closed form is implemented (as_gamma = 0)"
             )
-        self.A = p.lambda0 / p.gamma_m
-        self.k = p.gamma_m * self._estimate_K_hat(rng_k)
+        tail_exponent = p.gamma_m
+        self.A = p.lambda0 / tail_exponent
+        self.k = tail_exponent * self._estimate_K_hat(rng_k)
         self.sigma = self._estimate_sigma(env, rng_sigma)
         self.delta_ticks = self._build_delta_table()
         return {"A": self.A, "k": self.k, "sigma": self.sigma}
@@ -300,8 +305,9 @@ class ASBenchmarkAgent(_LiquidationBenchmark):
 
 class TWAPBenchmarkAgent(_LiquidationBenchmark):
     """TWAP benchmark (`section:TWAP`): v_t = ceil(q_t / (T - t + 1)) capped
-    at the inventory and V_max, quoted at delta = clob_delta_min (= 1 tick,
-    ``twap_delta_mode = "min"``); same auction heuristic as AS."""
+    at the inventory and V_max, quoted at the manuscript best ask delta=1
+    (the config retains the legacy label ``twap_delta_mode = "min"``); same
+    auction heuristic as AS."""
 
     def __init__(self, cfg: ExperimentConfig) -> None:
         super().__init__(cfg)

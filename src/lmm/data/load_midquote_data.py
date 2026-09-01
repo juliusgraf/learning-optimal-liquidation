@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import argparse
 import gzip
-import hashlib
 import json
 import logging
 import os
@@ -33,12 +32,13 @@ import certifi
 import numpy as np
 import pandas as pd
 
-from lmm.data.load_yfinance_data import (
+from lmm.data.historical_artifact import (
     DEFAULT_TICKERS,
     DEFAULT_TIMEZONE,
     NoSessionDataError,
     expected_grid,
     parse_session,
+    sha256_file,
     validate_split_ranges,
     write_csv,
     write_metadata,
@@ -65,14 +65,6 @@ TLS_CONTEXT = ssl.create_default_context(cafile=certifi.where())
 
 class QuoteDataError(RuntimeError):
     """A quote response or quote-derived session violates the data contract."""
-
-
-def _sha256(path: str | Path) -> str:
-    digest = hashlib.sha256()
-    with Path(path).open("rb") as handle:
-        for block in iter(lambda: handle.read(1024 * 1024), b""):
-            digest.update(block)
-    return digest.hexdigest()
 
 
 def _request_json(url: str, headers: Mapping[str, str]) -> dict[str, Any]:
@@ -489,7 +481,7 @@ def regenerate_range(
             )
             raw_record = {
                 "raw_quote_path": str(raw_path),
-                "raw_quote_sha256": _sha256(raw_path),
+                "raw_quote_sha256": sha256_file(raw_path),
             }
         session_records.append(
             {
@@ -558,7 +550,7 @@ def regenerate_range(
         "row_to_decision_time": "within each session, row r is the latest valid quote midpoint "
         "known at decision time t=r; row tau_op is frozen during the call",
         "downloaded_at_utc": datetime.now(timezone.utc).isoformat(),
-        "csv_sha256": _sha256(out_path),
+        "csv_sha256": sha256_file(out_path),
     }
     sidecar = write_metadata(metadata, out_path)
     logger.info(

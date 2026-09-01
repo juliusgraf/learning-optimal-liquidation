@@ -1,8 +1,7 @@
 # Revised artifact and metrics schema
 
 All current confirmation runs live under
-`results/revision_v5/<experiment_name>/<run_name>/` and bounded pilots under
-`results/pilots_v5/<experiment_name>/<run_name>/`. Readers require both the
+`results/revision_v9/<experiment_name>/<run_name>/`. Readers require both the
 current `artifact_schema_version` and the exact environment contract identifier
 stored in checkpoints and evaluation metadata. Missing or mismatched values are
 fatal; the pipeline does not load old checkpoints or result directories.
@@ -39,10 +38,11 @@ training metrics and evaluation records:
 | `residual_mark` | terminal inventory marked at frozen auction-open midprice |
 | `terminal_penalty` / `inventory_penalty` | `lambda_inv * I_final^2` |
 | `clob_shaping_adjustment` | CLOB training reward minus CLOB economic cash |
-| `auction_interim_shaping` | cumulative fictive interim auction shaping |
+| `auction_interim_shaping` | net cumulative fictive interim shaping after cancellation clawbacks |
+| `auction_shaping_clawback` | signed cumulative shaping originally credited to canceled schedules and subtracted from reward |
 | `auction_terminal_shaping` | terminal purchase-side shaping, applied once to aggregate cash |
 | `reward_baseline_adjustment` | optional policy-invariant subtraction of initial inventory value from the training reward |
-| `training_return` / `return_undisc` | undiscounted shaped training objective |
+| `training_return` / `return_undisc` | undiscounted reward for that environment (shaped in training; economic-only in validation/final evaluation) |
 | `pnl` | marked-to-market PnL, including cancellation fees |
 | `risk_adjusted_pnl` | `pnl - inventory_penalty` (`Pi_lambda`) |
 
@@ -60,8 +60,7 @@ pnl = clob_economic_cash
 risk_adjusted_pnl = pnl - terminal_penalty
 ```
 
-With shaping disabled and reward centering disabled (the revision-v2
-reproduction default):
+With shaping disabled and reward centering disabled:
 
 ```text
 return_undisc = risk_adjusted_pnl + initial_mid * initial_inventory
@@ -96,10 +95,19 @@ it contains:
 - `H_cl` bias/MAE/RMSE and improvement against contemporaneous/opening mids;
 - phase-specific loss, gradient, TD-error, update-count, and replay-size
   diagnostics;
+- cumulative phase-specific maturity update counts and whether each periodic
+  validation candidate was maturity-eligible and economically reportable;
 - `eval_return_mean`, `eval_pnl_mean`,
   `eval_risk_adjusted_pnl_mean`, and `eval_checkpoint_score` at validation
   checkpoints;
 - `wall_clock_s`, the only intentionally nondeterministic column.
+
+The initial untrained policy and every pre-maturity validation are diagnostic
+only. `best_selection.yaml` records the required and observed phase counts and
+the initial-policy economic safety floor; early-stopping patience starts only
+after the first eligible validation. `best_mature.pt` remains diagnostic. If
+no mature candidate beats the floor, `selection_failure.yaml` is written and
+no reportable `best.pt` is created.
 
 Every nonterminal replay row has Bellman coefficient one. Rewards are stored at
 the common `1e-3` scale for all four learners and are never clipped.
@@ -113,7 +121,7 @@ outputs and terminal diagnostics, notably:
 - `pnl`, `risk_adjusted_pnl`, and normalized/bps versions;
 - `I_final`, negative-inventory frequency/magnitude;
 - CLOB cash, auction cash, cancellation fees, and signed fill;
-- shaping decomposition and shaped return;
+- economic reward decomposition and economic-only evaluation return;
 - continuous/rounded clearing prices and residual;
 - pro-rata quantities/ratios, carry-over/fallback state, price displacement,
   and self-trade count.
@@ -153,7 +161,8 @@ seeds. These are fixed-policy cumulative differences, not regret.
 ## Tables and figures
 
 Single-setting tables use risk-adjusted PnL as the primary outcome and retain
-shaped return only as a diagnostic. Cross-seed synthetic comparisons report an
+the shaped return in training metrics only as a diagnostic. Evaluation records
+use the economic-only replay contract. Cross-seed synthetic comparisons report an
 IQM and bootstrap interval over per-seed means; policy-vs-benchmark intervals
 are computed from paired per-seed differences.
 

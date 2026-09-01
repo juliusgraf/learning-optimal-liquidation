@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-import numpy as np
 import pytest
 
 from helpers import load_dqn_cfg, new_env
@@ -129,7 +128,7 @@ def test_raw_auction_actions_cannot_bypass_common_bounds():
     with pytest.raises(ValueError, match=r"K\^a exceeds"):
         env.step(AuctionAction(cfg.actions.auction_K_grid_max + 1.0, 0, 0))
     with pytest.raises(ValueError, match="auction offset"):
-        env.step(AuctionAction(1.0, cfg.actions.auction_offset_max + 1, 0))
+        env.step(AuctionAction(1.0, cfg.actions.B_max + 1, 0))
 
 
 def test_dqn_auction_grid_has_unique_canonical_zero_slope_actions():

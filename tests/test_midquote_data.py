@@ -16,7 +16,7 @@ from lmm.data.load_midquote_data import (
     download_alpaca_quotes,
     regenerate_range,
 )
-from lmm.data.load_yfinance_data import validate_historical_artifact
+from lmm.data.historical_artifact import validate_historical_artifact
 
 
 def _quote(ts: str, bid: float, ask: float, bid_size: int = 2, ask_size: int = 3):
@@ -149,4 +149,10 @@ def test_range_builder_keeps_raw_prices_and_writes_fail_closed_provenance(tmp_pa
         path.with_name(path.name + ".meta.json").read_text()
     )["csv_sha256"]
     with pytest.raises(ValueError, match="historical dataset source mismatch"):
-        validate_historical_artifact(replace(params, source="yfinance"), REPO_ROOT)
+        validate_historical_artifact(replace(params, source="bar_close_proxy"), REPO_ROOT)
+
+    raw_archive = next(raw_dir.glob("*.jsonl.gz"))
+    with raw_archive.open("ab") as handle:
+        handle.write(b"tamper")
+    with pytest.raises(ValueError, match="raw historical quote archive digest mismatch"):
+        validate_historical_artifact(params, REPO_ROOT, horizon=1)

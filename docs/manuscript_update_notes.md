@@ -51,12 +51,30 @@ the manuscript will need them before it describes the current code:
   decision after a prior positive-slope agent order is live. It is unavailable
   at auction open only because there is no prior order. In single-replace mode,
   replacement cancels prior schedules and the current schedule survives.
-- Describe the centered economic training reward used by both settings. Its
-  complete-episode adjustment is the policy-independent
-  constant `-S_0 I_0`; shaping remains a treatment rather than the headline
-  objective.
+- State the reward split explicitly: the headline policy is trained with
+  shaping (`q=1`) and exact cancellation clawback, whereas validation,
+  checkpoint selection, and final learned/AS/TWAP comparisons use only the
+  economic objective. The centering adjustment is retained in both; over a
+  complete episode it is the policy-independent constant `-S_0 I_0`.
+- State that the untrained policy and pre-maturity validations are diagnostics,
+  not reportable candidates. Checkpoint eligibility requires at least 5,000
+  CLOB and 2,000 auction maturity-counted updates; for DQN, auction updates
+  before the full auction action set unlocks at episode 200 do not count.
+  Early-stopping patience starts at the first eligible validation, and the two
+  phase networks are then selected jointly on economic validation performance.
+  The initial policy's score is retained only as a safety floor: if no mature
+  candidate beats it, report selection failure rather than the initial or a
+  collapsed mature policy.
+- Augment the latent auction configuration by the outstanding per-order
+  shaping-credit ledger (the reduced feature vector need not change). If
+  `phi_s=x_s+f^a(x_s)` with
+  `x_s=K_s^a H_s^cl(H_s^cl-S_s^a)`, replace the interim formula by
+  `r_t=phi_t-d_t c_t-c_t sum_{s in L_t} phi_s`, where `L_t` is the set of
+  schedules live immediately before the current action. State that the sum
+  uses the original submission-time credits, and that the current replacement
+  is inserted only after the cancellation.
 - Replace blanket claims of benchmark superiority with held-out paired,
-  multi-seed evidence. The legacy single-asset pilot is diagnostic only.
+  multi-seed evidence generated under the current environment contract.
 
 ## Parameter tables
 
@@ -70,19 +88,82 @@ inputs. Update the shared rows as follows:
 | `tau_op` | 120 | 120 min | number unchanged; add unit |
 | `tau_cl` | 150 | 150 min | number unchanged; add unit |
 | `lambda_0` | 1 | 1/min/side | add units |
+| market-order scale/shape `(v_m,gamma_m)` | manuscript values | `(2,2.5)` | retain and state that `gamma_m` is the order-size tail exponent |
 | `V_inf` | 15 | 2 | replace |
 | CLOB depth persistence `rho_lob` | 0.5 | 0.96 | replace |
 | exogenous book depth | 12/conflated | 200 | separate from the strategic quote bound |
 | agent CLOB quote bound | conflated with depth | 12 | label separately |
-| ambient auction `B_max` | 25 | 150 | replace |
+| exogenous auction support `B_inf` | absent | 150 | add; set `M_1=-B_inf=-150`, `M_2=B_inf=150` |
+| auction validity floor `D_mu` | absent | 0.1 | add |
+| exogenous slope bounds `(U_1,U_2)` | manuscript values | `(0.1,2.0)` | use these shared values |
+| proposal probabilities `(p_1,p_2,p_3,p_4)` | stale values | `(1.0,0.0,0.3,0.05)` per minute | replace and explain persistent MM liquidity |
+| ambient absolute strategic offset `B_max` | 25 | 150 | executed `b_t^a` remains relative to the frozen mid |
+| local policy-template half-width | absent | 10 | add as a numerical parameterization, not as the definition of `b_t^a` |
 | auction slope step `beta` | 10/3 | 1 | replace |
 | auction slope index bound | 10 | 32 | policy subset is `{1,2,4,8,16,32}` |
-| local auction offset | absent | `+/-10` ticks around indicative price | add policy-parametrization row |
 | DQN auction templates | absent/legacy | 254 with cancellation; 127 without | add computational row |
 | inventory penalty | 0.5 | 2.0 | replace |
-| wrong-side shaping `q` | 1 | 0/inactive in headline | identify shaping treatment |
+| wrong-side shaping `q` | 1 | 1 in headline training | evaluation turns shaping off, not `q` |
 | cancellation cost `d` | 0.1 | 0.1 | unchanged |
+| cancellation shaping clawback | absent/no clawback | exact reversal of canceled orders' original `phi_s` | add to headline reward definition |
+| projected-price initialization `H_0` | absent | 100 | add |
+| projected-price smoothing `eta_H` | absent | 0.95 | add; code uses `H_i=(1-eta_H)H_{i-1}+eta_H tilde S_i` |
 | order mode | absent | single cancel-and-replace | add implementation row |
+
+The numerical section can use this compact implementation remark:
+
+> For tractability, the DQN uses slopes
+> $\beta\{1,2,4,8,16,32\}$ and 21 local templates
+> $\ell_t^a\in\{-10,\ldots,10\}$ around the lagged indicative price. The
+> executed manuscript coordinate is
+> $b_t^a=\lfloor(H_t^{\mathrm{cl}}-S_{\tau^{\mathrm{op}}}^{\mathrm{mid}})/\alpha+1/2\rfloor+\ell_t^a$
+> inside the ambient bound $[-B_{\max},B_{\max}]$, where $B_{\max}=150$, and
+> $S_t^a=S_{\tau^{\mathrm{op}}}^{\mathrm{mid}}+\alpha b_t^a$. Together with
+> the cancellation flag and the two zero-slope
+> no-order actions, this gives $2+6\times21\times2=254$ templates. Under
+> `single_replace`, a new positive-slope schedule cancels and replaces any
+> earlier live agent schedule; cancel-all remains admissible whenever such a
+> prior schedule exists.
+
+For DDPG, TD3, and SAC, the raw proposal coordinate is continuous but the local
+auction template is also half-up rounded to the same 21 integers before it is
+translated into absolute `b`. Their executed slope support is all 33 levels
+`0,...,32`, rather than DQN's six positive slope levels. This belongs in the
+continuous-control implementation paragraph so “continuous” is not mistaken
+for an unrounded exchange action.
+
+The manuscript's formal action-grid paragraph remains correct: `B_max=150` is
+the absolute bound on the strategic frozen-mid coordinate `b_t^a`. `B_inf=150`
+has a different role: it defines the exogenous quote bounds `M_1=-B_inf` and
+`M_2=B_inf`; the equality is numerical, not definitional. The numerical-policy
+paragraph must additionally disclose the state-dependent local map above. It
+must not describe the 21 network outputs as the entire ambient action set.
+
+The reason for this fallback is empirical and representational. In 500
+policy-free episodes, a fixed absolute `[-10,10]` grid failed to cover the
+indicative center in 73.0% of synthetic and 69.5% of historical-MSFT auction
+states. In matched seed-42 bounded DQN runs, indicative centering improved
+held-out mean risk-adjusted PnL by 70.81 (synthetic) and 71.38 (historical
+MSFT) relative to that absolute grid. Neither bounded run beat AS or TWAP;
+these diagnostics justify the parameterization only, not a performance claim.
+
+Crucial empirical qualification: the earlier unscaled, non-clawed-back reward
+could be gamed by repeated replacements. The headline now reverses the exact
+fictive credit of every canceled schedule. Pathwise, the undiscounted auction
+sum therefore contains only credits of schedules still live at clearing,
+minus cancellation fees; repeated replacement cannot accumulate old credits.
+This is a changed training objective, so every numerical result must be
+regenerated. `q=1` still neutralizes purchase-side terminal cash in the
+training target, and the current evidence does not by itself support a blanket
+claim that the shaped headline beats AS. An additional shaping weight would be
+a separate model parameter and must not be introduced silently.
+
+In the AS calibration paragraph, replace `k=alpha K` by
+`k=gamma_m K` (or use a new symbol for the Pareto tail exponent). In
+Avellaneda--Stoikov, the factor multiplying the impact coefficient is the
+power-law order-size tail exponent. In this code that exponent is `gamma_m`;
+`alpha` denotes the price tick and only converts price-unit quote distances to
+ticks.
 
 The rough-Heston table should be updated as follows:
 
@@ -98,11 +179,6 @@ The RL hyperparameter table should likewise have one value per algorithm, not
 separate synthetic/historical columns. All four learners use `2x128` hidden
 layers and CLOB/auction replay warm-ups of `2,000`/`512`. DQN confirmation uses
 epsilon warm-up/decay `50/600`, auction actions unlocked at episode 200, and an
-800-episode budget in both settings. The bounded pilot values (`20/150`, unlock
-at 100) must not be reported as confirmation-run hyperparameters.
-
-Do not claim from the bounded synthetic diagnostic that trained DQN beats AS:
-the shared calibration improved the paired DQN-AS edge from -70.41 to -2.98
-and beat TWAP by 14.03 per episode, but validation selected the safe initial
-policy even after a 300-episode follow-up. Use the held-out multi-seed
-800-episode runs for any superiority statement.
+800-episode budget in both settings. Add checkpoint maturity thresholds
+`5,000/2,000` (CLOB/auction) and state that DQN's pre-unlock auction updates do
+not count. Report only results regenerated under the revision-v9 contract.

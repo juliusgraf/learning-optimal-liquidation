@@ -288,6 +288,9 @@ def _train(tmp_path, algo: str, run_name: str) -> str:
         "-o", "rl.validation_frequency_episodes=2",
         "-o", "rl.validation_size=2",
         "-o", "rl.validation_patience_evals=10",
+        "-o", "rl.checkpoint_min_clob_updates=0",
+        "-o", "rl.checkpoint_min_auction_updates=0",
+        "-o", "rl.checkpoint_require_initial_improvement=false",
         "-o", "rl.test_size=2",
         "-o", "algo.hyperparams.checkpoint_interval_episodes=4",
         "-o", "algo.hyperparams.min_buffer=150",
@@ -316,6 +319,8 @@ def test_smoke_training_writes_outputs(algo, tmp_path):
         "metrics.csv",
         "logs/run.log",
         "checkpoints/initial.pt",
+        "checkpoints/best_mature.pt",
+        "checkpoints/best.pt",
         "checkpoints/final.pt",
     ):
         assert (tmp_path / "synthetic_rough_heston" / f"smoke_{algo}" / rel).exists(), rel

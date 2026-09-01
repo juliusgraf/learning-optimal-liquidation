@@ -107,7 +107,7 @@ During the continuous phase, the agent acts as a one-sided liquidator and submit
 
 The liquidity provided by exogenous market makers at price level $S_{t}^{\zeta,j} = \alpha k_{t}^{\zeta,j}$, where $k_{t}^{\zeta,j} = k_{t}^\mathrm{mid}+\zeta j$ for $j \in \mathbb{N}^\star$ and $\zeta \in \{+,-\}$ is given by the volume $V_{t}^{\zeta,j}$ at any time $t$. The depth of the order book on side $\zeta$ is given by
 \[L_{t}^\zeta = \inf\{j \geqslant  1:V_{t}^{\zeta,j} =0\}.\]
-We assume that there exists $L_\text{max}>0$ such that $V_t^{\zeta,j}=0$ for $j>L_\text{max}$.
+We assume that there exists $L_\infty>0$ such that $V_t^{\zeta,j}=0$ for $j>L_\infty$.
 
 \begin{assumption}
 Conditional on the price level selected by the agent, her order has
@@ -769,7 +769,7 @@ $ (\lambda_0,v_m,\gamma_m,V, \beta_a,\beta_b,V_\infty, \rho, U_1,U_2,M_1,M_2, p_
 \begin{itemize}
     \item $\lambda_0$ represents the intensity of the counting processes $N^+$ and $N^-$ on the continuous phase, modeled as independent Poisson processes, that are the arrivals per side per minute. The two processes are not observable for the agent during the continuous phase, but only during the auction phase. They are sampled in the first step of the algorithm.
     \item $(v_m,\gamma_m)$ are the parameters of the Pareto distribution modeling the volumes of the limit orders throughout the whole trading sessions. This reproduces the well-known heavy tail behavior of the density of market order size, see for example \cite{gopikrishnan2000statistical,gabaix2009power,bouchaud2001power}. The market model allows orders of maximum size $V$: greater liquidity takers will accumulate at volume $V$.
-    \item $(\beta_a,\beta_b)$ represent the parameters of the Beta distribution modeling the first volume of the limit order book. It is similar to the Beta scaling effect described in for example \cite{jerome2022market,wang2024market}.  Note that $V_\infty$ is a rescaling parameter as the Beta distribution has support $[0,1]$. Further volumes in the limit order book decay geometrically with parameter $\rho \in (0,1]$ and are truncated via the maximum order book depth $L_\text{max}$, that is $V_t^{\zeta,j}=0$ for $j > L_\text{max}$.
+    \item $(\beta_a,\beta_b)$ represent the parameters of the Beta distribution modeling the first volume of the limit order book. It is similar to the Beta scaling effect described in for example \cite{jerome2022market,wang2024market}.  Note that $V_\infty$ is a rescaling parameter as the Beta distribution has support $[0,1]$. Further volumes in the limit order book decay geometrically with parameter $\rho \in (0,1]$ and are truncated via the maximum order book depth $L_\infty$, that is $V_t^{\zeta,j}=0$ for $j > L_\infty$.
     \item $(U_1,U_2)$ represent the bounds between which exogenous market maker sample their supply slopes from during the auction phase.
     \item $(M_1,M_2)$ represent the integer bounds of the price at which exogenous market makers quote during the auction phase. Exogenous market makers during the volume are assumed to be sampled as $S_t^i \sim S_{\tau^\op}^\mathrm{mid} + \alpha \mathcal{U}(\llbracket M_1,M_2 \rrbracket)$ because the auction opening time is the last time market participants see the mid price. Note that this shape of auction price have been introduced in \cite{derchu2023equilibria}. 
     \item $(p_1,p_2,p_3,p_4)$ represent the independent proposal probabilities per one-minute auction decision that drive the market structure during the auction phase. A new market maker arrives per step with proposal probability $p_1$, one market maker cancels his order with proposal probability $p_2$, a market taker arrives on either side with proposal probability $p_3$, and a market taker cancels his order with proposal probability $p_4$, all the conditioned on the book being still valid. These events are sampled using a Bernoulli distribution.
@@ -831,3 +831,4 @@ The model is a single-agent best-response problem against fixed stochastic backg
 \bibliography{references}
 
 \end{document}
+

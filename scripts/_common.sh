@@ -14,7 +14,7 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
-RESULTS_ROOT="results/revision_v5"
+RESULTS_ROOT="results/revision_v9"
 
 SEED=""
 SMOKE=0
@@ -64,6 +64,9 @@ run_experiment() {
       -o rl.validation_size=2
       -o rl.validation_frequency_episodes=2
       -o rl.validation_patience_evals=10
+      -o rl.checkpoint_min_clob_updates=0
+      -o rl.checkpoint_min_auction_updates=0
+      -o rl.checkpoint_require_initial_improvement=false
       -o rl.normalizer_fit_episodes=2
       -o algo.hyperparams.checkpoint_interval_episodes=2
       -o algo.hyperparams.min_buffer=1
@@ -102,7 +105,7 @@ run_experiment() {
 }
 
 # Loop the five paper tickers (or a single --symbol) for the true-midquote
-# historical setting. The Yahoo proxy is never selected by a canonical runner.
+# historical setting.
 HIST_TICKERS=(MSFT JPM PG GOOGL CAT)
 run_historical() {  # run_historical <algo_cfg> <algo_name>
   local algo_cfg="$1" algo_name="$2"

@@ -2,7 +2,7 @@
 
 ## Publication candidate: true quote midpoints
 
-The revision-v3 historical path is `historical_sp500_midquotes_1m.csv`, with
+The current true-midquote historical path is `historical_sp500_midquotes_1m.csv`, with
 sidecar `historical_sp500_midquotes_1m.csv.meta.json`. It is generated from
 timestamped bid/ask quote events, not trade bars. The price at each decision
 minute is
@@ -29,7 +29,7 @@ selected does the environment rebase its path to `S0=100`; this is a modeling
 coordinate transform, not source-data normalization. Compressed raw quote
 events are archived separately under `data/raw/alpaca/<dataset-id>/`.
 
-The loader verifies the CSV SHA-256 digest, source, price type, feed,
+The loader verifies the CSV and raw-archive SHA-256 digests, source, price type, feed,
 normalization declaration, dataset ID, tickers, timezone, missing-data rule,
 split ranges, and nonempty split membership whenever a historical environment
 is constructed. Every run copies the verified sidecar to
@@ -68,7 +68,7 @@ python3 -m lmm.experiments.diagnose_simulator \
   --config configs/base.yaml \
   --config configs/historical_sp500_midquotes.yaml \
   --episodes 20 --assert-ready \
-  --json-out results/diagnostics_v3/midquote_simulator_gate.json
+  --json-out results/diagnostics_v6/midquote_simulator_gate.json
 ```
 
 ## Data interpretation
@@ -89,26 +89,3 @@ python3 -m lmm.experiments.diagnose_simulator \
 
 Order flow, CLOB depth, auction proposals, clearing, and allocation remain
 synthetic, as required by the manuscript.
-
-## Legacy Yahoo artifact (reproduction only)
-
-`historical_sp500_1m.csv` and `configs/historical_sp500.yaml` retain the old
-yfinance one-minute close proxy solely to reproduce revision-v2 results. They
-must not be used for new historical claims. Its exact regeneration command is:
-
-```bash
-python3 -m lmm.data.load_yfinance_data \
-  --tickers CAT PG GOOGL JPM MSFT \
-  --start-date 2026-08-03 --end-date 2026-08-28 \
-  --train-range 2026-08-03 2026-08-14 \
-  --validation-range 2026-08-17 2026-08-21 \
-  --test-range 2026-08-24 2026-08-28 \
-  --dataset-id sp500_1m_2026-08_v1 \
-  --session-start 13:30 --session-end 16:00 \
-  --fill ffill \
-  --out data/historical_sp500_1m.csv
-```
-
-Yahoo retains one-minute data only briefly. The legacy builder fails on an
-empty weekday unless `--allow-skipped-sessions` is explicit, and still fails
-if any chronological split would be empty.

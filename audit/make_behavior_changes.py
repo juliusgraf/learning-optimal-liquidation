@@ -198,7 +198,7 @@ def main() -> None:
     cfg_syn = load_config(REPO_ROOT / "configs/base.yaml",
                           REPO_ROOT / "configs/synthetic_rough_heston.yaml")
     cfg_hist = load_config(REPO_ROOT / "configs/base.yaml",
-                           REPO_ROOT / "configs/historical_sp500.yaml")
+                           REPO_ROOT / "configs/historical_sp500_midquotes.yaml")
 
     syn_rows, hist_rows = [], []
     for seed in SEEDS:

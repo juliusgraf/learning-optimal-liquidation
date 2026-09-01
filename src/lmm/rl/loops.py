@@ -58,6 +58,7 @@ class EpisodeResult:
     terminal_penalty: float = 0.0
     clob_shaping_adjustment: float = 0.0
     auction_interim_shaping: float = 0.0
+    auction_shaping_clawback: float = 0.0
     auction_terminal_shaping: float = 0.0
     reward_baseline_adjustment: float = 0.0
     initial_mid: float = float("nan")
@@ -234,9 +235,11 @@ def run_episode(
         res.clob_shaping_adjustment += float(
             info.get("clob_shaping_adjustment", 0.0)
         )
+        step_clawback = float(info.get("auction_shaping_clawback", 0.0))
         res.auction_interim_shaping += float(
             info.get("auction_interim_shaping", 0.0)
-        ) - float(info.get("auction_shaping_clawback", 0.0))
+        ) - step_clawback
+        res.auction_shaping_clawback += step_clawback
         res.auction_terminal_shaping += float(
             info.get("auction_terminal_shaping", 0.0)
         )

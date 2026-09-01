@@ -47,6 +47,7 @@ __all__ = [
     "save_resolved",
     "add_config_cli",
     "config_from_args",
+    "economic_evaluation_config",
 ]
 
 
@@ -65,7 +66,7 @@ class ExperimentMeta:
     """Run identity and bookkeeping."""
 
     name: str
-    setting: str  # "synthetic_rough_heston" | "historical_sp500"
+    setting: str  # "synthetic_rough_heston" | "historical_sp500_midquotes"
     episodes: int  # E; active settings use one matched budget
     master_seed: int  # single master seed; ruling D10
     results_root: Path  # gitignored output root
@@ -140,8 +141,17 @@ class AuctionFlowParams:
     D_mu: float  # numerical floor on total active exogenous slope; => 0.1
     U1: float  # exogenous schedule slope lower bound; => 0.1
     U2: float  # exogenous schedule slope upper bound; => 2.0
-    M1: int  # exogenous schedule price-offset lower bound in ticks; => -10
-    M2: int  # exogenous schedule price-offset upper bound in ticks; => 10
+    B_inf: int  # exogenous auction quote-support half-width in ticks; => 150
+
+    @property
+    def M1(self) -> int:
+        """Lower exogenous quote bound, written ``M_1=-B_inf`` in the paper."""
+        return -self.B_inf
+
+    @property
+    def M2(self) -> int:
+        """Upper exogenous quote bound, written ``M_2=B_inf`` in the paper."""
+        return self.B_inf
 
     @property
     def K_min(self) -> float:
@@ -153,8 +163,8 @@ class AuctionFlowParams:
 
     @property
     def price_band_ticks(self) -> int:
-        """Compatibility view for the current symmetric-band generator."""
-        return max(abs(self.M1), abs(self.M2))
+        """Compatibility view for the symmetric exogenous proposal generator."""
+        return self.B_inf
 
 
 @dataclass(frozen=True)
@@ -248,18 +258,17 @@ class RewardParams:
 
     k_star: int  # k* in f_c; legacy kappa=0.1 <=> k*alpha=10 <=> k*=1000
     lambda_inv: float  # terminal inventory penalty lambda; shared => 2.0
-    q: float  # wrong-side shaping penalty; inactive headline => 0.0
+    q: float  # wrong-side shaping coefficient; manuscript headline => 1.0
     d: float  # cancellation cost unit d (cost d_t*c_t, D4); => 0.1
     shaping_enabled: bool  # common CLOB/interim/terminal shaping switch
-    clawback_shaping: bool  # cancellation clawback ablation; baseline false
+    clawback_shaping: bool  # exact cancellation reversal; headline baseline true
     numerical_guard: bool  # D8: optional far-out float guard, default OFF
     # |I_tau_cl| threshold when the guard is on — far outside the economic
     # range (|I| <= I0 + auction exposure ~ O(10^3)); binding is logged
     # loudly and asserted never to happen on seeded standard runs (D8).
     numerical_guard_bound: float = 1e9
-    # Optional phase overrides.  ``None`` preserves the historical shared
-    # switch, while pilots can keep economic CLOB cash and retain a dense,
-    # purchase-sensitive auction signal.
+    # Optional phase overrides. ``None`` preserves the shared switch; explicit
+    # values support matched reward treatments.
     clob_shaping_enabled: Optional[bool] = None
     auction_shaping_enabled: Optional[bool] = None
     # Potential-based numerical centering: subtract the initial-mid value of
@@ -300,6 +309,14 @@ class RLParams:
     validation_size: int = 24
     validation_frequency_episodes: int = 100
     validation_patience_evals: int = 5
+    # A validation candidate is reportable only after both phase learners have
+    # performed this many economically relevant optimizer steps.  For DQN,
+    # auction updates made while behavior is locked to no-order do not count.
+    checkpoint_min_clob_updates: int = 0
+    checkpoint_min_auction_updates: int = 0
+    # The untrained policy is never a candidate, but its economic validation
+    # score can remain a safety floor that a mature candidate must exceed.
+    checkpoint_require_initial_improvement: bool = True
     test_size: int = 100
     h_cl_feature_enabled: bool = True
 
@@ -312,18 +329,21 @@ class ActionGridParams:
     L_max: int  # strategic CLOB quote offsets are 0..L_max; => 12
     beta: float  # strategic auction slope step; shared => 1
     K_max: int  # maximum strategic slope index k; shared => 32
-    B_max: int  # ambient strategic auction price-offset bound; shared => 150 ticks
+    # Absolute frozen-mid offset bound in
+    # S_t^a = S_{tau_op}^{mid} + alpha*b_t^a.
+    B_max: int  # ambient strategic auction offset bound; shared => 150 ticks
     auction_cancel_mode: str = "enabled"  # shared grids: enabled 254 | never 127
     # Numerical coarsening of the integer auction reference-price coordinate.
     # The ambient manuscript action remains integer-valued; a value >1 selects
     # a broad, regular subset without exploding the DQN output head.
     auction_offset_step: int = 1
     # ``frozen_mid`` enumerates the manuscript offset b directly.  The
-    # ``indicative`` option instead enumerates a local displacement around the
-    # currently observed indicative clearing price and translates it back to
-    # an absolute manuscript offset before the order reaches the environment.
-    # This is a numerical policy parameterization, not a change to Adm(x).
+    # diagnostic ``indicative`` parameterization enumerates local templates
+    # around H_t^cl and resolves them to absolute b at execution time.
     auction_offset_center: str = "frozen_mid"
+    # Local half-width used only by ``auction_offset_center=indicative``.  The
+    # resolved action remains the manuscript's absolute frozen-mid b and must
+    # lie inside [-B_max,B_max].
     auction_local_offset_max: Optional[int] = None
     # Optional non-uniform DQN slope subset, expressed as integer multipliers
     # of beta.  Empty preserves the canonical 1..K_max grid.  A geometric
@@ -376,9 +396,13 @@ class ActionGridParams:
     @property
     def auction_template_offset_max(self) -> int:
         """Half-width represented by the policy's auction offset coordinate."""
-        if self.auction_local_offset_max is None:
-            return self.B_max
-        return self.auction_local_offset_max
+        if self.auction_offset_center == "indicative":
+            if self.auction_local_offset_max is None:
+                raise ConfigError(
+                    "actions.auction_local_offset_max is required for indicative centering"
+                )
+            return self.auction_local_offset_max
+        return self.B_max
 
 
 @dataclass(frozen=True)
@@ -411,7 +435,7 @@ class BenchmarkParams:
     as_gamma: float  # AS risk aversion gamma; => 0.0
     as_sigma_rule: str  # "pooled_paths" for both active settings; single_path supported
     as_sigma_n_paths: int  # simulated mid paths pooled for sigma (Phase 4)
-    twap_delta_mode: str  # "min" => delta = min of the grid = 1
+    twap_delta_mode: str  # legacy "min" label => manuscript best ask, delta=1
 
 
 @dataclass(frozen=True)
@@ -438,6 +462,26 @@ class ExperimentConfig:
     features: FeatureParams
     benchmark: BenchmarkParams
     algo: Optional[AlgoConfig] = None  # absent for benchmark-only runs
+
+
+def economic_evaluation_config(cfg: ExperimentConfig) -> ExperimentConfig:
+    """Return the common economic-only validation/evaluation contract.
+
+    Training may use dense manuscript shaping, but checkpointing and final
+    policy comparison score only cash, fees, marking, and the terminal
+    inventory penalty.  Explicit phase switches are forced off so no overlay
+    can leak shaping into evaluation.
+    """
+    return dataclasses.replace(
+        cfg,
+        reward=dataclasses.replace(
+            cfg.reward,
+            shaping_enabled=False,
+            clob_shaping_enabled=False,
+            auction_shaping_enabled=False,
+            clawback_shaping=False,
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -554,12 +598,22 @@ def _migrate_legacy_schema(tree: dict[str, Any]) -> None:
                     raise ConfigError(f"auction_flow: cannot specify both {old!r} and {new!r}")
                 auction[new] = auction.pop(old)
         if "price_band_ticks" in auction:
-            if "M1" in auction or "M2" in auction:
+            if "B_inf" in auction or "M1" in auction or "M2" in auction:
                 raise ConfigError(
-                    "auction_flow: price_band_ticks cannot be mixed with M1/M2"
+                    "auction_flow: price_band_ticks cannot be mixed with B_inf/M1/M2"
                 )
-            band = auction.pop("price_band_ticks")
-            auction["M1"], auction["M2"] = -band, band
+            auction["B_inf"] = auction.pop("price_band_ticks")
+        if "M1" in auction or "M2" in auction:
+            if "B_inf" in auction:
+                raise ConfigError("auction_flow: B_inf cannot be mixed with M1/M2")
+            if "M1" not in auction or "M2" not in auction:
+                raise ConfigError("auction_flow: M1 and M2 must be specified together")
+            lower, upper = auction.pop("M1"), auction.pop("M2")
+            if not isinstance(lower, int) or not isinstance(upper, int) or lower != -upper:
+                raise ConfigError(
+                    "auction_flow: legacy M1/M2 must define a symmetric integer band"
+                )
+            auction["B_inf"] = upper
         auction.setdefault("D_mu", 0.1)
 
     midprice = tree.get("midprice")
@@ -641,6 +695,10 @@ def _migrate_legacy_schema(tree: dict[str, Any]) -> None:
         # grid is defined by beta*k, so it is intentionally not carried over.
         _ = old_k_min
 
+    # Revision-v5 resolved configs already used the two distinct bounds now
+    # supported here: an absolute ambient B_max and a local indicative-centred
+    # policy-template width.  Keep both when such a config is loaded.
+
 
 def _apply_override(tree: dict[str, Any], spec: str) -> None:
     """Apply one dotted override ``a.b.c=value`` (value parsed as YAML) in place."""
@@ -704,18 +762,30 @@ def _validate_experiment_config(cfg: ExperimentConfig) -> ExperimentConfig:
         raise ConfigError("actions.K_max and actions.beta must be positive")
     if cfg.actions.B_max <= 0:
         raise ConfigError("actions.B_max must be positive")
+    if cfg.auction_flow.B_inf <= 0:
+        raise ConfigError("auction_flow.B_inf must be positive")
     if cfg.actions.auction_offset_center not in ("frozen_mid", "indicative"):
         raise ConfigError(
             "actions.auction_offset_center must be frozen_mid|indicative"
         )
-    local_offset_max = cfg.actions.auction_template_offset_max
-    if local_offset_max < 0 or local_offset_max > cfg.actions.B_max:
+    if cfg.actions.auction_offset_center == "indicative":
+        local_max = cfg.actions.auction_local_offset_max
+        if local_max is None or local_max <= 0:
+            raise ConfigError(
+                "indicative centering requires a positive "
+                "actions.auction_local_offset_max"
+            )
+        if local_max > cfg.actions.B_max:
+            raise ConfigError(
+                "actions.auction_local_offset_max cannot exceed the absolute B_max"
+            )
+    elif cfg.actions.auction_local_offset_max is not None:
         raise ConfigError(
-            "actions.auction_local_offset_max must lie in [0, actions.B_max]"
+            "actions.auction_local_offset_max is only valid with indicative centering"
         )
-    if local_offset_max % cfg.actions.auction_offset_step != 0:
+    if cfg.actions.auction_template_offset_max % cfg.actions.auction_offset_step != 0:
         raise ConfigError(
-            "the policy auction-offset half-width must be divisible by "
+            "the policy auction-template half-width must be divisible by "
             "actions.auction_offset_step"
         )
     multipliers = cfg.actions.auction_K_multipliers
@@ -740,6 +810,8 @@ def _validate_experiment_config(cfg: ExperimentConfig) -> ExperimentConfig:
         )
     if cfg.rl.chi != 1.0:
         raise ConfigError("the revised finite-horizon objective requires rl.chi=1")
+    if not 0.0 <= cfg.reward.q <= 1.0:
+        raise ConfigError("reward.q must lie in [0,1]")
     if cfg.rl.discount_mode != "undiscounted":
         raise ConfigError("the revised objective requires rl.discount_mode='undiscounted'")
     if cfg.experiment.artifact_schema_version < 2:
@@ -755,6 +827,11 @@ def _validate_experiment_config(cfg: ExperimentConfig) -> ExperimentConfig:
         cfg.rl.test_size,
     ) <= 0:
         raise ConfigError("validation/test sizes, frequency, and patience must be positive")
+    if min(
+        cfg.rl.checkpoint_min_clob_updates,
+        cfg.rl.checkpoint_min_auction_updates,
+    ) < 0:
+        raise ConfigError("checkpoint maturity update thresholds must be nonnegative")
 
     historical = cfg.midprice.historical
     if cfg.midprice.model == "historical":
@@ -764,37 +841,32 @@ def _validate_experiment_config(cfg: ExperimentConfig) -> ExperimentConfig:
             )
         if cfg.grid.time_unit != "minutes":
             raise ConfigError("historical mid-price paths require grid.time_unit='minutes'")
-        # The committed one-session fixture remains readable for unit tests and
-        # legacy characterization only.  Publication runs must provide three
-        # explicit, chronological, nonoverlapping date ranges.
-        compatibility = historical.split_id.startswith("legacy_")
         ranges = {
             "train_date_range": _parse_date_range(
                 "train_date_range",
                 historical.train_date_range,
-                required=not compatibility,
+                required=True,
             ),
             "validation_date_range": _parse_date_range(
                 "validation_date_range",
                 historical.validation_date_range,
-                required=not compatibility,
+                required=True,
             ),
             "test_date_range": _parse_date_range(
                 "test_date_range",
                 historical.test_date_range,
-                required=not compatibility,
+                required=True,
             ),
         }
-        if not compatibility:
-            train = ranges["train_date_range"]
-            validation = ranges["validation_date_range"]
-            test = ranges["test_date_range"]
-            assert train is not None and validation is not None and test is not None
-            if not (train[1] < validation[0] and validation[1] < test[0]):
-                raise ConfigError(
-                    "historical ranges must be chronological and nonoverlapping: "
-                    "train end < validation start and validation end < test start"
-                )
+        train = ranges["train_date_range"]
+        validation = ranges["validation_date_range"]
+        test = ranges["test_date_range"]
+        assert train is not None and validation is not None and test is not None
+        if not (train[1] < validation[0] and validation[1] < test[0]):
+            raise ConfigError(
+                "historical ranges must be chronological and nonoverlapping: "
+                "train end < validation start and validation end < test start"
+            )
         if historical.missing_data_treatment not in ("error", "ffill"):
             raise ConfigError(
                 "midprice.historical.missing_data_treatment must be error|ffill"

@@ -78,7 +78,11 @@ def test_discrete_grid_points_produce_identical_full_episode(cfg):
         else:
             cancel = int(discrete.cancel_admissible)
             offset_center = discrete._auction_offset_center_ticks()
-            order = AuctionAction(2.0 * cfg.actions.beta, offset_center + 3, cancel)
+            order = AuctionAction(
+                2.0 * cfg.actions.beta,
+                offset_center + 3,
+                cancel,
+            )
         obs_d, reward_d, done_d, _, info_d = discrete.step(order)
         obs_c, reward_c, done_c, _, info_c = relaxed.step(
             normalized_for(order, cfg, offset_center=offset_center)
@@ -134,6 +138,23 @@ def test_zero_slope_has_canonical_zero_offset(cfg):
     assert order == AuctionAction(0.0, 0, 0)
 
 
+def test_continuous_auction_offset_is_absolute_and_indicative_independent():
+    cfg = load_synthetic_cfg(
+        "auction_flow.B_inf=3",
+        "actions.B_max=10",
+        "actions.auction_offset_center=frozen_mid",
+        "actions.auction_local_offset_max=null",
+    )
+    env = ContinuousActionAdapter(new_env(cfg))
+    drive_to_auction(env)
+    env.env._h_cache = env.s_mid + 37 * cfg.grid.alpha
+    order, _, _ = env._project_auction(np.array([0.0, 0.5, -1.0]))
+    assert order.offset == 5
+    env.env._h_cache = env.s_mid - 41 * cfg.grid.alpha
+    shifted_h_order, _, _ = env._project_auction(np.array([0.0, 0.5, -1.0]))
+    assert shifted_h_order.offset == 5
+
+
 def test_continuous_auction_offset_can_be_centered_on_indicative_price():
     cfg = load_synthetic_cfg(
         "actions.B_max=150",
@@ -145,6 +166,37 @@ def test_continuous_auction_offset_can_be_centered_on_indicative_price():
     env.env._h_cache = env.s_mid + 37 * cfg.grid.alpha
     order, _, _ = env._project_auction(np.array([0.0, 0.5, -1.0]))
     assert order.offset == 42  # indicative center 37 plus local displacement 5
+
+
+def test_discrete_and_continuous_agents_share_21_local_offsets_but_not_slope_grid(cfg):
+    raw = new_env(cfg)
+    dqn_offsets = sorted(
+        {a.offset for a in raw.auction_grid.actions if a.K_a > 0.0}
+    )
+    dqn_slopes = sorted({a.K_a for a in raw.auction_grid.actions})
+    assert dqn_offsets == list(range(-10, 11))
+    assert dqn_slopes == [0.0, 1.0, 2.0, 4.0, 8.0, 16.0, 32.0]
+
+    env = ContinuousActionAdapter(new_env(cfg))
+    drive_to_auction(env)
+    center = env.env._auction_offset_center_ticks()
+    continuous_offsets = sorted(
+        {
+            env._project_auction(np.array([0.0, b / 10.0, -1.0]))[0].offset
+            - center
+            for b in range(-10, 11)
+        }
+    )
+    continuous_slopes = sorted(
+        {
+            env._project_auction(
+                np.array([-1.0 + 2.0 * k / 32.0, 0.0, -1.0])
+            )[0].K_a
+            for k in range(33)
+        }
+    )
+    assert continuous_offsets == list(range(-10, 11))
+    assert continuous_slopes == [float(k) for k in range(33)]
 
 
 def test_no_cancel_treatment_uses_two_dimensional_auction_proposal():

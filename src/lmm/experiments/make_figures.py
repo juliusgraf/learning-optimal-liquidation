@@ -40,7 +40,10 @@ from lmm.experiments import stats
 __all__ = ["build_parser", "main"]
 
 # Human-readable setting names for figure titles (raw config names are ugly).
-_PRETTY_SETTING = {"synthetic_rough_heston": "synthetic", "historical_sp500": "historical"}
+_PRETTY_SETTING = {
+    "synthetic_rough_heston": "synthetic",
+    P.HISTORICAL_SETTING: "historical",
+}
 
 _PRIMARY_COL = "risk_adjusted_pnl"
 _OUTCOME_PRIORITY = (_PRIMARY_COL,)
@@ -460,32 +463,31 @@ def fig_algorithm_comparison(run_dirs, out: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# (h) shaped-return decomposition: CLOB / auction-fictive / terminal-shaped
+# (h) economic-return decomposition used for policy comparison
 # ---------------------------------------------------------------------------
 
 # Setting labels for the paper-grade title parenthetical.
 _SETTING_TITLE = {
     "synthetic_rough_heston": "synthetic setting",
-    "historical_sp500": "historical setting",
+    P.HISTORICAL_SETTING: "historical setting",
 }
 
 # The three additive reward components: (records.csv column, panel title).
-# Their sum equals ``return_undisc`` (verified). CLAUDE.md reward forms:
-# CLOB clamped f_c, per-step fictive auction f_a, and terminal clearing reward.
+# Their sum equals the economic-only ``return_undisc`` written by evaluation.
 _REWARD_COMPONENTS = [
-    ("clob_reward_sum", "Limit-order (CLOB) phase"),
-    ("auction_step_reward_sum", "Auction phase: fictive shaping reward"),
-    ("terminal_reward", "Terminal shaped reward (cash + utility penalties)"),
+    ("clob_reward_sum", "CLOB economic contribution"),
+    ("auction_step_reward_sum", "Auction cancellation fees"),
+    ("terminal_reward", "Terminal clearing, mark, and inventory penalty"),
 ]
 
 
 def fig_reward_decomposition(run_dirs, out: Path) -> None:
-    """Cross-seed reward decomposition, one figure per setting (multiseed).
+    """Cross-seed economic-return decomposition, one figure per setting.
 
-    Splits each method's undiscounted shaped return into its three additive parts —
-    the CLOB (limit-order) reward, the per-step *fictive* auction shaping
-    reward, and the terminal shaped reward.  The latter is not P&L: it mixes
-    signed auction cash, wrong-side utility, and the inventory penalty.  The
+    Splits each method's undiscounted economic return into three additive parts:
+    the CLOB contribution, auction cancellation fees, and the terminal reward.
+    The latter is not raw P&L: it mixes signed auction cash, the residual mark,
+    and the inventory penalty. The
     risk-adjusted PnL is reported separately as the primary outcome.
 
     The sample for each (method, component) is the set of RUN-level means — one
@@ -496,7 +498,7 @@ def fig_reward_decomposition(run_dirs, out: Path) -> None:
     runs (the rliable convention, matching eval_summary/dqn_results_multiseed),
     so component bars roughly add up to the multiseed eval-table totals (exactly
     only up to IQM's non-additivity). Run-level aggregation also tames the
-    heavy-tailed per-episode auction reward. A companion CSV records the plotted
+    heavy-tailed per-episode terminal reward. A companion CSV records the plotted
     numbers. Emitted only with >= 2 runs. Reads eval/records.csv only.
 
     The learned policy is labelled with each run's ``algo.name``; benchmark rows
@@ -538,7 +540,7 @@ def fig_reward_decomposition(run_dirs, out: Path) -> None:
         labels = [P.POLICY_LABELS[m] for m in methods]
         colors = [P.POLICY_COLORS[m] for m in methods]
         x = np.arange(len(methods))
-        across = "seeds" if setting != "historical_sp500" else "runs"
+        across = "runs" if P.is_historical_setting(setting) else "seeds"
 
         csv_rows: list[tuple] = []  # (component, method, iqm, lo, hi, n_runs)
         fig, axes = P.plt.subplots(1, 3, figsize=(13.5, 4.2), squeeze=False)
@@ -793,7 +795,7 @@ def fig_policy_difference_multiseed(run_dirs, out: Path, *, symbol: str | None =
     if not runs:
         return
     for setting in sorted({r.setting for r in runs}):
-        is_hist = setting == "historical_sp500"
+        is_hist = P.is_historical_setting(setting)
         sruns = [r for r in runs if r.setting == setting]
         if is_hist and symbol:
             sruns = [r for r in sruns if r.symbol == symbol]
