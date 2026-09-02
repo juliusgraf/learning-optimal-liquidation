@@ -1,14 +1,14 @@
 # Fdb version 4
-["bibtex main"] 1788297544.3238 "main.aux" "main.bbl" "main" 1788303845.03091 0
+["bibtex main"] 1788309370.69692 "main.aux" "main.bbl" "main" 1788309372.45261 0
   "./references.bib" 1788133748.20766 21151 0423f806196b4456f90f7e9cbac9d684 ""
   "/usr/local/texlive/2026/texmf-dist/bibtex/bst/base/plain.bst" 1292289607 20613 bd3fbfa9f64872b81ac57a0dd2ed855f ""
-  "main.aux" 1788303844.60072 13803 a4cdbba51fd4444aec49898a47b750b4 "pdflatex"
+  "main.aux" 1788309372.04459 13716 988ec9375edeec400a5b8a31a2f0021b "pdflatex"
   (generated)
   "main.bbl"
   "main.blg"
   (rewritten before read)
-["pdflatex"] 1788303843.29477 "/Users/juliusgraf/Learning-Market-Making/paper/main.tex" "main.pdf" "main" 1788303845.0311 0
-  "/Users/juliusgraf/Learning-Market-Making/paper/main.tex" 1788303843.07657 96578 6474a97f7dec3c652e78ac020c6faf49 ""
+["pdflatex"] 1788309370.83689 "/Users/juliusgraf/Learning-Market-Making/paper/main.tex" "main.pdf" "main" 1788309372.45275 0
+  "/Users/juliusgraf/Learning-Market-Making/paper/main.tex" 1788309368.75447 97298 303a88577fd06d0a18af1b112b1a4a82 ""
   "/usr/local/texlive/2026/texmf-dist/fonts/enc/dvips/cm-super/cm-super-t1.enc" 1136849721 2971 def0b6c1f0b107b3b936def894055589 ""
   "/usr/local/texlive/2026/texmf-dist/fonts/enc/dvips/cm-super/cm-super-ts1.enc" 1136849721 2900 1537cc8184ad1792082cd229ecc269f4 ""
   "/usr/local/texlive/2026/texmf-dist/fonts/map/fontname/texfonts.map" 1577235249 3524 cb3e574dea2d1052e39280babc910dc8 ""
@@ -257,13 +257,13 @@
   "/usr/local/texlive/2026/texmf-var/fonts/map/pdftex/updmap/pdftex.map" 1776727570 5573038 b99aad5e4898a9034e953632f940512b ""
   "/usr/local/texlive/2026/texmf-var/web2c/pdftex/pdflatex.fmt" 1774209607 3636776 dc5fa9b6b1453b9d196cd42edf876004 ""
   "/usr/local/texlive/2026/texmf.cnf" 1774209515 577 648cd9f92f9c0eac486f4c71c85cfbbe ""
-  "main.aux" 1788303844.60072 13803 a4cdbba51fd4444aec49898a47b750b4 "pdflatex"
-  "main.bbl" 1788297544.46024 13845 343c08c6ccf629ee1cda253d8058471f "bibtex main"
-  "main.out" 1788303844.60198 5888 112e22deaa014a2c9d424f439d88f8da "pdflatex"
-  "main.tex" 1788303843.07657 96578 6474a97f7dec3c652e78ac020c6faf49 ""
+  "main.aux" 1788309372.04459 13716 988ec9375edeec400a5b8a31a2f0021b "pdflatex"
+  "main.bbl" 1788309370.83245 13845 343c08c6ccf629ee1cda253d8058471f "bibtex main"
+  "main.out" 1788309372.04589 5754 ed2b525ef09168244df6da1421c4fab4 "pdflatex"
+  "main.tex" 1788309368.75447 97298 303a88577fd06d0a18af1b112b1a4a82 ""
   "packages.tex" 1787940683.94835 1053 93d11b3928a4134e08a03a370e62a814 ""
   "results/plots_syn/benchmark_anatomy.png" 1787940683.9366 227179 fb56460301a78d115696a691cc60cefe ""
-  "results/tables_params/params_generative.tex" 1788297542.47163 2030 4c1b713004d875b3129ab7297b1dddbb ""
+  "results/tables_params/params_generative.tex" 1788305876.60575 2068 f49e663f62a2b41065c8995dd94b81b2 ""
   (generated)
   "main.aux"
   "main.log"
