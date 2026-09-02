@@ -7,13 +7,29 @@
 #   scripts/reproduce_all.sh            # full paper runs (long!)
 #   scripts/reproduce_all.sh --smoke    # tiny CI smoke of the whole pipeline
 #   scripts/reproduce_all.sh --seed 7   # override the master seed
+#   scripts/reproduce_all.sh --skip-output-generation  # orchestration workers
 #
 # Flags are forwarded to every run_*.sh (see scripts/_common.sh).
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ARGS=("$@")
+REPO_ROOT="$(cd "$HERE/.." && pwd)"
+export MPLCONFIGDIR="${MPLCONFIGDIR:-$REPO_ROOT/.cache/matplotlib}"
+mkdir -p "$MPLCONFIGDIR"
+ARGS=()
 OUTPUT_ARGS=()
 REQUIRE_COMPLETE=1
+SKIP_OUTPUT_GENERATION=0
+
+# The multiseed orchestrator runs seed workers concurrently, then performs all
+# shared output generation once after every worker has finished.  Strip its
+# private switch rather than forwarding it to the individual run scripts.
+for arg in "$@"; do
+  if [[ "$arg" == "--skip-output-generation" ]]; then
+    SKIP_OUTPUT_GENERATION=1
+  else
+    ARGS+=("$arg")
+  fi
+done
 
 # ``make_all_outputs.sh`` accepts only the seed-selection flag, so extract it
 # from the runner arguments instead of dropping it (or forwarding ``--smoke``
@@ -45,5 +61,7 @@ for s in "${RUNNERS[@]}"; do
   bash "$HERE/${s}.sh" "${ARGS[@]}"
 done
 
-bash "$HERE/make_all_outputs.sh" ${OUTPUT_ARGS[@]+"${OUTPUT_ARGS[@]}"}
+if [[ "$SKIP_OUTPUT_GENERATION" -eq 0 ]]; then
+  bash "$HERE/make_all_outputs.sh" ${OUTPUT_ARGS[@]+"${OUTPUT_ARGS[@]}"}
+fi
 echo "### reproduce_all complete"

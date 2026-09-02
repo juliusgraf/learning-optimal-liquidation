@@ -7,6 +7,7 @@ seeds to avoid clobbering real runs.
 
 from __future__ import annotations
 
+import os
 import subprocess
 from pathlib import Path
 
@@ -30,20 +31,32 @@ SCRIPTS = [
 ]
 
 
-def _run(script: str, extra: list[str]) -> subprocess.CompletedProcess:
+def _isolated_env(results_root: Path) -> dict[str, str]:
+    env = os.environ.copy()
+    env["LMM_RESULTS_ROOT"] = str(results_root)
+    return env
+
+
+def _run(
+    script: str, extra: list[str], results_root: Path
+) -> subprocess.CompletedProcess:
     return subprocess.run(
         ["bash", f"scripts/{script}", "--smoke", "--seed", SEED, *extra],
-        cwd=REPO, capture_output=True, text=True,
+        cwd=REPO,
+        env=_isolated_env(results_root),
+        capture_output=True,
+        text=True,
     )
 
 
 @pytest.mark.parametrize("script,setting,algo,symbol", SCRIPTS)
-def test_run_script_smoke(script, setting, algo, symbol):
+def test_run_script_smoke(script, setting, algo, symbol, tmp_path):
+    results_root = tmp_path / "results"
     extra = ["--symbol", symbol] if symbol else []
-    res = _run(script, extra)
+    res = _run(script, extra, results_root)
     assert res.returncode == 0, f"{script} failed:\n{res.stderr[-2000:]}"
     name = f"{algo}_{symbol}_seed{SEED}" if symbol else f"{algo}_seed{SEED}"
-    rd = REPO / "results" / "revision_v10" / setting / name
+    rd = results_root / setting / name
     assert (rd / "checkpoints" / "final.pt").exists()
     assert (rd / "eval" / "records.csv").exists()
     # Traces use the resolved learned-policy label.
@@ -51,21 +64,27 @@ def test_run_script_smoke(script, setting, algo, symbol):
     assert (rd / "eval" / "policy_difference_as.csv").exists()
 
 
-def test_acceptance_run_then_make_all_outputs():
+def test_acceptance_run_then_make_all_outputs(tmp_path):
     """Acceptance: run_synthetic_dqn.sh --smoke, then make_all_outputs.sh, and
     confirm the full artifact set for that run plus the combined outputs."""
     seed = "96"
+    results_root = tmp_path / "results"
+    env = _isolated_env(results_root)
     res = subprocess.run(
         ["bash", "scripts/run_synthetic_dqn.sh", "--smoke", "--seed", seed],
-        cwd=REPO, capture_output=True, text=True,
+        cwd=REPO, env=env, capture_output=True, text=True,
     )
     assert res.returncode == 0, res.stderr[-2000:]
     res = subprocess.run(
-        ["bash", "scripts/make_all_outputs.sh"], cwd=REPO, capture_output=True, text=True
+        ["bash", "scripts/make_all_outputs.sh"],
+        cwd=REPO,
+        env=env,
+        capture_output=True,
+        text=True,
     )
     assert res.returncode == 0, res.stderr[-2000:]
 
-    rd = REPO / "results" / "revision_v10" / "synthetic_rough_heston" / f"dqn_seed{seed}"
+    rd = results_root / "synthetic_rough_heston" / f"dqn_seed{seed}"
     for name in ("training_diagnostics", "episode_anatomy", "eval_distributions"):
         assert (rd / "figures" / f"{name}.pdf").exists()
         assert (rd / "figures" / f"{name}.png").exists()
@@ -73,6 +92,6 @@ def test_acceptance_run_then_make_all_outputs():
         assert (rd / "tables" / f"{name}.tex").exists()
         assert (rd / "tables" / f"{name}.csv").exists()
 
-    combined = REPO / "results" / "revision_v10" / "synthetic_rough_heston" / "_combined"
+    combined = results_root / "synthetic_rough_heston" / "_combined"
     assert (combined / "figures" / "algorithm_comparison.png").exists()
     assert (combined / "tables" / "eval_summary_final.csv").exists()

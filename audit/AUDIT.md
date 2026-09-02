@@ -859,14 +859,14 @@ ignored the init/training lottery.
   selection set matches DQN/DDPG. `metadata.yaml` gains `early_stopping`.
   Pinned by `tests/test_agent_env_contract.py::test_evaluate_defaults_to_best_checkpoint`.
 - **Multi-seed IQM/CI aggregation.** `scripts/run_multiseed.sh` runs the
-  pipeline under several master seeds (3 by default: 42, 7, 99) **disk-safe**
+  pipeline under five master seeds by default (42, 7, 99, 123, 2024) **disk-safe**
   (`--no-resume-ckpt`); `scripts/make_multiseed_outputs.sh` writes
   `results/<setting>/_multiseed/{tables,figures}/` — per-algo **IQM** of the
   per-seed mean returns with **bootstrap 95% CIs** over seeds (Agarwal et al.
   2021). New: `stats.iqm`/`iqm_ci`, `tables.build_*_multiseed`,
   `make_figures.fig_algorithm_comparison_multiseed`, `RunInfo.seed`. Pinned by
-  `tests/test_multiseed.py`, `tests/test_stats.py`. Caveat: 3 seeds ⇒ wide CIs,
-  IQM ≈ mean (no trimming below n=4); recorded as a limitation, not a defect.
+  `tests/test_multiseed.py`, `tests/test_stats.py`. Five seeds still imply
+  visibly uncertain intervals, but permit a non-degenerate trimmed IQM.
 
 Good-practice caveat (for the author): report `best.pt`, show the economic-
 objective selection curve together with gross-P&L/cost decomposition and shaped-

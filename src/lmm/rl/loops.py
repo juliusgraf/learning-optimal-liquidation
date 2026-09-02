@@ -37,7 +37,6 @@ SEED_COMPONENTS = (
     "replay_clob",
     "replay_auction",
     "as_calibration",
-    "as_sigma_paths",
 )
 
 
@@ -206,6 +205,9 @@ def run_episode(
             action_record["requested_ell"] = float(requested_action.ell)
         if "executed_b" in info:
             action_record["executed_b"] = float(info["executed_b"])
+        for key in ("auction_anchor", "auction_anchor_b", "auction_anchor_price"):
+            if key in info:
+                action_record[key] = info[key]
         if "raw_action_vec" in info:
             action_record["raw_action"] = [
                 float(x) for x in np.asarray(info["raw_action_vec"]).reshape(-1)

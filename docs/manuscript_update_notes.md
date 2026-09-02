@@ -22,13 +22,9 @@ and configuration names from `configs/base.yaml` plus the relevant overlays.
    `p_1,...,p_4` as probabilities per one-minute auction decision, not merely
    “per step.”
 4. **AS and TWAP benchmarks.** State that `T-t` is measured in minutes, so the
-   AS intensity parameter `A` is per minute. The recorded volatility is the
-   sample standard deviation (`ddof=1`) of pooled one-minute log-midprice
-   increments from 100 training-only paths, divided by `sqrt(Delta t)`; it is
-   log-return volatility per square-root minute, not the standard deviation of
-   midprice levels or a price-unit arithmetic-Brownian coefficient. The
-   implemented headline has `gamma=0`, so quotes do not depend on this
-   diagnostic estimate.
+   AS intensity parameter `A` is per minute. The implemented benchmark has
+   `gamma=0`, so volatility drops out of the quote; the repository therefore
+   does not calibrate or report an unused AS volatility parameter.
 5. **Section 6 introduction (currently near line 644).** Replace the distinction
    between “120 one-second steps plus 30 seconds” and historical minutes. Both
    settings now represent a 120-minute CLOB followed by a 30-minute auction and
@@ -144,24 +140,17 @@ on `ell_t^a`. The numerical-policy paragraph must additionally disclose the
 state-dependent local map above. It must not describe the 21 network outputs
 as the entire ambient action set.
 
-The reason for this fallback is empirical and representational. In 500
-policy-free episodes, a fixed absolute `[-10,10]` grid failed to cover the
-indicative center in 73.0% of synthetic and 69.5% of historical-MSFT auction
-states. In matched seed-42 bounded DQN runs, indicative centering improved
-held-out mean risk-adjusted PnL by 70.81 (synthetic) and 71.38 (historical
-MSFT) relative to that absolute grid. Neither bounded run beat AS or TWAP;
-these diagnostics justify the parameterization only, not a performance claim.
+The earlier bounded-grid diagnostics and pre-revision learned-policy results
+were produced under superseded action and reward contracts and are deliberately
+not retained here. Only revision-v11 publication artifacts may support an
+empirical statement.
 
-Crucial empirical qualification: the earlier unscaled, non-clawed-back reward
-could be gamed by repeated replacements. The headline now reverses the exact
-fictive credit of every canceled schedule. Pathwise, the undiscounted auction
-sum therefore contains only credits of schedules still live at clearing,
-minus cancellation fees; repeated replacement cannot accumulate old credits.
-This is a changed training objective, so every numerical result must be
-regenerated. `q=1` still neutralizes purchase-side terminal cash in the
-training target, and the current evidence does not by itself support a blanket
-claim that the shaped headline beats AS. An additional shaping weight would be
-a separate model parameter and must not be introduced silently.
+The headline reverses the exact fictive credit of every canceled schedule.
+Pathwise, the undiscounted auction sum therefore contains only credits of
+schedules still live at clearing, minus cancellation fees; repeated replacement
+cannot accumulate old credits. `q=1` neutralizes purchase-side terminal cash in
+the training target. An additional shaping weight would be a separate model
+parameter and must not be introduced silently.
 
 In the AS calibration paragraph, replace `k=alpha K` by
 `k=gamma_m K` (or use a new symbol for the Pareto tail exponent). In
@@ -184,8 +173,9 @@ The RL hyperparameter table should likewise have one value per algorithm, not
 separate synthetic/historical columns. All four learners use `2x128` hidden
 layers and CLOB/auction replay warm-ups of `2,000`/`512`. DQN confirmation uses
 epsilon warm-up/decay `50/600`, the same masked epsilon-greedy probability in
-both phases from episode zero, and an 800-episode budget in both settings. Add
-the auction-head initialization prior (zero output weights, no-order bias zero,
-all other action biases `-0.02` in replay-scaled units) and checkpoint maturity
-thresholds `5,000/2,000` (CLOB/auction). Report only results regenerated under
-the revision-v10 contract.
+both phases from episode zero, and an 800-episode budget in both settings.
+Checkpoint maturity thresholds are `5,000/2,000` (CLOB/auction). The author has
+chosen to keep low-level safe auction-head initialization out of the
+manuscript; its exact DQN and continuous-actor specifications are documented in
+`docs/rl_design.md` and the active algorithm YAML files for reproduction.
+Report only results regenerated under the revision-v11 contract.

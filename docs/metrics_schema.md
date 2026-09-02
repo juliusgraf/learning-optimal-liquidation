@@ -1,7 +1,7 @@
 # Revised artifact and metrics schema
 
 All current confirmation runs live under
-`results/revision_v10/<experiment_name>/<run_name>/`. Readers require both the
+`results/revision_v11/<experiment_name>/<run_name>/`. Readers require both the
 current `artifact_schema_version` and the exact environment contract identifier
 stored in checkpoints and evaluation metadata. Missing or mismatched values are
 fatal; the pipeline does not load old checkpoints or result directories.
@@ -20,7 +20,9 @@ Every run saves:
   missing-data rule, split identifiers/date ranges, and concrete session lists)
   when applicable;
 - checkpoint-selection metric (`risk_adjusted_pnl`), ablation label, auction
-  switch, and deterministic DQN tie-breaking rule.
+  switch, explicit auction anchor, and deterministic DQN tie-breaking rule;
+- risk-neutral AS calibration values `(A, k)`, their configured/seeded sources,
+  and an explicit marker that no irrelevant volatility parameter was fitted;
 - the physical clock (`time_unit=minutes`, `tau_op=120`, `tau_cl=150`) in the
   resolved config, runtime metadata, evaluation metadata, and realized-grid
   records.
@@ -138,12 +140,14 @@ The evaluation directory also contains:
 - `proposal_diagnostics.csv` — proposed, accepted, validity-rejected, and
   ineligible counts/rates for each of the six exogenous proposal types;
 - `action_diagnostics.csv` — raw normalized proposals, projected five-coordinate
-  actions, saturation/rounding/projection counts, and cancellation execution;
+  actions, configured/per-step auction-anchor coordinates,
+  saturation/rounding/projection counts, and cancellation execution;
 - `clearing_diagnostics.csv` — continuous and rounded prices, residual,
   allocation quantities/ratios, carry-over/fallback, and price displacement;
 - `h_forecasts.csv` and `h_forecast_summary.csv` — signed bias, MAE, RMSE, and
   benchmark improvements grouped by physical time-to-close in minutes;
-- `traces/<policy>_ep<i>.csv` — per-step anatomy traces.
+- `traces/<policy>_ep<i>.csv` — per-step anatomy traces, including auction
+  anchor label, absolute anchor coordinate, and anchor price.
 
 ## Paired policy differences
 
@@ -166,12 +170,19 @@ use the economic-only replay contract. Cross-seed synthetic comparisons report a
 IQM and bootstrap interval over per-seed means; policy-vs-benchmark intervals
 are computed from paired per-seed differences.
 
+The synthetic cross-treatment generator emits
+`synthetic_treatment_contrasts_multiseed.{tex,csv}` plus
+`synthetic_treatment_contrasts_by_seed.csv`. The latter retains the positive
+and negative run directories, algorithm, master seed, episode count, mean
+difference, and a SHA-256 digest of the exactly matched evaluation-seed list.
+Every contrast uses the sign first-named treatment minus second-named treatment.
+
 Historical outputs include both forms required for cross-asset comparison:
 
-- `dqn_results_full` and `dqn_results_improvements` — currency units;
-- `dqn_results_full_bps` and `dqn_results_improvements_bps` — basis points of
+- `historical_results_full` and `historical_results_improvements` — currency units;
+- `historical_results_full_bps` and `historical_results_improvements_bps` — basis points of
   initial notional;
-- `dqn_results_multiseed` and `dqn_results_multiseed_bps` — cross-seed forms.
+- `historical_results_multiseed` and `historical_results_multiseed_bps` — cross-seed forms.
 
 Figure inputs are saved artifacts only; figure generation never steps an
 environment. Main products include training diagnostics, paired policy

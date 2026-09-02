@@ -19,8 +19,8 @@ experiment:
   seeds: [42]        # explicit seed list; multi-seed launchers override this list
   ablation_label: H_on__shaping_on__auction_on
   auction_enabled: true
-  results_root: results/revision_v10
-  artifact_schema_version: 10
+  results_root: results/revision_v11
+  artifact_schema_version: 11
 
 grid:
   tau_op: 120        # auction opens after 120 minutes (two hours)
@@ -107,13 +107,15 @@ actions:
   V_max: 30
   L_max: 12
   # Auction: the full manuscript slope lattice beta*{0,...,K_max} and 21 local
-  # offsets around the lagged indicative price. Each template resolves to the
-  # derived/executed absolute b. Enabled cancellation: 2 + 2*32*21 = 1,346
-  # templates; disabled: 1 + 32*21 = 673.
+  # offsets. The headline H-on anchor is the lagged indicative price; H-off
+  # treatment overlays switch this explicitly to the frozen auction-open mid.
+  # Each template resolves to the derived/executed absolute b. Enabled
+  # cancellation: 2 + 2*32*21 = 1,346; disabled: 1 + 32*21 = 673.
   beta: 1.0
   K_max: 32
   B_inf: 150         # common absolute b / price-deviation bound (manuscript B_inf)
   B_max: 10          # local policy coordinate ell in [-B_max,B_max]
+  auction_anchor: indicative
   auction_cancel_mode: enabled  # headline full model; use the no-cancellation
                                 # treatment overlay for the matched sensitivity
 
@@ -131,6 +133,4 @@ benchmark:
   z: 10.0                  # auction heuristic slope multiplier z; main.py:1048
   as_n_samples: 5000       # revised manuscript baseline
   as_gamma: 0.0            # AS risk aversion gamma -> 0; main.py:1940
-  as_sigma_rule: pooled_paths
-  as_sigma_n_paths: 100    # simulated mid paths pooled for sigma (pooled_paths rule)
   twap_delta_mode: min     # legacy label: manuscript TWAP best ask, delta=1

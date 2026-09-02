@@ -1,8 +1,10 @@
 """Discrete five-coordinate actions and projected continuous proposals.
 
 The manuscript action is ``(v, delta, K, ell, c)``.  The local auction
-coordinate ``ell`` is resolved inside the simulator to the absolute frozen-mid
-coordinate ``b``; those two quantities deliberately use different types.
+coordinate ``ell`` is resolved around the treatment's observable price anchor
+to the absolute frozen-mid coordinate ``b``; those two quantities deliberately
+use different types.  H-on treatments use the indicative-price anchor, while
+H-off treatments use the frozen auction-open midprice (``b=0``).
 """
 
 from __future__ import annotations
@@ -52,8 +54,9 @@ class ClobAction:
 class AuctionAction:
     """Public manuscript auction action ``(K^a,ell,c)``.
 
-    ``ell`` is the local integer displacement from the current indicative
-    price. The environment privately derives and validates absolute ``b``.
+    ``ell`` is the local integer displacement from the treatment-specific
+    price anchor. The environment privately derives and validates absolute
+    ``b``.
     """
 
     K_a: float
@@ -124,6 +127,27 @@ def from_five_coordinate(
 def round_half_up(value: float) -> int:
     """Deterministic manuscript rounding: ``floor(value + 1/2)``."""
     return math.floor(float(value) + 0.5)
+
+
+def _admissible_auction_ells(
+    params: ActionGridParams,
+    *,
+    frozen_mid: float,
+    alpha: float,
+    anchor_b_ticks: int,
+) -> tuple[int, ...]:
+    """Local offsets whose resolved positive-slope reference is admissible.
+
+    Both the discrete mask and continuous projection use this literal predicate
+    so their behavior cannot drift at floating-point price boundaries.
+    """
+
+    return tuple(
+        ell
+        for ell in range(-params.B_max, params.B_max + 1)
+        if abs(int(anchor_b_ticks) + ell) <= params.B_inf
+        and float(frozen_mid) + float(alpha) * (int(anchor_b_ticks) + ell) >= 0.0
+    )
 
 
 class ClobActionGrid:
@@ -217,13 +241,14 @@ class AuctionActionGrid:
         *,
         frozen_mid: float | None = None,
         alpha: float | None = None,
-        indicative_b_ticks: int = 0,
+        anchor_b_ticks: int = 0,
     ) -> np.ndarray:
         """Mask cancellation and resolved absolute-``b`` admissibility.
 
-        ``indicative_b_ticks`` is the frozen-mid coordinate of ``H_t^cl``;
-        execution resolves ``b=indicative_b_ticks+ell``. Supplying exactly one
-        of ``frozen_mid`` and ``alpha`` is an error.
+        ``anchor_b_ticks`` is the treatment-specific anchor in frozen-mid
+        coordinates: the current ``H_t^cl`` coordinate for H-on and zero for
+        H-off. Execution resolves ``b=anchor_b_ticks+ell``. Supplying exactly
+        one of ``frozen_mid`` and ``alpha`` is an error.
         """
         if cancel_admissible:
             mask = np.ones(len(self.actions), dtype=bool)
@@ -233,17 +258,18 @@ class AuctionActionGrid:
             raise ValueError("frozen_mid and alpha must be supplied together")
         if frozen_mid is not None:
             assert alpha is not None
+            admissible_ells = frozenset(
+                _admissible_auction_ells(
+                    self.params,
+                    frozen_mid=float(frozen_mid),
+                    alpha=float(alpha),
+                    anchor_b_ticks=int(anchor_b_ticks),
+                )
+            )
             offset_admissible = np.fromiter(
                 (
                     a.K_a == 0.0
-                    or (
-                        abs(int(indicative_b_ticks) + a.ell)
-                        <= self.params.B_inf
-                        and float(frozen_mid)
-                        + float(alpha)
-                        * (int(indicative_b_ticks) + a.ell)
-                        >= 0.0
-                    )
+                    or a.ell in admissible_ells
                     for a in self.actions
                 ),
                 dtype=bool,
@@ -332,7 +358,6 @@ class ContinuousActionAdapter:
         self._delta_max = int(ap.L_max)
         self._beta = float(ap.beta)
         self._K_index_max = int(ap.K_max)
-        self._absolute_offset_max = int(ap.B_inf)
         self._local_offset_max = int(ap.B_max)
         # The env always starts in the CLOB phase after reset(); _phase is not
         # set until then, so default to the CLOB box at construction.
@@ -435,6 +460,7 @@ class ContinuousActionAdapter:
             + int(v > 0 and not np.isclose(delta_raw, delta_rounded)),
             "inventory_projection": bool(v_rounded > inventory_cap),
             "ell_admissibility_projection": False,
+            "slope_admissibility_projection": False,
             "cancel_threshold_positive": False,
             "cancel_executed": False,
         }
@@ -442,7 +468,7 @@ class ContinuousActionAdapter:
 
     def _project_auction(
         self, action
-    ) -> tuple[AuctionAction, np.ndarray, dict[str, float | int | bool]]:
+    ) -> tuple[AuctionAction, np.ndarray, dict[str, float | int | bool | str]]:
         a = np.asarray(action, dtype=float).reshape(-1)
         expected = 2 if self.continuous_cancel == "never" else 3
         if a.size != expected:
@@ -461,25 +487,30 @@ class ContinuousActionAdapter:
                 self._local_offset_max,
             )
         )
+        k_before_admissibility = k
         ell_before_admissibility = ell
+        slope_admissibility_projection = False
         if k > 0:
             alpha = float(self.cfg.grid.alpha)
-            center_b = self.env._indicative_b_ticks()
-            minimum_b = math.ceil(-float(self.env.s_mid) / alpha)
-            lower = max(
-                -self._local_offset_max,
-                -self._absolute_offset_max - center_b,
-                minimum_b - center_b,
+            center_b = self.env._auction_anchor_b_ticks()
+            admissible_ells = _admissible_auction_ells(
+                self.cfg.actions,
+                frozen_mid=float(self.env.s_mid),
+                alpha=alpha,
+                anchor_b_ticks=center_b,
             )
-            upper = min(
-                self._local_offset_max,
-                self._absolute_offset_max - center_b,
-            )
-            if lower > upper:
-                raise ValueError(
-                    "no local auction ell resolves to an admissible absolute b"
-                )
-            ell = int(np.clip(ell, lower, upper))
+            if not admissible_ells:
+                # The manuscript admissible set is still nonempty: its
+                # canonical zero-slope action has ell=0 and no reference price.
+                # DQN masks every positive-slope lattice point in this state;
+                # continuous proposals must implement the same total action
+                # contract rather than aborting an otherwise valid episode.
+                k = 0
+                K = 0.0
+                ell = 0
+                slope_admissibility_projection = True
+            else:
+                ell = int(np.clip(ell, admissible_ells[0], admissible_ells[-1]))
         else:
             ell = 0
         if self.continuous_cancel == "never":
@@ -489,20 +520,26 @@ class ContinuousActionAdapter:
             cancel = int(raw[2] >= 0.0 and bool(self.env.cancel_admissible))
             committed = raw.astype(np.float32, copy=True)
         order = AuctionAction(K_a=K, ell=ell, cancel=cancel)
-        diagnostics: dict[str, float | int | bool] = {
+        diagnostics: dict[str, float | int | bool | str] = {
             "input_clipped": bool(np.any(a != raw)),
             "bound_saturation_count": int(np.count_nonzero(np.isclose(np.abs(raw), 1.0))),
             "rounded_coordinate_count": int(
                 not np.isclose(K_raw / self._beta, k_unclipped)
             )
-            + int(k > 0 and not np.isclose(ell_raw, ell_unclipped)),
+            + int(
+                k_before_admissibility > 0
+                and not np.isclose(ell_raw, ell_unclipped)
+            ),
             "inventory_projection": False,
             "ell_admissibility_projection": bool(
                 ell != ell_before_admissibility
             ),
+            "slope_admissibility_projection": slope_admissibility_projection,
             "cancel_threshold_positive": bool(
                 self.continuous_cancel == "threshold" and raw[2] >= 0.0
             ),
             "cancel_executed": bool(cancel),
+            "auction_anchor": self.env.auction_anchor,
+            "auction_anchor_b": self.env._auction_anchor_b_ticks(),
         }
         return order, committed, diagnostics

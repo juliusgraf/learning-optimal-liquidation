@@ -3,8 +3,8 @@
 Soft actor-critic (Haarnoja et al. 2018 conventions, automatic temperature):
 a tanh-Gaussian actor with reparameterized sampling, twin critics with a
 min-target plus the entropy bonus, and an auto-tuned temperature per phase
-(target entropy -2 in the CLOB and -3 in the auction). No target actor
-action). Full spec: docs/continuous_action_extension.md.
+(target entropy equal to minus the proposal dimension). No target actor is
+used. Full spec: docs/continuous_action_extension.md.
 """
 
 from __future__ import annotations
@@ -64,7 +64,7 @@ class SACAgent(ContinuousActorCriticAgent):
     def _post_setup(self, seeds: SeedBundle) -> None:
         if self.hp.target_entropy != "auto":
             raise ValueError(f"target_entropy must be 'auto', got {self.hp.target_entropy!r}")
-        self.target_entropy = {"clob": -2.0, "auction": -3.0}
+        self.target_entropy = {phase: -float(self._act_dim[phase]) for phase in self.PHASES}
         self.log_alpha = {
             p: torch.zeros(1, requires_grad=True, device=self.device) for p in self.PHASES
         }

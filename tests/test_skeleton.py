@@ -133,7 +133,6 @@ def test_config_binding_values_historical() -> None:
     assert hist.validation_date_range == ("2026-08-17", "2026-08-21")
     assert hist.test_date_range == ("2026-08-24", "2026-08-28")
     assert hist.symbols == ("MSFT", "JPM", "PG", "GOOGL", "CAT")
-    assert cfg.benchmark.as_sigma_rule == "pooled_paths"
     assert cfg.algo is None  # no algo overlay given
 
 
@@ -144,6 +143,20 @@ def test_config_round_trip(tmp_path: Path) -> None:
     cfg2 = load_config(out)
     assert to_dict(cfg2) == to_dict(cfg)
     assert cfg2 == cfg  # frozen dataclasses compare by value
+
+
+def test_legacy_as_sigma_keys_are_ignored_and_not_reserialized(tmp_path: Path) -> None:
+    cfg = _load_synthetic()
+    legacy = to_dict(cfg)
+    legacy["benchmark"]["as_sigma_rule"] = "pooled_paths"
+    legacy["benchmark"]["as_sigma_n_paths"] = 100
+    path = tmp_path / "legacy_sigma_config.yaml"
+    path.write_text(yaml.safe_dump(legacy, sort_keys=False))
+
+    migrated = load_config(path)
+    benchmark = to_dict(migrated)["benchmark"]
+    assert "as_sigma_rule" not in benchmark
+    assert "as_sigma_n_paths" not in benchmark
 
 
 def test_pre_v10_action_bound_names_migrate_without_ambiguity(tmp_path: Path) -> None:
@@ -180,6 +193,30 @@ def test_config_cli_override() -> None:
     assert d1 == d2
 
 
+def test_auction_anchor_is_explicit_and_coherent_with_h_treatment() -> None:
+    headline = _load_synthetic()
+    assert headline.actions.auction_anchor == "indicative"
+    assert to_dict(headline)["actions"]["auction_anchor"] == "indicative"
+
+    h_off = load_config(
+        CONFIGS / "base.yaml",
+        CONFIGS / "synthetic_rough_heston.yaml",
+        CONFIGS / "treatment" / "ablation_h_off_shaping_off.yaml",
+    )
+    assert not h_off.rl.h_cl_feature_enabled
+    assert h_off.actions.auction_anchor == "frozen_mid"
+
+    with pytest.raises(ConfigError, match="actions.auction_anchor must be"):
+        _load_synthetic(overrides=["actions.auction_anchor=frozen_mid"])
+    with pytest.raises(ConfigError, match="actions.auction_anchor must be"):
+        _load_synthetic(
+            overrides=[
+                "rl.h_cl_feature_enabled=false",
+                "actions.auction_anchor=indicative",
+            ]
+        )
+
+
 @pytest.mark.parametrize(
     "override",
     [
@@ -205,8 +242,8 @@ def test_config_rejects_incoherent_physical_clock() -> None:
 
 
 def test_config_rejects_old_or_future_artifact_schema_labels() -> None:
-    for schema in (9, 11):
-        with pytest.raises(ConfigError, match="active schema 10"):
+    for schema in (10, 12):
+        with pytest.raises(ConfigError, match="active schema 11"):
             _load_synthetic(
                 overrides=[f"experiment.artifact_schema_version={schema}"]
             )
@@ -236,7 +273,7 @@ def test_config_rejects_old_or_future_artifact_schema_labels() -> None:
         ("reward.k_star=0", "reward requires"),
         ("reward.lambda_inv=-1.0", "reward requires"),
         ("benchmark.as_gamma=0.1", "as_gamma=0"),
-        ("benchmark.as_sigma_rule=unknown", "as_sigma_rule"),
+        ("benchmark.as_n_samples=1", "as_n_samples"),
         ("midprice.rough_heston.H=0.5", "rough_heston.H"),
         ("midprice.rough_heston.rho_h=1.1", "rho_h"),
         ("midprice.rough_heston.v0=-0.1", "rough-Heston v0"),
@@ -356,6 +393,8 @@ def test_run_dir_and_metadata(tmp_path: Path) -> None:
     assert paths.config_resolved.is_file()
     assert paths.seed_txt.read_text().strip() == "42"
     assert paths.git_sha_txt.read_text().strip()
+    runtime = yaml.safe_load((paths.run_dir / "runtime_versions.json").read_text())
+    assert runtime["auction_anchor"] == cfg.actions.auction_anchor
     for d in (paths.checkpoints, paths.eval, paths.figures, paths.tables, paths.logs):
         assert d.is_dir()
     # The dumped config round-trips.

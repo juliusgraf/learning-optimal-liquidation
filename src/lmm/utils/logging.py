@@ -1,6 +1,6 @@
 """Run-directory creation and experiment metadata dumping (fully functional).
 
-Every current run writes ``results/revision_v10/<experiment_name>/<run_name>/`` containing
+Every current run writes ``results/revision_v11/<experiment_name>/<run_name>/`` containing
 ``config_resolved.yaml``, ``seed.txt``, ``git_sha.txt``, ``metrics.csv``,
 ``eval/``, ``checkpoints/``, ``logs/run.log``, ``figures/``, ``tables/``
 (engineering conventions, CLAUDE.md). Figures and tables are always
@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 import json
+import os
 import platform
 import subprocess
 import sys
@@ -107,7 +108,16 @@ def write_run_metadata(paths: RunPaths, cfg: ExperimentConfig, master_seed: int)
             json.dumps(data_manifest, indent=2, sort_keys=True) + "\n"
         )
     packages: dict[str, str] = {}
-    for package in ("numpy", "pandas", "torch", "gymnasium", "PyYAML", "certifi"):
+    for package in (
+        "numpy",
+        "pandas",
+        "torch",
+        "gymnasium",
+        "PyYAML",
+        "scipy",
+        "matplotlib",
+        "certifi",
+    ):
         try:
             packages[package] = metadata.version(package)
         except metadata.PackageNotFoundError:
@@ -124,13 +134,42 @@ def write_run_metadata(paths: RunPaths, cfg: ExperimentConfig, master_seed: int)
                 "tau_op": cfg.grid.tau_op,
                 "tau_cl": cfg.grid.tau_cl,
                 "ablation_label": cfg.experiment.ablation_label,
+                "auction_anchor": cfg.actions.auction_anchor,
                 "dqn_equal_q_tie_breaking": "first action in lexicographic grid order",
+                "torch_threads": _torch_thread_counts(),
+                "runtime_environment": {
+                    name: os.environ.get(name)
+                    for name in (
+                        "OMP_NUM_THREADS",
+                        "MKL_NUM_THREADS",
+                        "OPENBLAS_NUM_THREADS",
+                        "VECLIB_MAXIMUM_THREADS",
+                        "NUMEXPR_NUM_THREADS",
+                        "LMM_TORCH_INTRAOP_THREADS",
+                        "LMM_TORCH_INTEROP_THREADS",
+                        "MPLCONFIGDIR",
+                    )
+                },
             },
             indent=2,
             sort_keys=True,
         )
         + "\n"
     )
+
+
+def _torch_thread_counts() -> dict[str, int | str]:
+    """Record the effective Torch pools without making Torch a hard import here."""
+
+    try:
+        import torch
+
+        return {
+            "intra_op": int(torch.get_num_threads()),
+            "inter_op": int(torch.get_num_interop_threads()),
+        }
+    except (ImportError, RuntimeError) as exc:
+        return {"unavailable": type(exc).__name__}
 
 
 def get_run_logger(paths: RunPaths, name: str = "lmm") -> logging.Logger:

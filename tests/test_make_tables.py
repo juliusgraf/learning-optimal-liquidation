@@ -45,6 +45,10 @@ def test_tables_exist_and_csv_parses(fixture_run_dir, tmp_path):
     summary_tex = (tmp_path / "eval_summary_final.tex").read_text()
     assert "3 episodes" in summary_tex
     assert "100 episodes" not in summary_tex
+    assert "Mean Centered Economic Evaluation Return (Diagnostic)" in set(
+        summary["Metric"]
+    )
+    assert "Shaped Return" not in summary_tex
     params = pd.read_csv(tmp_path / "params_generative.csv")
     assert list(params.columns) == ["Symbol", "Value", "Comment"]
     assert len(params) == 36
@@ -117,11 +121,11 @@ def test_metadata_schema_mismatch_is_rejected_by_readers(fixture_run_dir, tmp_pa
     metadata["artifact_schema_version"] = 9
     metadata_path.write_text(yaml.safe_dump(metadata, sort_keys=False))
 
-    with pytest.raises(ValueError, match="active schema 10"):
+    with pytest.raises(ValueError, match="active schema 11"):
         make_tables.main(
             ["--run-dir", str(fixture_run_dir), "--out", str(tmp_path / "out")]
         )
-    with pytest.raises(SystemExit, match="active schema 10"):
+    with pytest.raises(SystemExit, match="active schema 11"):
         policy_differences.main(
             ["--run-dir", str(fixture_run_dir), "--benchmark", "as"]
         )

@@ -40,7 +40,7 @@ def test_shared_no_cancel_mode_changes_sac_action_dim_and_target_entropy():
     )
     agent = make_cont_agent(cfg, SACAgent)
     assert agent._act_dim["auction"] == 2
-    assert agent.target_entropy["auction"] == -3.0
+    assert agent.target_entropy["auction"] == -2.0
 
 
 def test_safe_auction_actor_still_projects_to_zero_with_wide_slope_band():

@@ -32,6 +32,7 @@ from typing import Optional, Sequence
 
 import numpy as np
 import pandas as pd
+import yaml
 
 from lmm.experiments import plotting as P
 from lmm.experiments import stats
@@ -90,6 +91,39 @@ def _common_eval_col(frames) -> tuple[str, str]:
         "metrics artifacts share none of the supported validation columns "
         f"{tuple(col for _, col in _EVAL_OUTCOME_COLUMNS)}"
     )
+
+
+def _reportable_best_episode(run: P.RunInfo) -> int | None:
+    """Return the episode that actually produced this run's ``best.pt``.
+
+    Runs without a ``best.pt`` simply have no checkpoint marker.  If the
+    checkpoint exists, fail closed unless its selection sidecar establishes
+    the configured metric, joint phase maturity, and economic reportability;
+    inferring the episode from a raw validation-series argmax can otherwise
+    mark an ineligible or non-reportable policy.
+    """
+
+    checkpoint = run.run_dir / "checkpoints" / "best.pt"
+    if not checkpoint.is_file():
+        return None
+    selection_path = run.run_dir / "checkpoints" / "best_selection.yaml"
+    if not selection_path.is_file():
+        raise ValueError(f"{checkpoint} has no best_selection.yaml provenance")
+    selection = yaml.safe_load(selection_path.read_text())
+    if not isinstance(selection, dict):
+        raise ValueError(f"{selection_path} must contain a mapping")
+    if selection.get("metric") != run.cfg.rl.checkpoint_metric:
+        raise ValueError(
+            f"{selection_path} metric disagrees with the resolved checkpoint metric"
+        )
+    if not bool(selection.get("eligibility", {}).get("eligible", False)):
+        raise ValueError(f"{selection_path} does not establish phase maturity")
+    if not bool(selection.get("economic_safety", {}).get("reportable", False)):
+        raise ValueError(f"{selection_path} does not establish reportability")
+    episode = selection.get("episode")
+    if isinstance(episode, bool) or not isinstance(episode, int) or episode < 0:
+        raise ValueError(f"{selection_path} has invalid episode {episode!r}")
+    return episode
 
 
 # ---------------------------------------------------------------------------
@@ -230,7 +264,9 @@ def fig_episode_anatomy(run_dir: Path, out: Path, *, policy: str = "dqn", episod
         ax.step(auc["t"], auc["n_buy_auc"], where="post", label=r"$N_t^{+}$", color=orange)
         ax.step(auc["t"], auc["n_sell_auc"], where="post", label=r"$N_t^{-}$", color=green)
     mark(ax)
-    ax.set(title="Auction arrivals", xlabel=time_label); ax.legend()
+    ax.set(title="Auction arrivals", xlabel=time_label)
+    if not auc.empty:
+        ax.legend()
 
     ax = axes[2, 0]
     ax.plot(tr["t"], tr["reward"], color=blue); mark(ax)
@@ -494,7 +530,7 @@ def fig_reward_decomposition(run_dirs, out: Path) -> None:
     aggregated across ALL runs of the setting (seeds, and tickers in the
     historical setting: the same 5x5 configurations as the convergence and
     policy-difference figures). Bars are the IQM across runs with a bootstrap 95% CI across
-    runs (the rliable convention, matching eval_summary/dqn_results_multiseed),
+    runs (the rliable convention, matching the multiseed result tables),
     so component bars roughly add up to the multiseed eval-table totals (exactly
     only up to IQM's non-additivity). Run-level aggregation also tames the
     heavy-tailed per-episode terminal reward. A companion CSV records the plotted
@@ -659,18 +695,18 @@ def fig_convergence_curves(run_dirs, out: Path) -> None:
     if len(runs) < 2:
         return
 
-    metrics_by_algo: dict[str, list] = {}
+    metrics_by_algo: dict[str, list[tuple[P.RunInfo, pd.DataFrame]]] = {}
     for r in runs:
         df = P.read_metrics(r.run_dir)
         supported = {col for _, col in _EVAL_OUTCOME_COLUMNS}
         if df is None or not (supported & set(df.columns)):
             continue
-        metrics_by_algo.setdefault(r.algo, []).append(df)
+        metrics_by_algo.setdefault(r.algo, []).append((r, df))
     algos = [a for a in P.ALGO_ORDER if a in metrics_by_algo]
     if not algos:
         return
     metric, eval_col = _common_eval_col(
-        df for algo_dfs in metrics_by_algo.values() for df in algo_dfs
+        df for algo_runs in metrics_by_algo.values() for _, df in algo_runs
     )
 
     def _aligned(dfs, col, *, window=1):
@@ -697,8 +733,10 @@ def fig_convergence_curves(run_dirs, out: Path) -> None:
 
     # -- panel 1: validation outcome (policy convergence) -------------------
     ax = axes[0]
+    has_best_marker = False
     for a in algos:
-        dfs = metrics_by_algo[a]
+        algo_runs = metrics_by_algo[a]
+        dfs = [df for _, df in algo_runs]
         eps, mat = _aligned(dfs, eval_col)
         if eps.size == 0:
             continue
@@ -710,13 +748,18 @@ def fig_convergence_curves(run_dirs, out: Path) -> None:
         c = P.POLICY_COLORS[a]
         ax.plot(eps, pts, color=c, marker="o", ms=3, label=P.POLICY_LABELS[a])
         ax.fill_between(eps, los, his, color=c, alpha=0.15, linewidth=0)
-        # best.pt = across-run median argmax episode, snapped to the eval grid
-        best = [int(df.loc[df[eval_col].idxmax(), "episode"])
-                for df in dfs if df[eval_col].notna().any()]
+        # Mark the across-run median episode recorded by each reportable
+        # best.pt selection sidecar, snapped to the available validation grid.
+        best = [
+            episode
+            for run, _ in algo_runs
+            if (episode := _reportable_best_episode(run)) is not None
+        ]
         if best:
             j = int(np.argmin(np.abs(eps - int(np.median(best)))))
             ax.scatter([eps[j]], [pts[j]], marker="*", s=160, color=c,
                        edgecolor="k", linewidth=0.5, zorder=6)
+            has_best_marker = True
     bench: dict[str, list] = {"as": [], "twap": []}
     for r in runs:
         if r.records is None:
@@ -735,9 +778,10 @@ def fig_convergence_curves(run_dirs, out: Path) -> None:
     ax.set(xlabel="Episode", ylabel=f"Validation {_outcome_label(metric)}",
            title="Policy convergence")
     handles, _ = ax.get_legend_handles_labels()
-    handles.append(mlines.Line2D([], [], marker="*", linestyle="none",
-                                 markerfacecolor="0.3", markeredgecolor="k",
-                                 markersize=10, label="best.pt"))
+    if has_best_marker:
+        handles.append(mlines.Line2D([], [], marker="*", linestyle="none",
+                                     markerfacecolor="0.3", markeredgecolor="k",
+                                     markersize=10, label="best.pt"))
     ax.legend(handles=handles, fontsize=6, ncol=2)
 
     # -- panels 2-3: stability diagnostics (dense, smoothed) ----------------
@@ -746,7 +790,9 @@ def fig_convergence_curves(run_dirs, out: Path) -> None:
         (axes[2], "td_abs_mean_auction", r"Mean $|$TD error$|$", "Bellman residual (auction phase)", False),
     ):
         for a in algos:
-            eps, mat = _aligned(metrics_by_algo[a], col, window=25)
+            eps, mat = _aligned(
+                [df for _, df in metrics_by_algo[a]], col, window=25
+            )
             if eps.size == 0:
                 continue
             line = np.full(len(eps), np.nan)

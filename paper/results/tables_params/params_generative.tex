@@ -19,7 +19,7 @@ $V_\text{max}$ & 30 & Strategic CLOB submitted-volume cap \\
 $L_\infty$ & 200 & Maximum LOB depth \\
 $L_\text{max}$ & 12 & Agent CLOB quote bound \\
 $B_\infty$ & 150 & Absolute auction price-deviation bound \\
-$B_\text{max}$ & 10 & Local indicative-offset bound \\
+$B_\text{max}$ & 10 & Local auction policy-coordinate half-width \\
 $D_\mu$ & 0.1 & Numerical lower slope bound \\
 $U_1$ & 0.1 & Exogenous supply slope lower bound \\
 $U_2$ & 2 & Exogenous supply slope upper bound \\
@@ -33,7 +33,7 @@ $k^*$ & 1000 & Tolerance \\
 $d$ & 0.1 & Cancellation cost per unit \\
 $\alpha$ & 0.01 & Tick size \\
 $\beta$ & 1 & Tick size of grid on $K^a$ \\
-$K_\text{max}$ & 32 & Upper bound on $K^a/\beta$\footnotemark \\
+$K_\text{max}$ & 32 & Full slope-index lattice bound (zero included) \\
 $H_0$ & 100 & Initial projected clearing signal \\
 $\eta_H$ & 0.95 & Update weight in Algorithm \ref{alg:hyp_clearing_price}\\
 \bottomrule
@@ -41,4 +41,3 @@ $\eta_H$ & 0.95 & Update weight in Algorithm \ref{alg:hyp_clearing_price}\\
 \caption{Generative stochastic market model parameters}
 \label{tab:params_generative}
 \end{table}
-\footnotetext{All four learners use the full slope lattice $K^a/\beta\in\llbracket 0,32\rrbracket$; zero slope is represented by the canonical no-order action.}

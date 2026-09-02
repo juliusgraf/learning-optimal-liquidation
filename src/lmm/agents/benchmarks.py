@@ -11,7 +11,7 @@ Conventions from the revised manuscript:
   H at auction open as the no-execution fallback;
 - the benchmark's external one-sided schedule retains
   ``K*(p-S_tilde)_+``, is capped by remaining inventory, and is not projected
-  onto the learned agent's indicative-centred policy-template grid;
+  onto the learned agent's treatment-anchored policy-template grid;
 - shaping is disabled for benchmarks, while genuine cancellation fees remain.
 
 Benchmarks run on the SAME env through the same episode loop as the DQN
@@ -140,29 +140,25 @@ class ASBenchmarkAgent(_LiquidationBenchmark):
     executions on refreshed exogenous books. Avellaneda--Stoikov call the
     order-size tail exponent ``alpha``; this repository calls it ``gamma_m``
     because ``grid.alpha`` is already the price tick. Thus ``grid.alpha`` is
-    not the multiplier in the calibration of k;
-    sigma = std(pooled log-returns, ddof=1)/sqrt(dt) over simulated mid
-    paths per ``as_sigma_rule`` (sigma only enters for gamma > 0; recorded
-    for completeness, as_gamma = 0 in all published runs).
+    not the multiplier in the calibration of k. The implemented benchmark is
+    risk-neutral (``as_gamma = 0``), so volatility drops out of the quote and
+    is deliberately neither estimated nor stored.
     """
 
     def __init__(self, cfg: ExperimentConfig) -> None:
         super().__init__(cfg)
         self.A: float | None = None
         self.k: float | None = None
-        self.sigma: float | None = None
         self.delta_ticks: np.ndarray | None = None  # (T_as+1, I_max+1)
 
     # -- calibration (AUDIT A.9; seeded streams per ruling D10) -------------------
 
     def calibrate(
         self,
-        env,
         *,
         rng_k: np.random.Generator,
-        rng_sigma: np.random.Generator,
     ) -> dict[str, float]:
-        """Estimate (A, k, sigma) and precompute the delta^{a,*} table."""
+        """Estimate ``(A, k)`` and precompute the risk-neutral quote table."""
         cfg = self.cfg
         p = cfg.clob_flow
         if cfg.benchmark.as_gamma != 0.0:
@@ -172,9 +168,8 @@ class ASBenchmarkAgent(_LiquidationBenchmark):
         tail_exponent = p.gamma_m
         self.A = p.lambda0 / tail_exponent
         self.k = tail_exponent * self._estimate_K_hat(rng_k)
-        self.sigma = self._estimate_sigma(env, rng_sigma)
         self.delta_ticks = self._build_delta_table()
-        return {"A": self.A, "k": self.k, "sigma": self.sigma}
+        return {"A": self.A, "k": self.k}
 
     def _estimate_K_hat(self, rng: np.random.Generator) -> float:
         """Least squares of ln Q on Delta p over simulated executions:
@@ -211,19 +206,6 @@ class ASBenchmarkAgent(_LiquidationBenchmark):
         x = np.asarray(ln_q)
         y = np.asarray(d_p)
         return float(np.dot(x, y) / np.dot(y, y))
-
-    def _estimate_sigma(self, env, rng: np.random.Generator) -> float:
-        """Pooled std of log-returns over simulated mid paths on the integer
-        CLOB grid 0..tau_op, ddof=1, scaled by 1/sqrt(dt). ``single_path``
-        uses one path; ``pooled_paths`` samples ``as_sigma_n_paths`` from the
-        training pool (or simulates that many synthetic paths)."""
-        g = self.cfg.grid
-        n_paths = 1 if self.params.as_sigma_rule == "single_path" else self.params.as_sigma_n_paths
-        pooled_returns = env._sample_calibration_log_returns(rng, n_paths)
-        # One integer interval is one configured physical clock unit (one
-        # minute in every active setting), so sigma is per sqrt(clock unit).
-        dt = g.physical_time_per_grid_unit
-        return float(np.std(pooled_returns, ddof=1) / math.sqrt(dt))
 
     def _build_delta_table(self) -> np.ndarray:
         """delta^{a,*}(t, q) in ticks via the stable cumulative-logsumexp of
@@ -285,13 +267,12 @@ class ASBenchmarkAgent(_LiquidationBenchmark):
     def save(self, path: str | Path) -> None:
         if self.delta_ticks is None:
             raise RuntimeError("nothing to save: calibrate() has not run")
-        np.savez(Path(path), A=self.A, k=self.k, sigma=self.sigma, delta_ticks=self.delta_ticks)
+        np.savez(Path(path), A=self.A, k=self.k, delta_ticks=self.delta_ticks)
 
     def load(self, path: str | Path) -> None:
         data = np.load(Path(path))
         self.A = float(data["A"])
         self.k = float(data["k"])
-        self.sigma = float(data["sigma"])
         self.delta_ticks = data["delta_ticks"]
 
 

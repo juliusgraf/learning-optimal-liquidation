@@ -3,6 +3,7 @@ experiment:
   ablation_label: H_off__shaping_off__auction_on
 rl:
   h_cl_feature_enabled: false
+actions:
+  auction_anchor: frozen_mid
 reward:
   shaping_enabled: false
-

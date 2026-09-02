@@ -116,9 +116,11 @@ these proposals to the same market action semantics used by DQN:
 - auction slope/local `ell` are half-up rounded, the nonnegative-reference condition
   is enforced, and the cancellation threshold is applied only when admissible.
 
-Consequently all four learned methods use the same 21 local indicative-centred
-integer templates, while every executed order still carries an absolute
-frozen-mid `b`. DQN and the projected continuous actors share all 33 integer
+Consequently all four learned methods use the same 21 local integer templates.
+They are indicative-centred when `actions.auction_anchor=indicative` (the H-on
+arms) and frozen-auction-open-mid-centred when it is `frozen_mid` (the H-off
+arms), while every executed order still carries an absolute frozen-mid `b`.
+DQN and the projected continuous actors share all 33 integer
 slope levels `0,...,32`; they differ in raw proposal parameterization, not
 executable slope support. A continuous proposal is clipped to the nearest ambient boundary;
 a discrete proposal outside that boundary is masked.
@@ -150,6 +152,13 @@ there. For the auction head, all output weights start at zero, the canonical
 no-order bias starts at zero, and every other action bias starts at `-0.02` in
 replay-scaled reward units; this is an initialization prior, not an
 admissibility or safety constraint.
+For exact reproduction, DDPG, TD3, and SAC likewise initialize their auction
+actors at the projected no-order action `(K,ell,c)=(0,0,0)`: the auction output
+weights are zero and the output biases are the inverse-`tanh` coordinates that
+project to that action. SAC applies the same rule to its mean head and starts
+its auction log-standard-deviation bias at `-2.5`. These are initialization
+priors only; the full admissible action set remains available from episode
+zero.
 DDPG uses one critic, TD3 two critics and delayed actor updates, and SAC twin
 critics plus entropy regularization. Their algorithm-specific hyperparameters
 are resolved from `configs/algo/*.yaml`; the environment/reward/normalization
@@ -209,9 +218,12 @@ shaping or clawback.
 
 ## Validation, testing, and comparison
 
-The normalizer and benchmark calibration use training-only streams. Periodic
-validation replays the policy under the economic-only reward on a fixed
-validation seed set. A candidate becomes reportable only after the CLOB and
+The normalizer uses training-only episodes. The risk-neutral AS benchmark
+derives `A=lambda0/gamma_m` from the configured flow and uses a separately
+seeded order-book impact regression for `k`; no volatility parameter is
+calibrated because `gamma=0`. Periodic validation replays the policy under the
+economic-only reward on a fixed validation seed set. A candidate becomes
+reportable only after the CLOB and
 auction learners reach `5,000` and `2,000` optimizer updates, respectively.
 The headline DQN exposes the complete admissible auction grid from episode
 zero and uses the same masked epsilon-greedy probability in both phases; there
@@ -244,12 +256,21 @@ basis-point forms.
 
 The matched treatment set is:
 
-1. `H_cl` absent, shaping absent;
-2. `H_cl` present, shaping absent;
-3. `H_cl` absent, shaping present;
-4. `H_cl` present, shaping present;
+1. observed `H_cl` feature and H-centred action anchor absent, shaping absent;
+2. observed `H_cl` feature and H-centred action anchor present, shaping absent;
+3. observed `H_cl` feature and H-centred action anchor absent, shaping present
+   (so the H-derived reward channel intentionally remains);
+4. observed `H_cl` feature and H-centred action anchor present, shaping present
+   (the canonical synthetic headline runs are
+   reused for this cell rather than retrained under an ablation alias);
 5. no auction, with both the `H_cl` feature and all auction-derived shaping
    disabled;
 6. no strategic cancellation.
 
-The primary information comparison uses the two shaping-off arms.
+The primary information comparison uses the two shaping-off arms. The paired
+cross-treatment report additionally gives the H/anchor bundle effect at both
+shaping levels, the shaping effect at both H/anchor levels, the full
+auction-aware treatment versus the bundled no-auction comparator, and
+cancellation on minus off. It pairs runs within algorithm and master seed and
+requires exact evaluation-episode/environment-seed alignment before forming
+seed-level differences.

@@ -62,6 +62,9 @@ TRACE_COLUMNS = [
     "act_Ka",
     "act_ell",
     "act_b",
+    "auction_anchor",
+    "auction_anchor_b",
+    "auction_anchor_price",
     "act_cancel",
     "degenerate_fallback",
     # -- terminal row only --
@@ -156,6 +159,9 @@ class EpisodeTraceRecorder:
                 act_Ka=a.K_a,
                 act_ell=a.ell if hasattr(a, "ell") else "",
                 act_b=int(info["executed_b"]),
+                auction_anchor=info["auction_anchor"],
+                auction_anchor_b=int(info["auction_anchor_b"]),
+                auction_anchor_price=info["auction_anchor_price"],
                 act_cancel=a.cancel,
                 degenerate_fallback=int(info["degenerate_fallback"]),
             )

@@ -626,6 +626,7 @@ def test_no_auction_comparator_terminates_at_open_with_exogenous_mid_mark():
         "experiment.auction_enabled=false",
         "reward.shaping_enabled=false",
         "rl.h_cl_feature_enabled=false",
+        "actions.auction_anchor=frozen_mid",
     )
     env = new_env(cfg)
     agent = TWAPBenchmarkAgent(cfg)

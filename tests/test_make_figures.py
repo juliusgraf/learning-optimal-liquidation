@@ -49,10 +49,14 @@ def test_algorithm_comparison_multi_run(fixture_run_dir, fixture_run_dir_ddpg, t
     _assert_pdf_png(tmp_path, "algorithm_comparison")
 
 
-def test_convergence_curves_multiseed(fixture_run_dir, tmp_path):
+def test_convergence_curves_multiseed(fixture_run_dir, tmp_path, monkeypatch):
     # Two complete run dirs of the same setting with distinct seeds exercise the
-    # multi-seed convergence figure (aggregated IQM/CI over runs).
+    # multi-seed convergence figure (aggregated IQM/CI over runs).  The raw
+    # validation argmax is episode 1, whereas the reportable best-selection
+    # provenance says episode 3; the plotted star must follow the latter.
     import shutil
+
+    from matplotlib.axes import Axes
 
     run_dirs = []
     for seed in ("42", "99"):
@@ -73,10 +77,37 @@ def test_convergence_curves_multiseed(fixture_run_dir, tmp_path):
         metadata = yaml.safe_load(metadata_path.read_text())
         metadata["master_seed"] = int(seed)
         metadata_path.write_text(yaml.safe_dump(metadata, sort_keys=False))
+        checkpoints = rd / "checkpoints"
+        checkpoints.mkdir()
+        (checkpoints / "best.pt").touch()
+        (checkpoints / "best_selection.yaml").write_text(
+            yaml.safe_dump(
+                {
+                    "metric": cfg.rl.checkpoint_metric,
+                    "episode": 3,
+                    "eligibility": {"eligible": True},
+                    "economic_safety": {"reportable": True},
+                },
+                sort_keys=False,
+            )
+        )
         run_dirs.append(str(rd))
+
+    metrics = make_figures.P.read_metrics(run_dirs[0])
+    assert metrics.loc[metrics["eval_risk_adjusted_pnl_mean"].idxmax(), "episode"] == 1
+    star_x: list[int] = []
+    original_scatter = Axes.scatter
+
+    def record_checkpoint_star(self, x, y, *args, **kwargs):
+        if kwargs.get("marker") == "*":
+            star_x.extend(int(value) for value in x)
+        return original_scatter(self, x, y, *args, **kwargs)
+
+    monkeypatch.setattr(Axes, "scatter", record_checkpoint_star)
     out = tmp_path / "out"
     rc = make_figures.main(["--multiseed", "--run-dir", *run_dirs, "--out", str(out)])
     assert rc == 0
+    assert star_x == [3]
     _assert_pdf_png(out, "convergence_curves")
     # Cross-seed DQN fixed-policy difference curve.
     _assert_pdf_png(out, "policy_difference_multiseed")

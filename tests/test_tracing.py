@@ -48,6 +48,9 @@ def test_trace_schema_and_terminal_row(tmp_path):
     last = rec.rows[-1]
     assert last["phase"] == "auction" and last["is_terminal"] == 1
     assert last["S_cl"] != "" and last["terminal_reward"] != ""
+    assert last["auction_anchor"] == cfg.actions.auction_anchor
+    assert isinstance(last["auction_anchor_b"], int)
+    assert last["auction_anchor_price"] != ""
 
     out = tmp_path / "trace.csv"
     rec.write(out)

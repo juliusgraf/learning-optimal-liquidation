@@ -38,6 +38,7 @@ def _upgrade_artifact_fixture(source: Path, target: Path, algo: str) -> Path:
         master_seed=cfg.experiment.master_seed,
         environment_contract=ENVIRONMENT_CONTRACT,
         artifact_schema_version=cfg.experiment.artifact_schema_version,
+        auction_anchor=cfg.actions.auction_anchor,
         checkpoint_selection={"metric": "risk_adjusted_pnl"},
     )
 
@@ -72,7 +73,7 @@ def _upgrade_artifact_fixture(source: Path, target: Path, algo: str) -> Path:
     metadata_path.write_text(yaml.safe_dump(metadata, sort_keys=False))
     records.to_csv(records_path, index=False)
 
-    # Test-only migration of deliberately stale pre-v10 trace fixtures. The
+    # Test-only migration of deliberately stale pre-v11 trace fixtures. The
     # production reader remains fail-closed and requires explicit act_ell/b.
     traces_dir = target / "eval" / "traces"
     if traces_dir.exists():
@@ -84,12 +85,15 @@ def _upgrade_artifact_fixture(source: Path, target: Path, algo: str) -> Path:
             policy = trace_path.stem.split("_ep", 1)[0]
             if policy in (algo, "initial"):
                 auction = trace["phase"].eq("auction")
-                center_b = np.floor(
-                    (trace.loc[auction, "h_cl"].astype(float)
-                     - trace.loc[auction, "s_mid"].astype(float))
-                    / float(cfg.grid.alpha)
-                    + 0.5
-                ).astype(int)
+                if cfg.actions.auction_anchor == "indicative":
+                    center_b = np.floor(
+                        (trace.loc[auction, "h_cl"].astype(float)
+                         - trace.loc[auction, "s_mid"].astype(float))
+                        / float(cfg.grid.alpha)
+                        + 0.5
+                    ).astype(int)
+                else:
+                    center_b = pd.Series(0, index=trace.index[auction], dtype=int)
                 slope_index = np.floor(
                     trace.loc[auction, "act_Ka"].astype(float)
                     / float(cfg.actions.beta)

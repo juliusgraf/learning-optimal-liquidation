@@ -171,6 +171,110 @@ def test_continuous_local_ell_resolves_to_absolute_b_inside_environment():
     assert info["executed_b"] == 42
 
 
+def test_continuous_h_off_projection_uses_frozen_mid_anchor():
+    cfg = load_synthetic_cfg(
+        "rl.h_cl_feature_enabled=false",
+        "actions.auction_anchor=frozen_mid",
+        "auction_flow.B_inf=10",
+        "actions.B_inf=10",
+        "actions.B_max=10",
+    )
+    env = ContinuousActionAdapter(new_env(cfg))
+    drive_to_auction(env)
+    env.env._h_cache = env.s_mid + 28 * cfg.grid.alpha
+
+    # Under indicative centering this proposal would lie beyond B_inf. H-off
+    # retains ell=10 because its anchor is the frozen-mid coordinate b=0.
+    order, _, diagnostics = env._project_auction(
+        np.array([0.0, 1.0, -1.0])
+    )
+    assert order.ell == 10
+    assert not diagnostics["ell_admissibility_projection"]
+    assert diagnostics["auction_anchor"] == "frozen_mid"
+    assert diagnostics["auction_anchor_b"] == 0
+
+    _, _, _, _, info = env.step(np.array([0.0, 1.0, -1.0]))
+    assert info["executed_b"] == 10
+    assert info["auction_anchor"] == "frozen_mid"
+    assert info["auction_anchor_b"] == 0
+
+
+def test_projection_uses_zero_slope_when_anchor_has_no_local_admissible_price():
+    cfg = load_synthetic_cfg(
+        "auction_flow.B_inf=10",
+        "actions.B_inf=10",
+        "actions.B_max=10",
+    )
+    env = ContinuousActionAdapter(new_env(cfg))
+    drive_to_auction(env)
+    env.env._h_cache = env.s_mid + 25 * cfg.grid.alpha
+
+    order, committed, diagnostics = env._project_auction(
+        np.array([0.0, 0.0, -1.0])
+    )
+    assert order == AuctionAction(0.0, 0, 0)
+    np.testing.assert_allclose(committed, [0.0, 0.0, -1.0])
+    assert diagnostics["slope_admissibility_projection"]
+    positive_slope = np.array(
+        [a.K_a > 0.0 for a in env.env.auction_grid.actions], dtype=bool
+    )
+    assert not env.action_mask()[positive_slope].any()
+    projected_index = env.env.auction_grid.actions.index(order)
+    assert env.action_mask()[projected_index]
+
+    # Cancellation remains an independent admissible coordinate. Create a live
+    # schedule under an ordinary anchor, then move the anchor outside the band.
+    env.env._h_cache = env.s_mid
+    env.step(np.array([0.0, 0.0, -1.0]))
+    assert env.env.cancel_admissible
+    env.env._h_cache = env.s_mid - 25 * cfg.grid.alpha
+    cancel_only, _, cancel_diagnostics = env._project_auction(
+        np.array([0.0, 0.0, 1.0])
+    )
+    assert cancel_only == AuctionAction(0.0, 0, 1)
+    assert cancel_diagnostics["slope_admissibility_projection"]
+
+
+@pytest.mark.parametrize("anchor_sign", [-1, 1])
+def test_projection_retains_the_single_boundary_quote(anchor_sign):
+    cfg = load_synthetic_cfg(
+        "auction_flow.B_inf=10",
+        "actions.B_inf=10",
+        "actions.B_max=10",
+    )
+    env = ContinuousActionAdapter(new_env(cfg))
+    drive_to_auction(env)
+    # At |anchor|=B_inf+B_max, exactly one local offset remains admissible.
+    env.env._h_cache = env.s_mid + anchor_sign * 20 * cfg.grid.alpha
+    order, _, diagnostics = env._project_auction(
+        np.array([0.0, float(anchor_sign), -1.0])
+    )
+    assert order.K_a > 0.0
+    assert order.ell == -anchor_sign * cfg.actions.B_max
+    assert not diagnostics["slope_admissibility_projection"]
+    assert diagnostics["ell_admissibility_projection"]
+    projected_index = env.env.auction_grid.actions.index(order)
+    assert env.action_mask()[projected_index]
+
+
+def test_no_cancel_projection_falls_back_to_no_order_at_extreme_anchor():
+    cfg = load_synthetic_cfg(
+        "auction_flow.B_inf=10",
+        "actions.B_inf=10",
+        "actions.B_max=10",
+        "actions.auction_cancel_mode=never",
+    )
+    env = ContinuousActionAdapter(new_env(cfg))
+    drive_to_auction(env)
+    assert env.action_space.shape == (2,)
+    env.env._h_cache = env.s_mid - 21 * cfg.grid.alpha
+    order, committed, diagnostics = env._project_auction(np.array([0.0, 0.0]))
+    assert order == AuctionAction(0.0, 0, 0)
+    np.testing.assert_allclose(committed, [0.0, 0.0])
+    assert diagnostics["slope_admissibility_projection"]
+    assert env.action_mask()[env.env.auction_grid.actions.index(order)]
+
+
 def test_discrete_and_continuous_agents_share_full_slope_and_local_offset_grids(cfg):
     raw = new_env(cfg)
     dqn_offsets = sorted(
@@ -217,6 +321,7 @@ def test_no_auction_treatment_can_terminate_from_clob_phase():
     cfg = load_synthetic_cfg(
         "experiment.auction_enabled=false",
         "rl.h_cl_feature_enabled=false",
+        "actions.auction_anchor=frozen_mid",
         "reward.shaping_enabled=false",
     )
     env = ContinuousActionAdapter(new_env(cfg))

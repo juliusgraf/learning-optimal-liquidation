@@ -1,7 +1,8 @@
 # Publication-candidate historical setting.  The source artifact contains raw
 # SIP bid/ask midpoints in provider price units; the environment then rebases
 # each selected session to S0=100 as an explicit modeling-coordinate transform.
-# Generate and validate the artifact before any training run (data/README.md).
+# The frozen artifact and sidecar are tracked and validated automatically;
+# provider-side regeneration is optional provenance work (data/README.md).
 
 experiment:
   name: historical_sp500_midquotes

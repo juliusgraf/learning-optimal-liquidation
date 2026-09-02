@@ -20,6 +20,9 @@ def _child_calls(tmp_path: Path, script: str, *args: str) -> list[str]:
         'printf \'%s\\n\' "$*" >> "$PIPELINE_CALL_LOG"\n'
     )
     fake_bash.chmod(0o755)
+    fake_git = fake_bin / "git"
+    fake_git.write_text("#!/bin/sh\nexit 0\n")
+    fake_git.chmod(0o755)
     env = os.environ.copy()
     env["PATH"] = f"{fake_bin}:{env['PATH']}"
     env["PIPELINE_CALL_LOG"] = str(call_log)
@@ -62,10 +65,10 @@ def test_multiseed_output_request_requires_two_distinct_seeds():
 
 def test_run_multiseed_requires_complete_publication_matrix(tmp_path):
     calls = _child_calls(
-        tmp_path, "run_multiseed.sh", "--seeds", "42 7", "--smoke"
+        tmp_path, "run_multiseed.sh", "--seeds", "9001 9002", "--smoke"
     )
     assert calls[-1].endswith(
-        "make_multiseed_outputs.sh --seeds 42 7 --require-complete"
+        "make_multiseed_outputs.sh --seeds 9001 9002 --require-complete"
     )
 
 
@@ -73,13 +76,139 @@ def test_run_multiseed_forwards_symbol_to_aggregate_validation(tmp_path):
     calls = _child_calls(
         tmp_path,
         "run_multiseed.sh",
-        "--seeds=42 7",
+        "--seeds=9001 9002",
         "--symbol",
         "MSFT",
+        "--smoke",
     )
     assert calls[-1].endswith(
-        "make_multiseed_outputs.sh --seeds 42 7 --require-complete --symbol MSFT"
+        "make_multiseed_outputs.sh --seeds 9001 9002 --require-complete --symbol MSFT"
     )
+
+
+def test_run_multiseed_default_is_full_five_seed_treatment_publication(tmp_path):
+    calls = _child_calls(tmp_path, "run_multiseed.sh")
+    reproduce = [call for call in calls if "reproduce_all.sh" in call]
+    treatments = [call for call in calls if "run_synthetic_treatments.sh" in call]
+    assert len(reproduce) == len(treatments) == 5
+    assert all("--skip-output-generation" in call for call in reproduce)
+    assert not any("ablation_h_on_shaping_on" in call for call in treatments)
+    assert calls[-1].endswith(
+        "make_multiseed_outputs.sh --seeds 42 7 99 123 2024 "
+        "--require-complete --publication"
+    )
+
+
+def test_run_multiseed_parallel_workers_leave_shared_outputs_serial(tmp_path):
+    calls = _child_calls(
+        tmp_path,
+        "run_multiseed.sh",
+        "--seeds",
+        "9001 9002",
+        "--jobs=2",
+        "--threads-per-job=1",
+        "--smoke",
+    )
+    shared = [call for call in calls if "make_all_outputs.sh" in call]
+    assert len(shared) == 1
+    assert calls.index(shared[0]) > max(
+        i
+        for i, call in enumerate(calls)
+        if "reproduce_all.sh" in call or "run_synthetic_treatments.sh" in call
+    )
+
+
+def test_multiseed_smoke_defaults_to_disjoint_nonpublication_seeds(tmp_path):
+    calls = _child_calls(tmp_path, "run_multiseed.sh", "--smoke")
+    assert calls[-1].endswith(
+        "make_multiseed_outputs.sh --seeds 9001 9002 --require-complete"
+    )
+
+
+def test_multiseed_smoke_rejects_canonical_seed_names():
+    result = subprocess.run(
+        [
+            "/bin/bash",
+            "scripts/run_multiseed.sh",
+            "--smoke",
+            "--seeds",
+            "42 7",
+        ],
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 2
+    assert "smoke runs must use noncanonical seeds" in result.stderr
+
+
+def test_reproduce_all_can_defer_shared_output_generation(tmp_path):
+    calls = _reproduce_child_calls(tmp_path, "--seed", "42", "--skip-output-generation")
+    assert len(calls) == 8
+    assert not any("make_all_outputs.sh" in call for call in calls)
+
+
+def test_treatment_launcher_reuses_headline_instead_of_retraining_alias():
+    script = (REPO / "scripts" / "run_synthetic_treatments.sh").read_text()
+    arms = script.split("ARMS=(", 1)[1].split(")", 1)[0]
+    assert "ablation_h_on_shaping_on" not in arms
+    assert "canonical synthetic headline" in script
+    assert not (REPO / "configs/treatment/ablation_h_on_shaping_on.yaml").exists()
+
+
+def test_full_publication_rejects_noncanonical_seed_subset():
+    result = subprocess.run(
+        [
+            "/bin/bash",
+            "scripts/run_multiseed.sh",
+            "--seeds",
+            "42 7",
+        ],
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 2
+    assert "exactly the canonical seeds" in result.stderr
+
+
+def test_publication_aggregation_rejects_symbol_scoping():
+    result = subprocess.run(
+        [
+            "/bin/bash",
+            "scripts/make_multiseed_outputs.sh",
+            "--publication",
+            "--symbol",
+            "MSFT",
+        ],
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 2
+    assert "complete five-ticker" in result.stderr
+
+
+def test_full_publication_launcher_rejects_dirty_worktree(tmp_path):
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    fake_git = fake_bin / "git"
+    fake_git.write_text(
+        "#!/bin/sh\n"
+        "if [ \"$1\" = status ]; then echo ' M uncommitted.py'; else echo deadbeef; fi\n"
+    )
+    fake_git.chmod(0o755)
+    env = os.environ.copy()
+    env["PATH"] = f"{fake_bin}:{env['PATH']}"
+    result = subprocess.run(
+        ["/bin/bash", "scripts/run_multiseed.sh"],
+        cwd=REPO,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 2
+    assert "clean git worktree" in result.stderr
 
 
 def test_make_all_outputs_always_rebuilds_paired_differences():
@@ -95,3 +224,16 @@ def test_make_all_outputs_complete_mode_requires_both_publication_settings():
     assert "complete_settings=\"\"" in script
     assert "for required_setting in synthetic_rough_heston historical_sp500_midquotes" in script
     assert "missing complete publication setting" in script
+
+
+def test_per_run_pipeline_writes_manifest_after_both_difference_artifacts():
+    script = (REPO / "scripts" / "_common.sh").read_text()
+    as_difference = script.index(
+        "policy_differences --run-dir \"$run_dir\" --benchmark as"
+    )
+    twap_difference = script.index(
+        "policy_differences --run-dir \"$run_dir\" --benchmark twap"
+    )
+    manifest = script.index("--write-completion-manifest \"$run_dir\"")
+    assert as_difference < twap_difference < manifest
+    assert "pipeline_complete.txt" not in script

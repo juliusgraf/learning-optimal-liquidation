@@ -20,7 +20,6 @@ from lmm.rl.loops import run_episode
 
 SMALL_OVERRIDES = (
     "benchmark.as_n_samples=500",
-    "benchmark.as_sigma_n_paths=3",
 )
 
 
@@ -33,9 +32,7 @@ def make_as_agent(cfg, env):
     agent = ASBenchmarkAgent(cfg)
     agent.bind(env)
     agent.calibrate(
-        env,
         rng_k=np.random.default_rng(1),
-        rng_sigma=np.random.default_rng(2),
     )
     return agent
 
@@ -67,20 +64,34 @@ def test_as_delta_table_matches_closed_form(cfg):
 
 
 def test_as_k_uses_order_size_tail_exponent_not_price_tick(cfg, monkeypatch):
-    env = new_env(cfg)
     agent = ASBenchmarkAgent(cfg)
     monkeypatch.setattr(agent, "_estimate_K_hat", lambda rng: 3.0)
-    monkeypatch.setattr(agent, "_estimate_sigma", lambda env, rng: 0.2)
     calibration = agent.calibrate(
-        env,
         rng_k=np.random.default_rng(1),
-        rng_sigma=np.random.default_rng(2),
     )
+    assert set(calibration) == {"A", "k"}
+    assert not hasattr(agent, "sigma")
     assert calibration["A"] == pytest.approx(
         cfg.clob_flow.lambda0 / cfg.clob_flow.gamma_m
     )
     assert calibration["k"] == pytest.approx(cfg.clob_flow.gamma_m * 3.0)
     assert calibration["k"] != pytest.approx(cfg.grid.alpha * 3.0)
+
+
+def test_as_persistence_contains_only_policy_relevant_calibration(cfg, tmp_path):
+    env = new_env(cfg)
+    agent = make_as_agent(cfg, env)
+    path = tmp_path / "as_calibration.npz"
+    agent.save(path)
+
+    with np.load(path) as saved:
+        assert set(saved.files) == {"A", "k", "delta_ticks"}
+
+    restored = ASBenchmarkAgent(cfg)
+    restored.load(path)
+    assert restored.A == pytest.approx(agent.A)
+    assert restored.k == pytest.approx(agent.k)
+    np.testing.assert_array_equal(restored.delta_ticks, agent.delta_ticks)
 
 
 def test_benchmark_without_clob_fills_uses_H_fallback_and_submits_once(cfg):
@@ -159,7 +170,6 @@ def _train(tmp_path, run_name: str) -> str:
         "-o", "algo.hyperparams.min_buffer_auction=90",
         "-o", "algo.hyperparams.batch_size=32",
         "-o", "benchmark.as_n_samples=500",
-        "-o", "benchmark.as_sigma_n_paths=3",
     ]
     assert train_mod.main(argv) == 0
     return str(tmp_path / "synthetic_rough_heston" / run_name)
@@ -219,7 +229,15 @@ def test_short_end_to_end_pipeline_uses_revised_artifacts(tmp_path):
 
     metadata = yaml.safe_load(open(f"{run}/eval/metadata.yaml"))
     assert metadata["environment_contract"] == ENVIRONMENT_CONTRACT
-    assert metadata["normalization_and_benchmark_calibration_split"] == "train"
+    assert metadata["normalization_fit_split"] == "train"
+    assert metadata["as_impact_calibration_source"] == (
+        "seeded configured CLOB-flow simulation"
+    )
+    assert set(metadata["as_calibration"]) == {"A", "k"}
+    assert metadata["as_specification"] == {
+        "risk_aversion_gamma": 0.0,
+        "volatility_calibrated": False,
+    }
     assert metadata["checkpoint_selection_split"] == "validation"
     assert metadata["policy_evaluation_split"] == "test"
     selection = metadata["checkpoint_selection"]

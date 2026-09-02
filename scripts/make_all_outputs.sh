@@ -10,17 +10,22 @@
 # violation (tables.py: "env seeds differ between policies"). results/ often
 # accumulates runs from several seeds (e.g. dqn_seed42, dqn_seed97, sweeps,
 # acceptance runs); mixing them is exactly what breaks the combined tables.
-# Therefore the COMBINED step is scoped to a single master seed (read from each
-# run's seed.txt). Per-run outputs are still produced for every finished run.
+# Therefore the combined step is scoped to a single master seed (read from each
+# run's seed.txt). When ``--seed`` is explicit, per-run outputs are scoped to
+# that seed too; multiseed publication summaries do not need hundreds of
+# duplicate per-run plots.
 #
 # Usage: scripts/make_all_outputs.sh [--seed N] [--require-complete]
-#   --seed N : master seed for the combined groups. Default: 42 if present,
-#              else the only seed present, else the smallest (with a warning).
+#   --seed N : master seed for per-run and combined outputs. By default,
+#              per-run outputs cover every finished run; combined groups use
+#              42 if present, else the only seed present, else the smallest.
 #   --require-complete : require all four algorithms (and all five historical
 #              tickers) at the selected seed before writing combined outputs.
 set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
+export MPLCONFIGDIR="${MPLCONFIGDIR:-$REPO_ROOT/.cache/matplotlib}"
+mkdir -p "$MPLCONFIGDIR"
 
 COMBINED_SEED=""
 COMBINED_SEED_EXPLICIT=0
@@ -34,7 +39,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-RESULTS_ROOT="results/revision_v10"
+RESULTS_ROOT="${LMM_RESULTS_ROOT:-results/revision_v11}"
 if [[ ! -d "$RESULTS_ROOT" ]]; then
   echo "no $RESULTS_ROOT directory; run a run_*.sh script first" >&2
   exit 1
@@ -53,9 +58,20 @@ if [[ ${#finished[@]} -eq 0 ]]; then
   echo "no successful runs found (need a mature, reportable checkpoints/best.pt)" >&2
   exit 1
 fi
+if [[ "$COMBINED_SEED_EXPLICIT" -eq 1 ]]; then
+  selected=()
+  for rd in "${finished[@]}"; do
+    [[ "$(run_seed "$rd")" == "$COMBINED_SEED" ]] && selected+=("$rd")
+  done
+  finished=("${selected[@]}")
+  if [[ ${#finished[@]} -eq 0 ]]; then
+    echo "no successful runs found for explicit seed=$COMBINED_SEED" >&2
+    exit 1
+  fi
+fi
 printf '  %s\n' "${finished[@]}"
 
-# -- per-run outputs (every finished run; no cross-run mixing here) -----------
+# -- per-run outputs (selected finished runs; no cross-run mixing here) -------
 for rd in "${finished[@]}"; do
   echo "== per-run outputs: $rd =="
   if [[ ! -f "$rd/eval/records.csv" ]]; then

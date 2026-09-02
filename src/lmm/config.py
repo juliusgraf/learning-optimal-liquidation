@@ -1,9 +1,10 @@
 """Configuration dataclasses and YAML loader (Phase 2, fully functional).
 
-Every experiment parameter lives in ``configs/*.yaml`` (ruling D6: values are
-sourced from the legacy instantiation sites, see ``audit/PARAMS_FROM_CODE.md``).
-Nothing in ``src/`` hard-codes an experiment parameter; library code receives
-the dataclasses defined here.
+Every active experiment parameter lives in ``configs/*.yaml``.  The legacy
+instantiation audit in ``audit/PARAMS_FROM_CODE.md`` is provenance only; revised
+and author-resolved calibrations in the active config supersede it.  Nothing in
+``src/`` hard-codes an experiment parameter; library code receives the
+dataclasses defined here.
 
 Loading model: ``load_config(base, *overlays, overrides=...)`` deep-merges the
 YAML mappings left to right (later files win), then applies dotted CLI
@@ -53,7 +54,7 @@ __all__ = [
 ]
 
 
-ACTIVE_ARTIFACT_SCHEMA_VERSION = 10
+ACTIVE_ARTIFACT_SCHEMA_VERSION = 11
 
 
 class ConfigError(ValueError):
@@ -314,8 +315,9 @@ class RLParams:
     validation_frequency_episodes: int = 100
     validation_patience_evals: int = 5
     # A validation candidate is reportable only after both phase learners have
-    # performed this many economically relevant optimizer steps.  For DQN,
-    # auction updates made while behavior is locked to no-order do not count.
+    # performed this many economically relevant optimizer steps.  The active
+    # DQN has no behavior lock; the complete auction action set is available
+    # from episode zero, so every eligible auction update counts.
     checkpoint_min_clob_updates: int = 0
     checkpoint_min_auction_updates: int = 0
     # The untrained policy is never a candidate, but its economic validation
@@ -327,7 +329,7 @@ class RLParams:
 
 @dataclass(frozen=True)
 class ActionGridParams:
-    """Strategic discrete action envelope from manuscript Section 9."""
+    """Strategic discrete action envelope from the manuscript."""
 
     V_max: int  # strategic CLOB submitted-volume cap; => 30
     L_max: int  # strategic CLOB quote offsets are 0..L_max; => 12
@@ -341,6 +343,10 @@ class ActionGridParams:
     # Manuscript B_max: local policy coordinate ell in [-B_max, B_max].
     # This is 10 ticks in the headline run.
     B_max: int
+    # Observable anchor for the local auction grid. H-on uses the current
+    # indicative price; H-off must not recover the ablated signal indirectly
+    # through action semantics and therefore uses the frozen auction-open mid.
+    auction_anchor: str
     auction_cancel_mode: str = "enabled"  # full grid: enabled 1,346 | never 673
     @property
     def clob_volume_max(self) -> int:
@@ -387,13 +393,13 @@ class ActionGridParams:
 
 @dataclass(frozen=True)
 class FeatureParams:
-    """Legacy-pruned RL feature lists (ruling D11; AUDIT A.7 — exact defaults).
+    """Common 18-coordinate manuscript feature lists for both phases.
 
     Names use the PAPER sign convention (D3): N_buy = paper N^+ (buying MOs).
     """
 
-    clob: tuple[str, ...]  # 8 dims; feat_clob main.py:1443-1450
-    auction: tuple[str, ...]  # revision default adds cancel_admissible to legacy 7 dims
+    clob: tuple[str, ...]
+    auction: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -401,10 +407,8 @@ class BenchmarkParams:
     """AS / TWAP benchmarks (sec:benchmark; bounded common envelope, D23)."""
 
     z: float  # auction heuristic slope multiplier z; main.py:1048 => 10.0
-    as_n_samples: int  # K-hat regression samples; main.py:1935 => 10000
+    as_n_samples: int  # configured number of K-hat regression attempts
     as_gamma: float  # AS risk aversion gamma; => 0.0
-    as_sigma_rule: str  # "pooled_paths" for both active settings; single_path supported
-    as_sigma_n_paths: int  # simulated mid paths pooled for sigma (Phase 4)
     twap_delta_mode: str  # legacy "min" label => manuscript best ask, delta=1
 
 
@@ -707,6 +711,27 @@ def _migrate_legacy_schema(tree: dict[str, Any]) -> None:
                 f"{legacy_order_mode!r}"
             )
 
+        # Pre-v8 environment configs encoded this choice only implicitly via
+        # the H feature flag. Preserve that meaning when reading them; every
+        # newly saved resolved config writes the explicit canonical field.
+        rl = tree.get("rl")
+        h_enabled = (
+            bool(rl.get("h_cl_feature_enabled", True))
+            if isinstance(rl, dict)
+            else True
+        )
+        actions.setdefault(
+            "auction_anchor", "indicative" if h_enabled else "frozen_mid"
+        )
+
+    benchmark = tree.get("benchmark")
+    if isinstance(benchmark, dict):
+        # Pre-removal resolved configs carried an inert AS volatility
+        # diagnostic. Accept and discard those two exact legacy keys while
+        # retaining strict rejection of arbitrary benchmark misspellings.
+        benchmark.pop("as_sigma_rule", None)
+        benchmark.pop("as_sigma_n_paths", None)
+
 
 def _apply_override(tree: dict[str, Any], spec: str) -> None:
     """Apply one dotted override ``a.b.c=value`` (value parsed as YAML) in place."""
@@ -847,6 +872,18 @@ def _validate_experiment_config(cfg: ExperimentConfig) -> ExperimentConfig:
         )
     if cfg.actions.auction_cancel_mode not in ("enabled", "never"):
         raise ConfigError("actions.auction_cancel_mode must be enabled|never")
+    if cfg.actions.auction_anchor not in ("indicative", "frozen_mid"):
+        raise ConfigError("actions.auction_anchor must be indicative|frozen_mid")
+    expected_auction_anchor = (
+        "indicative" if cfg.rl.h_cl_feature_enabled else "frozen_mid"
+    )
+    if cfg.actions.auction_anchor != expected_auction_anchor:
+        raise ConfigError(
+            "actions.auction_anchor must be 'indicative' when "
+            "rl.h_cl_feature_enabled=true and 'frozen_mid' when it is false; "
+            f"got {cfg.actions.auction_anchor!r} with "
+            f"h_cl_feature_enabled={cfg.rl.h_cl_feature_enabled}"
+        )
     if not cfg.experiment.auction_enabled and (
         cfg.rl.h_cl_feature_enabled
         or cfg.reward.effective_clob_shaping
@@ -900,16 +937,10 @@ def _validate_experiment_config(cfg: ExperimentConfig) -> ExperimentConfig:
     benchmark = cfg.benchmark
     if not math.isfinite(benchmark.z) or benchmark.z <= 0.0:
         raise ConfigError("benchmark.z must be finite and positive")
-    if benchmark.as_n_samples < 2 or benchmark.as_sigma_n_paths <= 0:
-        raise ConfigError(
-            "benchmark.as_n_samples must be at least 2 and as_sigma_n_paths positive"
-        )
+    if benchmark.as_n_samples < 2:
+        raise ConfigError("benchmark.as_n_samples must be at least 2")
     if benchmark.as_gamma != 0.0:
         raise ConfigError("only benchmark.as_gamma=0 is implemented")
-    if benchmark.as_sigma_rule not in ("single_path", "pooled_paths"):
-        raise ConfigError(
-            "benchmark.as_sigma_rule must be single_path|pooled_paths"
-        )
     if benchmark.twap_delta_mode != "min":
         raise ConfigError("only benchmark.twap_delta_mode=min is implemented")
 

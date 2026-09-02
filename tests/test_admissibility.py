@@ -38,6 +38,12 @@ def test_clob_depth_is_the_populated_level_count(synthetic_cfg):
     assert book.depth(+1) == 2
     assert book.depth(-1) == 0
 
+    # The paper defines depth as the supremum of strictly positive levels,
+    # rather than the length of a contiguous prefix or an epsilon cutoff.
+    book.ask_volumes[:] = 0.0
+    book.ask_volumes[4] = 1.0e-12
+    assert book.depth(+1) == 5
+
 
 # ---------------------------------------------------------------------------
 # CLOB-phase masks (a^1 <= x^1; quote constraint structural)
@@ -202,6 +208,8 @@ def test_index_and_decoded_template_execute_identically():
         cfg.actions.beta, -4, 0
     )
     assert info_i["executed_b"] == info_t["executed_b"] == 33
+    assert info_i["auction_anchor"] == info_t["auction_anchor"] == "indicative"
+    assert info_i["auction_anchor_b"] == info_t["auction_anchor_b"] == 37
     assert info_i["H_next"] == info_t["H_next"]
 
 
@@ -221,6 +229,35 @@ def test_indicative_templates_are_masked_at_the_ambient_absolute_boundary():
     assert not mask[outside].any()
     with pytest.raises(ValueError, match="resolved auction b"):
         env.step(AuctionAction(cfg.actions.beta, 3, 0))
+
+
+def test_h_off_templates_anchor_on_frozen_mid_and_do_not_leak_indicative_price():
+    cfg = load_synthetic_cfg(
+        "rl.h_cl_feature_enabled=false",
+        "actions.auction_anchor=frozen_mid",
+        "auction_flow.B_inf=30",
+        "actions.B_inf=30",
+        "actions.B_max=10",
+    )
+    env = new_env(cfg)
+    drive_to_auction(env, seed=2)
+
+    # Put latent H near the ambient boundary. Every non-cancel local template
+    # remains available because H-off resolves the same ell grid around b=0.
+    env._h_cache = env.s_mid + 28 * cfg.grid.alpha
+    mask = env.action_mask()
+    non_cancel_orders = np.array(
+        [a.K_a > 0.0 and a.cancel == 0 for a in env.auction_grid.actions]
+    )
+    assert mask[non_cancel_orders].all()
+    assert env._resolve_auction_action(AuctionAction(cfg.actions.beta, 10, 0)).b == 10
+
+    _, _, _, _, info = env.step(AuctionAction(cfg.actions.beta, 10, 0))
+    assert info["executed_b"] == 10
+    assert info["S_a"] == pytest.approx(env.s_mid + 10 * cfg.grid.alpha)
+    assert info["auction_anchor"] == "frozen_mid"
+    assert info["auction_anchor_b"] == 0
+    assert info["auction_anchor_price"] == pytest.approx(env.s_mid)
 
 
 def test_slope_grid_is_the_complete_manuscript_lattice():

@@ -277,15 +277,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     initial = make_agent(cfg, seeds)
     initial.load(run_dir / "checkpoints" / "initial.pt")
     as_agent = ASBenchmarkAgent(economic_cfg)
-    # AS calibration is an estimated policy parameter.  It is fitted on the
-    # training split and then frozen before the held-out test episodes below.
-    as_calibration_env = make_env(
-        economic_cfg, symbol=args.symbol, data_split="train"
-    )
+    # The risk-neutral AS benchmark needs only the configured arrival rate and
+    # a seeded order-book impact regression. Volatility is not calibrated: it
+    # cancels from the gamma -> 0 quote used in every supported run.
     calibration = as_agent.calibrate(
-        as_calibration_env,
         rng_k=seeds.generators["as_calibration"],
-        rng_sigma=seeds.generators["as_sigma_paths"],
     )
     twap = TWAPBenchmarkAgent(economic_cfg)
     agents = {
@@ -405,10 +401,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             "policy", "episode", "env_seed", "time", "decision_index", "phase",
             "raw_action", "raw_proposal", "projected_action_five",
             "executed_volume", "executed_delta", "executed_K_a", "requested_ell",
-            "executed_b",
+            "executed_b", "auction_anchor", "auction_anchor_b",
+            "auction_anchor_price",
             "executed_cancel", "input_clipped", "bound_saturation_count",
             "rounded_coordinate_count", "inventory_projection",
-            "ell_admissibility_projection", "cancel_threshold_positive",
+            "ell_admissibility_projection", "slope_admissibility_projection",
+            "cancel_threshold_positive",
             "cancel_executed",
         ],
     )
@@ -494,6 +492,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                         "ell_admissibility_projection_frequency": frequency(
                             "ell_admissibility_projection"
                         ),
+                        "slope_admissibility_projection_frequency": frequency(
+                            "slope_admissibility_projection"
+                        ),
                         "cancel_threshold_positive_count": threshold_n,
                         "cancel_executed_count": cancel_n,
                         "cancel_execution_rate_given_positive_threshold": (
@@ -521,6 +522,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             "mean_bound_saturated_coordinates", "rounding_action_frequency",
             "mean_rounded_coordinates", "inventory_projection_frequency",
             "ell_admissibility_projection_frequency",
+            "slope_admissibility_projection_frequency",
             "cancel_threshold_positive_count", "cancel_executed_count",
             "cancel_execution_rate_given_positive_threshold",
             "unique_projected_actions", "many_to_one_projection_bucket_count",
@@ -612,6 +614,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "liquidation_pnl_formula": "clob_cash + S_cl*Z + S_mid_tau_op*I_final - S_mid_0*I_0",
         "economic_objective_formula": "liquidation_pnl_gross - cancel_cost - inventory_penalty",
         "auction_cancel_mode": cfg.actions.auction_cancel_mode,
+        "auction_anchor": cfg.actions.auction_anchor,
         "residual_inventory_convention": "deemed liquidated at the frozen, policy-independent auction-open mid",
         "return_convention": "return_undisc/return_disc use the common economic-only "
         f"evaluation reward; discount mode={cfg.rl.discount_mode}, chi={cfg.rl.chi}",
@@ -620,6 +623,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "evaluation_reward_params": to_dict(economic_cfg.reward),
         "all_policies_use_economic_evaluation_rewards": True,
         "as_calibration": {k: float(v) for k, v in calibration.items()},
+        "as_specification": {
+            "risk_aversion_gamma": float(cfg.benchmark.as_gamma),
+            "volatility_calibrated": False,
+        },
         "trace_episodes": n_trace,
         "setting": cfg.experiment.name,
         "symbol": args.symbol,  # historical ticker replayed (None for synthetic)
@@ -639,7 +646,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         ),
         "policy_evaluation_split": "test",
         "checkpoint_selection_split": "validation",
-        "normalization_and_benchmark_calibration_split": "train",
+        "normalization_fit_split": "train",
+        "as_impact_calibration_source": "seeded configured CLOB-flow simulation",
     }
     (run_dir / "eval" / "metadata.yaml").write_text(yaml.safe_dump(metadata, sort_keys=False))
     print(f"wrote {records_path} ({n_episodes} episodes x {len(policies)} policies)")

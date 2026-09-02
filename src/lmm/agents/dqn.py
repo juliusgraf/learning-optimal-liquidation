@@ -3,9 +3,8 @@
 Design (full spec in docs/rl_design.md, from which the author rewrites paper
 Section 4):
 - TWO phase networks Q_phi (CLOB, 18-dim features) and Q_psi (auction, 18-dim
-  features) on time-augmented features — a documented DESIGN CHOICE (the
-  phases have structurally different state/action spaces), not paper
-  fidelity.
+  features) on time-augmented features, matching the manuscript's
+  phase-specific approximation.
 - Uniform replay (one buffer per phase), exactly one eligible minibatch update
   from the current transition's phase, and phase-local target updates,
   epsilon-greedy with the configured schedule, Huber loss, Adam, gradient
@@ -194,11 +193,10 @@ class DQNAgent(Agent):
         self._episode = 0
         self._env_steps = 0
         self._update_count = {phase: 0 for phase in ("clob", "auction")}
-        # Checkpoint maturity is stricter than raw optimizer activity.  The
-        # auction network receives no-order replay updates during the safety
-        # curriculum, but those steps cannot establish that the full auction
-        # policy has learned.  Count auction updates only after its complete
-        # action set has been exposed to the behavior policy.
+        # Keep a distinct checkpoint-maturity counter so an explicitly
+        # configured future delayed-auction ablation cannot count pre-unlock
+        # updates.  In the active configuration the unlock episode is zero,
+        # so this counter equals raw optimizer activity from the outset.
         self._checkpoint_update_count = {
             phase: 0 for phase in ("clob", "auction")
         }

@@ -1,6 +1,6 @@
 """Train any agent on any setting from config (Phase 4).
 
-Writes the configured results root (currently results/revision_v10) with config_resolved.yaml,
+Writes the configured results root (currently results/revision_v11) with config_resolved.yaml,
 seed.txt, git_sha.txt, metrics.csv (per-episode), checkpoints/, logs/run.log
 (engineering conventions, CLAUDE.md). Figures/tables are produced separately
 by make_figures.py / make_tables.py from these saved outputs.
@@ -485,6 +485,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     # compatibility is checked), rather than living only in ``seed.txt``.
     cfg = _with_master_seed_override(config_from_args(args), args.seed)
     master_seed = cfg.experiment.master_seed
+    # Seed and apply any launcher-provided Torch thread budget before recording
+    # runtime provenance or constructing networks.
+    seeds = seed_everything(master_seed, SEED_COMPONENTS, seed_torch=True)
 
     paths = create_run_dir(cfg.experiment.results_root, cfg.experiment.name, args.run_name)
     material_outputs_exist = (
@@ -512,8 +515,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             )
     logger = get_run_logger(paths)
 
-    # D10: one bundle from the master seed; torch determinism flags set.
-    seeds = seed_everything(master_seed, SEED_COMPONENTS, seed_torch=True)
+    # D10: ``seeds`` is the one bundle created above; Torch determinism flags
+    # and the optional per-worker thread budget are already active.
     env = wrap_env_for_agent(
         make_env(cfg, symbol=args.symbol, data_split="train"), cfg
     )

@@ -26,6 +26,7 @@ import numpy as np
 import pandas as pd
 
 from lmm.config import ExperimentConfig
+from lmm.experiments import publication
 from lmm.experiments import stats
 from lmm.experiments.plotting import POLICY_LABELS, POLICY_ORDER, RunInfo
 
@@ -38,6 +39,7 @@ __all__ = [
     "build_historical_results",
     "build_eval_summary_multiseed",
     "build_historical_results_multiseed",
+    "build_synthetic_treatment_contrasts",
     "build_param_tables",
     "build_hyperparam_table",
 ]
@@ -455,7 +457,7 @@ def build_eval_summary(runs: list[RunInfo], *, rng: int = 0) -> Table:
         rows.insert(
             7 if has_decomposition else 4,
             stat_row(
-                "Mean Shaped Return (Diagnostic)",
+                "Mean Centered Economic Evaluation Return (Diagnostic)",
                 lambda d: float(np.mean(_returns(d, "return_undisc"))),
                 "money",
             ),
@@ -518,7 +520,7 @@ def build_eval_summary(runs: list[RunInfo], *, rng: int = 0) -> Table:
 
 
 # ---------------------------------------------------------------------------
-# (b) historical per-ticker  (replaces tab:dqn_results_full)
+# (b) historical per-ticker
 # ---------------------------------------------------------------------------
 
 
@@ -532,8 +534,8 @@ def _group_by_symbol(runs: list[RunInfo]) -> dict[str, list[RunInfo]]:
 def build_historical_results(
     runs: list[RunInfo], *, rng: int = 0, metric: str = PRIMARY_COL
 ) -> tuple[Table, Table]:
-    """Replacement for ``tab:dqn_results_full``: per-ticker mean outcomes and a
-    companion comparison table (each algo vs AS and TWAP, with bootstrap CIs).
+    """Per-ticker mean outcomes and a companion comparison table (each
+    algorithm vs AS and TWAP, with bootstrap CIs).
 
     Returns ``(returns_table, improvements_table)``.
     """
@@ -555,7 +557,7 @@ def build_historical_results(
                 algos_present.append(r.algo)
     algos_present = [a for a in ["dqn", "ddpg", "td3", "sac"] if a in algos_present]
 
-    ret_cols = ["$\\hat\\sigma$", POLICY_LABELS["initial"], "AS", "TWAP"] + [POLICY_LABELS[a] for a in algos_present]
+    ret_cols = [POLICY_LABELS["initial"], "AS", "TWAP"] + [POLICY_LABELS[a] for a in algos_present]
     ret_rows: list[Row] = []
     # accumulate per-symbol means for the Mean row
     acc: dict[str, list[float]] = {c: [] for c in ret_cols}
@@ -569,18 +571,14 @@ def build_historical_results(
     for sym in symbols:
         frames = _policy_frames(groups[sym])
         evaluation_frames.extend(frames.values())
-        meta = next((r.metadata for r in groups[sym] if r.metadata), {})
-        sigma = meta.get("as_calibration", {}).get("sigma", float("nan"))
 
         def m(pol: str) -> float:
             return float(np.mean(_returns(frames[pol], metric))) if pol in frames else float("nan")
 
-        cells: list[Any] = [sigma, m("initial"), m("as"), m("twap")]
+        cells: list[Any] = [m("initial"), m("as"), m("twap")]
         for a in algos_present:
             cells.append(m(a))
-        # sigma in scientific notation, returns in money.
-        row_fmt = ["sci"] + [value_fmt] * (len(ret_cols) - 1)
-        ret_rows.append(Row(sym, cells, row_fmt))
+        ret_rows.append(Row(sym, cells, value_fmt))
         for c, v in zip(ret_cols, cells):
             acc[c].append(v if not _is_blank(v) else np.nan)
 
@@ -598,11 +596,9 @@ def build_historical_results(
         for c, v in zip(imp_cols, imp_cells):
             imp_acc[c].append(v[0] if (v is not None) else np.nan)
 
-    # Mean rows (average across tickers). The Mean sigma cell is left blank
-    # (matches the paper, which has no sigma for the Mean row).
+    # Mean rows average each policy outcome across tickers.
     mean_cells = [float(np.nanmean(acc[c])) if len(acc[c]) else float("nan") for c in ret_cols]
-    mean_cells[0] = None
-    ret_rows.append(Row("Mean", mean_cells, ["sci"] + [value_fmt] * (len(ret_cols) - 1)))
+    ret_rows.append(Row("Mean", mean_cells, value_fmt))
     imp_mean = [float(np.nanmean(imp_acc[c])) if len(imp_acc[c]) else float("nan") for c in imp_cols]
     imp_rows.append(Row("Mean", imp_mean, value_fmt))
 
@@ -612,10 +608,13 @@ def build_historical_results(
         rows=ret_rows,
         caption=(
             "Per-ticker mean outcomes on the historical S\\&P 500 setting "
-            f"({n_eval} episodes; {OUTCOME_CAPTIONS[metric]}; $\\hat\\sigma$ = estimated "
-            "continuous-session volatility)."
+            f"({n_eval} episodes; {OUTCOME_CAPTIONS[metric]})."
         ),
-        label="tab:dqn_results_full_bps" if normalized else "tab:dqn_results_full",
+        label=(
+            "tab:historical_results_full_bps"
+            if normalized
+            else "tab:historical_results_full"
+        ),
         row_label_header="Symbol",
         section_breaks={len(ret_rows) - 1},
     )
@@ -627,9 +626,9 @@ def build_historical_results(
             f"({_difference_units(metric).lower()}, with bootstrap 95\\% CIs over eval episodes)."
         ),
         label=(
-            "tab:dqn_results_improvements_bps"
+            "tab:historical_results_improvements_bps"
             if normalized
-            else "tab:dqn_results_improvements"
+            else "tab:historical_results_improvements"
         ),
         row_label_header="Symbol",
         section_breaks={len(imp_rows) - 1},
@@ -821,13 +820,76 @@ def build_historical_results_multiseed(
         "intervals use paired seed-level differences, per ticker and pooled. "
         "Best mature validation checkpoint above the initial economic safety floor.",
         label=(
-            "tab:dqn_results_multiseed_bps"
+            "tab:historical_results_multiseed_bps"
             if normalized
-            else "tab:dqn_results_multiseed"
+            else "tab:historical_results_multiseed"
         ),
         row_label_header="Symbol",
         section_breaks={paired_start, all_start},
     )
+
+
+# ---------------------------------------------------------------------------
+# (b3) paired cross-treatment contrasts
+# ---------------------------------------------------------------------------
+
+
+def build_synthetic_treatment_contrasts(
+    runs: list[RunInfo], *, rng: int = 0, n_boot: int = 10_000
+) -> tuple[Table, pd.DataFrame]:
+    """Build scientifically matched contrasts across the synthetic treatments.
+
+    The companion frame contains the auditable seed-level paired means.  Each
+    summary cell is their IQM and percentile-bootstrap 95% CI; evaluation
+    episodes are paired exactly by episode and environment seed before a
+    master-seed mean is formed.
+    """
+
+    paired = publication.build_treatment_contrast_records(
+        runs, metric=PRIMARY_COL
+    )
+    n_seeds = int(paired["master_seed"].nunique())
+    episode_counts = sorted(int(v) for v in paired["n_episodes"].unique())
+    if len(episode_counts) != 1:
+        raise ValueError(
+            "cross-treatment comparisons have inconsistent evaluation episode counts: "
+            f"{episode_counts!r}"
+        )
+    rows: list[Row] = []
+    for contrast_key, label, _, _ in publication.TREATMENT_CONTRASTS:
+        cells: list[Any] = []
+        for algo in POLICY_ORDER:
+            if algo not in ("dqn", "ddpg", "td3", "sac"):
+                continue
+            values = paired.loc[
+                (paired["contrast_key"] == contrast_key)
+                & (paired["algorithm"] == algo),
+                "mean_difference",
+            ].to_numpy(float)
+            if values.size != n_seeds:
+                raise ValueError(
+                    f"contrast {contrast_key!r}, algorithm {algo!r} has "
+                    f"{values.size} seed pairs; expected {n_seeds}"
+                )
+            cells.append(stats.iqm_ci(values, rng=rng, n_boot=n_boot))
+        rows.append(Row(label, cells, "money_ci"))
+
+    table = Table(
+        columns=[POLICY_LABELS[a] for a in ("dqn", "ddpg", "td3", "sac")],
+        rows=rows,
+        caption=(
+            f"Paired synthetic-treatment contrasts ({n_seeds} master seeds; "
+            f"{episode_counts[0]} common-random-number evaluation episodes per "
+            "algorithm, treatment, and seed). Each cell is the IQM [95\\% "
+            "bootstrap CI] of seed-level mean risk-adjusted PnL differences. "
+            "The sign is first-named condition minus second-named condition, "
+            "so a positive value favors the first-named condition. The headline "
+            "runs supply the H/anchor-on, shaping-on, auction-on baseline."
+        ),
+        label="tab:synthetic_treatment_contrasts_multiseed",
+        row_label_header="Contrast",
+    )
+    return table, paired
 
 
 # ---------------------------------------------------------------------------
@@ -860,8 +922,8 @@ PARAM_SYMBOLS: list[tuple[str, Any, str]] = [
     ("$\\rho$", "clob_flow.depth_decay", "Limit order book volume decay parameter"),
     ("$V$", "clob_flow.V", "Exogenous market/taker-order volume cap"),
     ("$V_{\\max}$", "actions.V_max", "Strategic CLOB submitted-volume cap"),
-    ("$L_{\\mathrm{book}}$", "clob_flow.L_max", "Maximum exogenous CLOB depth"),
-    ("$L_{\\mathrm{agent}}$", "actions.L_max", "Maximum strategic CLOB quote offset"),
+    ("$L_\\infty$", "clob_flow.L_max", "Maximum exogenous CLOB depth"),
+    ("$L_{\\mathrm{max}}$", "actions.L_max", "Maximum strategic CLOB quote offset"),
     (
         "$B_\\infty$",
         "actions.B_inf",
@@ -870,7 +932,7 @@ PARAM_SYMBOLS: list[tuple[str, Any, str]] = [
     (
         "$B_{\\mathrm{max}}$",
         "actions.B_max",
-        "Indicative-centred local policy-coordinate half-width",
+        "Local auction policy-coordinate half-width",
     ),
     ("$D_\\mu$", "auction_flow.D_mu", "Minimum active exogenous auction slope"),
     ("$U_1$", "auction_flow.K_min", "Exogenous supply slope lower bound"),

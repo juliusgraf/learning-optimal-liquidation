@@ -3,8 +3,8 @@
 This repository implements the revised manuscript environment for the
 synthetic rough-Heston setting and the historical-midprice setting, with DQN
 and the DDPG/TD3/SAC continuous-action relaxations. Current artifacts use
-schema 10, are written below `results/revision_v10/`, and carry environment
-contract `unified-minute-auction-mdp-2026-09-01-v7`; checkpoints and results
+schema 11, are written below `results/revision_v11/`, and carry environment
+contract `unified-minute-auction-mdp-2026-09-02-v8`; checkpoints and results
 from earlier contracts are rejected.
 
 ## Setup
@@ -71,9 +71,11 @@ The manuscript notation is used directly in the active action configuration.
 `S_t^a=S_{tau_op}^{mid}+alpha*b_t^a`. The same absolute support sets the
 exogenous quote bounds `M1=-B_inf` and `M2=B_inf`; configuration validation
 requires `actions.B_inf == auction_flow.B_inf`. Every learned policy uses the
-21 local manuscript actions `ell in [-B_max,B_max]` around the lagged
-observable indicative price, where `actions.B_max=10`, and resolves an action
-at decision time to an admissible absolute `b`. Thus `B_inf` is the
+same 21 local manuscript actions `ell in [-B_max,B_max]`, where
+`actions.B_max=10`. The explicit `actions.auction_anchor` resolves them around
+the lagged observable indicative price in H-on arms and around the frozen
+auction-open midprice in H-off arms. The latter prevents the ablated signal
+from leaking through action execution or admissibility. Thus `B_inf` is the
 absolute market-coordinate bound and `B_max` is the local proposal bound; they
 are neither aliases nor interchangeable settings.
 
@@ -163,20 +165,37 @@ scripts/reproduce_all.sh --seed 42
 This command is intentionally long. It runs four synthetic experiments and
 four algorithms across the configured historical tickers.
 
+For isolated development or CI runs, set `LMM_RESULTS_ROOT` to an absolute
+scratch directory. Every launcher and report generator honors the override,
+and training records the same path in `config_resolved.yaml`, so discovery and
+provenance cannot disagree. Leave it unset for the canonical
+`results/revision_v11/` layout. For example:
+
+```bash
+LMM_RESULTS_ROOT=/absolute/scratch/lmm-results \
+  scripts/reproduce_all.sh --smoke --symbol MSFT --seed 9001
+```
+
 A short pipeline smoke is available and is not a training result:
 
 ```bash
-scripts/reproduce_all.sh --smoke --symbol MSFT --seed 42
+scripts/reproduce_all.sh --smoke --symbol MSFT --seed 9001
 ```
 
-The matched synthetic treatment matrix—four `H_cl`/shaping arms, no auction,
-and no cancellation for all four learners—is launched explicitly with:
+The non-headline synthetic treatment runs—three additional H/anchor-bundle by shaping
+arms, no auction, and no cancellation for all four learners—are launched with:
 
 ```bash
 scripts/run_synthetic_treatments.sh --seed 42
 # or exercise only the pipeline:
-scripts/run_synthetic_treatments.sh --smoke --seed 42
+scripts/run_synthetic_treatments.sh --smoke --seed 9001
 ```
+
+The fourth H/anchor-bundle by shaping cell (`H` on, shaping on) is exactly the canonical
+synthetic headline configuration. The treatment launcher therefore does not
+train it again: paired reporting reuses `synthetic_rough_heston/*_seed<N>` as
+that arm. Run the canonical synthetic launchers (or `reproduce_all.sh`) for the
+same seed before aggregating treatments.
 
 The no-cancellation treatment gives DQN 673 auction actions; the enabled
 regime has 1,346. Continuous agents use two or three normalized auction
@@ -188,23 +207,74 @@ auction-derived training input: it disables auction shaping and the projected
 clearing feature in addition to terminating at auction open. It is therefore a
 comparison against a policy that does not anticipate the modeled auction.
 
-For cross-seed reporting:
+The canonical five-seed publication command covers the headline, historical,
+and complete synthetic treatment matrix, then generates all aggregates:
 
 ```bash
-scripts/run_multiseed.sh --seeds "42 7 99"
-scripts/make_multiseed_outputs.sh --seeds "42 7 99"
+scripts/run_multiseed.sh --jobs 5 --threads-per-job 2
 ```
+
+On a 15-core host, five workers with two numerical-library/Torch intra-op
+threads and one Torch inter-op thread each leave some headroom. The launcher
+also caps Apple Accelerate/vecLib and NumExpr, preventing hidden oversubscription;
+the effective settings are saved in `runtime_versions.json`. Lower `--jobs` if memory is tighter. Workers write distinct run
+directories. Shared per-run, combined, and multiseed output generation remains
+serial and begins only after every worker finishes. A small development check
+can use `--smoke --jobs 2`, which defaults to the deliberately nonpublication
+seeds `9001 9002`; smoke artifacts are explicitly rejected by publication
+mode. The launcher rejects canonical publication seed names in smoke mode so a
+development artifact cannot block the later full run at the same path.
+
+Full publication mode also requires a clean Git worktree: `git_sha.txt` records
+the exact commit, not an uncommitted patch. The long launcher is safely
+restartable across already finished runs. A run is skipped only when its saved
+resolved config exactly matches the current command, its complete evaluation
+uses `best.pt`, and `pipeline_complete.json` cryptographically binds the
+resolved config, seed, Git SHA, runtime and split-seed provenance, training
+metrics and feature normalizer, initial/best/final checkpoints, best-selection
+sidecar, and the complete evaluation artifact tree (including metadata,
+records, traces, diagnostics, and both paired-difference files) by SHA-256.
+Any subsequent change makes the manifest invalid. An interrupted or
+drifted run fails closed with its path. Move that partial directory aside for
+diagnosis and rerun; automatic checkpoint resume is intentionally not used
+because post-checkpoint metric/grid rows would also need transactional
+truncation. Publication aggregation additionally exact-compares every resolved
+run against the current checked-in base, setting, algorithm, and treatment
+config stack. The sole accepted operational difference is the launcher's
+disk-safe `checkpoint_interval_episodes=10000000`, which suppresses periodic
+replay-heavy resume checkpoints without changing learning or selection.
+
+To regenerate reports without training:
+
+```bash
+scripts/make_multiseed_outputs.sh --publication
+```
+
+That command also builds the cross-treatment table. To rebuild only that
+table, use `scripts/make_treatment_outputs.sh --publication`.
 
 Multiseed policy comparisons use confidence intervals over paired per-seed
 policy-minus-benchmark differences. Historical cross-asset tables are emitted
-both in currency units and in basis points of initial notional.
+both in currency units and in basis points of initial notional. The treatment
+table reports six explicit within-algorithm contrasts: the H/anchor bundle at
+each shaping level, shaping at each H/anchor level, the full auction-aware
+headline treatment versus the bundled no-auction comparator, and cancellation
+on minus off. Each evaluation episode is matched by environment
+seed before its difference is reduced to a master-seed mean; positive values
+favor the first-named condition. The summary `.tex`/`.csv` and auditable
+per-seed provenance CSV are written under
+`results/revision_v11/synthetic_rough_heston/_cross_treatment/tables/`.
+
+Generated result artifacts are never copied into `paper/` automatically.
+Promotion into the manuscript artifact directory remains an explicit manual
+review step.
 
 ## Equivalent module commands
 
 For a synthetic DQN run named `dqn_seed42`:
 
 ```bash
-RUN=results/revision_v10/synthetic_rough_heston/dqn_seed42
+RUN=results/revision_v11/synthetic_rough_heston/dqn_seed42
 
 python3 -m lmm.experiments.train \
   --config configs/base.yaml \
@@ -225,7 +295,7 @@ Fixed-policy cumulative differences are not called regret.
 
 ## Artifact map
 
-Each run contains:
+Every completed run contains the following raw and provenance artifacts:
 
 - `config_resolved.yaml`, `seed.txt`, `git_sha.txt`, and
   `runtime_versions.json`;
@@ -235,8 +305,16 @@ Each run contains:
 - `checkpoints/{initial,best,final}.pt` plus optional resume checkpoints;
 - `eval/records.csv`, `eval/metadata.yaml`, realized grids, forecast summaries,
   proposal/action/clearing diagnostics, and episode traces;
-- `eval/policy_difference_{as,twap}.csv`;
-- generated figures and booktabs/CSV tables.
+- `eval/policy_difference_{as,twap}.csv`.
+
+The canonical multiseed launcher generates per-run and single-seed combined
+figures/tables for its first requested seed only; producing duplicate anatomy
+plots for all five seeds would add substantial runtime and disk use without
+entering the publication summaries. It generates the cross-seed tables and
+figures from all five seeds under each headline setting's `_multiseed/`
+directory, and the paired treatment outputs under `_cross_treatment/`. Run
+`scripts/make_all_outputs.sh --seed N` explicitly if per-run plots and tables
+are wanted for another seed.
 
 Primary evaluation fields are `pnl` and `risk_adjusted_pnl`. The latter is
 
@@ -270,8 +348,10 @@ new empirical result.
 ## Determinism
 
 One master `SeedSequence` creates private streams for normalizer calibration,
-training, validation, final evaluation, exploration, replay, and benchmark
-calibration. The environment never uses global NumPy or Python RNG state.
+training, validation, final evaluation, exploration, replay, and the AS
+order-book impact regression. The environment never uses global NumPy or
+Python RNG state. The AS benchmark is risk-neutral (`gamma=0`), so no
+volatility parameter is calibrated or stored.
 For a fixed config, seed, machine, and dependency build, numeric trajectories
 are reproducible across fresh processes; `wall_clock_s` is intentionally not.
 Common-random-number comparisons reuse the same exogenous realization for each

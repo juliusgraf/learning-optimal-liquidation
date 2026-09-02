@@ -185,28 +185,6 @@ class MarketMakingEnv(gymnasium.Env):
         self._clob_mid_values.setflags(write=False)
         self._prepared_frozen_mid = float(frozen)
 
-    def _sample_calibration_log_returns(
-        self, rng: np.random.Generator, n_paths: int
-    ) -> np.ndarray:
-        """Sample pooled integer-grid returns for trusted benchmark setup.
-
-        This deliberately private hook lets the AS calibration share the
-        environment's training-split mid-price model without publishing its
-        historical pool or the active episode's future realization.
-        """
-        if n_paths <= 0:
-            raise ValueError("n_paths must be positive")
-        returns: list[np.ndarray] = []
-        for _ in range(n_paths):
-            mid0 = self._midprice.reset(rng)
-            path = [mid0]
-            path.extend(
-                self._midprice.advance_to(float(t))
-                for t in range(1, self.grid.tau_op + 1)
-            )
-            returns.append(np.diff(np.log(np.asarray(path, dtype=float))))
-        return np.concatenate(returns)
-
     # ------------------------------------------------------------------
     # Gym transition
     # ------------------------------------------------------------------
@@ -443,6 +421,12 @@ class MarketMakingEnv(gymnasium.Env):
 
         t = self._t
         h_used = self._h_cache
+        auction_anchor_b = self._auction_anchor_b_ticks()
+        if self._frozen_mid is None:
+            raise AssertionError("auction action executed before auction open")
+        auction_anchor_price = float(
+            self._frozen_mid + self.grid.alpha * auction_anchor_b
+        )
         d_t = float(self._auction_index) * self.cfg.reward.d
         fee = d_t * cancel
         prior_live = self._ledger.live.copy()
@@ -523,6 +507,9 @@ class MarketMakingEnv(gymnasium.Env):
                     (float(s_a) - float(self._frozen_mid)) / self.grid.alpha
                 )
             ),
+            "auction_anchor": self.auction_anchor,
+            "auction_anchor_b": auction_anchor_b,
+            "auction_anchor_price": auction_anchor_price,
             "H_used": h_used,
             "H_next": result.tick_price,
             "S_a": s_a,
@@ -757,7 +744,11 @@ class MarketMakingEnv(gymnasium.Env):
             raise ValueError("cancel-all is ineligible without a live prior schedule")
 
     def _resolve_auction_action(self, a: AuctionAction) -> _ExecutedAuctionAction:
-        b = 0 if a.K_a == 0.0 else self._indicative_b_ticks() + int(a.ell)
+        b = (
+            0
+            if a.K_a == 0.0
+            else self._auction_anchor_b_ticks() + int(a.ell)
+        )
         return _ExecutedAuctionAction(a.K_a, b, a.cancel)
 
     def _validate_executed_auction_action(self, a: _ExecutedAuctionAction) -> None:
@@ -792,8 +783,21 @@ class MarketMakingEnv(gymnasium.Env):
             self.cancel_admissible,
             frozen_mid=self._frozen_mid,
             alpha=self.grid.alpha,
-            indicative_b_ticks=self._indicative_b_ticks(),
+            anchor_b_ticks=self._auction_anchor_b_ticks(),
         )
+
+    @property
+    def auction_anchor(self) -> str:
+        """Stable provenance label for the learned auction-price anchor."""
+        return self.cfg.actions.auction_anchor
+
+    def _auction_anchor_b_ticks(self) -> int:
+        """Treatment-visible local-grid anchor in frozen-mid coordinates."""
+        if self._frozen_mid is None:
+            raise AssertionError("auction action center requested before auction open")
+        if self.cfg.actions.auction_anchor == "frozen_mid":
+            return 0
+        return self._indicative_b_ticks()
 
     def _indicative_b_ticks(self) -> int:
         """Absolute ``b`` coordinate of current indicative price ``H_t^cl``."""

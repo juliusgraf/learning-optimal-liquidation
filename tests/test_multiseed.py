@@ -170,6 +170,7 @@ def test_historical_results_multiseed(tmp_path):
                 )
 
     table = T.build_historical_results_multiseed(runs)
+    assert table.label == "tab:historical_results_multiseed"
     row_labels = [r.label for r in table.rows]
     assert "MSFT" in row_labels and "GOOGL" in row_labels
     assert any("All tickers" in lab for lab in row_labels)
@@ -184,11 +185,23 @@ def test_historical_results_multiseed(tmp_path):
         pt, lo, hi = cell
         assert np.isfinite([pt, lo, hi]).all() and lo <= pt <= hi
 
-    paths = T.write_table(table, tmp_path, "dqn_results_multiseed")
+    paths = T.write_table(table, tmp_path, "historical_results_multiseed")
     assert all(p.exists() for p in paths)
 
     bps = T.build_historical_results_multiseed(
         runs, metric=T.NORMALIZED_PRIMARY_COL
     )
+    assert bps.label == "tab:historical_results_multiseed_bps"
     assert "basis points" in bps.caption
     assert bps.rows[-1].fmt == "num2_ci"
+
+
+def test_single_seed_historical_table_has_no_unused_as_volatility_column():
+    runs = [
+        _run("historical_sp500_midquotes", "dqn", 42, 15000.0, symbol="MSFT")
+    ]
+    returns, improvements = T.build_historical_results(runs)
+    assert returns.label == "tab:historical_results_full"
+    assert improvements.label == "tab:historical_results_improvements"
+    assert "$\\hat\\sigma$" not in returns.columns
+    assert "volatility" not in returns.caption.lower()

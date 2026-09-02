@@ -1,25 +1,33 @@
 #!/usr/bin/env bash
 # Cross-seed aggregation: build the IQM/bootstrap-CI tables + figure from runs
 # spanning several master seeds, per setting, into
-# results/revision_v10/<setting>/_multiseed/.
+# results/revision_v11/<setting>/_multiseed/.
 # Reads each run's seed from seed.txt and includes only the requested seeds.
 #
-# Usage: scripts/make_multiseed_outputs.sh [--seeds "42 7 99"]
-#          [--require-complete] [--symbol TICKER]
+# Usage: scripts/make_multiseed_outputs.sh [--seeds "42 7 99 123 2024"]
+#          [--require-complete] [--publication] [--symbol TICKER]
 set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
+export MPLCONFIGDIR="${MPLCONFIGDIR:-$REPO_ROOT/.cache/matplotlib}"
+mkdir -p "$MPLCONFIGDIR"
 
-SEEDS="42 7 99"
+SEEDS="42 7 99 123 2024"
 REQUIRE_COMPLETE=0
+PUBLICATION=0
 SYMBOL=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --seeds) SEEDS="$2"; shift 2 ;;
     --seeds=*) SEEDS="${1#*=}"; shift ;;
     --require-complete) REQUIRE_COMPLETE=1; shift ;;
+    --publication) PUBLICATION=1; REQUIRE_COMPLETE=1; shift ;;
     --symbol) SYMBOL="${2:-}"; shift 2 ;;
     --symbol=*) SYMBOL="${1#*=}"; shift ;;
+    -h|--help)
+      echo "usage: $0 [--seeds \"42 7 99 123 2024\"] [--require-complete] [--publication] [--symbol TICKER]"
+      exit 0
+      ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
@@ -29,6 +37,10 @@ if [[ -n "$SYMBOL" ]]; then
     " MSFT "|" JPM "|" PG "|" GOOGL "|" CAT ") ;;
     *) echo "unsupported historical symbol: $SYMBOL" >&2; exit 2 ;;
   esac
+fi
+if [[ "$PUBLICATION" -eq 1 && -n "$SYMBOL" ]]; then
+  echo "--publication requires the complete five-ticker historical matrix; --symbol is not allowed" >&2
+  exit 2
 fi
 
 run_seed() { tr -dc '0-9' < "$1/seed.txt" 2>/dev/null || true; }
@@ -44,8 +56,20 @@ if [[ "$requested_seed_count" -lt 2 ]]; then
   echo "--seeds must contain at least two distinct master seeds" >&2
   exit 2
 fi
+if [[ "$PUBLICATION" -eq 1 ]]; then
+  canonical_count=0
+  for canonical_seed in 42 7 99 123 2024; do
+    case " $SEEDS " in
+      *" $canonical_seed "*) canonical_count=$((canonical_count + 1)) ;;
+    esac
+  done
+  if [[ "$requested_seed_count" -ne 5 || "$canonical_count" -ne 5 ]]; then
+    echo "--publication requires exactly the canonical seeds: 42 7 99 123 2024" >&2
+    exit 2
+  fi
+fi
 
-RESULTS_ROOT="results/revision_v10"
+RESULTS_ROOT="${LMM_RESULTS_ROOT:-results/revision_v11}"
 [[ -d "$RESULTS_ROOT" ]] || { echo "no $RESULTS_ROOT directory" >&2; exit 1; }
 aggregates_written=0
 complete_settings=""
@@ -137,8 +161,10 @@ ${algo}_${ticker}"
     complete_settings="$complete_settings $setting"
   fi
   echo "== multiseed aggregate: $setting  (${#group[@]} runs, seeds:$seen_seeds)"
-  python3 -m lmm.experiments.make_tables  --multiseed --run-dir "${group[@]}" \
-    --out "$RESULTS_ROOT/${setting}/_multiseed/tables"
+  TABLE_ARGS=(--multiseed --run-dir "${group[@]}" \
+    --out "$RESULTS_ROOT/${setting}/_multiseed/tables")
+  [[ "$PUBLICATION" -eq 1 ]] && TABLE_ARGS+=(--publication)
+  python3 -m lmm.experiments.make_tables "${TABLE_ARGS[@]}"
   python3 -m lmm.experiments.make_figures --multiseed --run-dir "${group[@]}" \
     --out "$RESULTS_ROOT/${setting}/_multiseed/figures"
   aggregates_written=$((aggregates_written + 1))
@@ -154,5 +180,10 @@ fi
 if [[ "$aggregates_written" -eq 0 ]]; then
   echo "no settings contained the requested seed set: $SEEDS" >&2
   exit 1
+fi
+if [[ "$REQUIRE_COMPLETE" -eq 1 ]]; then
+  TREATMENT_ARGS=(--seeds "$SEEDS")
+  [[ "$PUBLICATION" -eq 1 ]] && TREATMENT_ARGS+=(--publication)
+  bash scripts/make_treatment_outputs.sh "${TREATMENT_ARGS[@]}"
 fi
 echo "### make_multiseed_outputs complete (seeds: $SEEDS)"

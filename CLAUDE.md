@@ -40,6 +40,9 @@ not implementation specifications.
 - The manuscript auction coordinates use `B_inf` for the absolute admissible
   offset of executed `b` and `B_max` for the local policy coordinate `ell`.
   Config and documentation must preserve those distinct roles.
+- `actions.auction_anchor` is `indicative` exactly when `H_cl` is observed and
+  `frozen_mid` in H-off treatments, so masks, projection, and execution cannot
+  leak the ablated indicative signal.
 - Training uses the configured shaped reward. Validation, checkpoint
   selection, final evaluation, and AS/TWAP comparisons use economic
   risk-adjusted PnL. Initial-inventory centering is policy invariant and must

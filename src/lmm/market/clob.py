@@ -40,7 +40,6 @@ def sample_mo_volume(
     return float(min(vol, V_max))
 
 
-_DEPTH_EPS = 1e-6
 _AGENT_EPS = 1e-9
 
 
@@ -126,10 +125,16 @@ class OrderBook:
         self.clear_agent_order()
 
     def depth(self, side: int) -> int:
-        """Number of populated exogenous levels on ``side`` (ask ``+1``)."""
+        """Largest strictly positive exogenous level on ``side`` (ask ``+1``).
+
+        This implements the manuscript definition
+        ``sup {j in 1,...,L_inf : V[j] > 0}`` literally.  In particular, a
+        positive level after an empty one still determines the reported depth,
+        and arbitrarily small positive volume is not silently treated as zero.
+        """
         vols = self.ask_volumes if side > 0 else self.bid_volumes
-        empty = np.flatnonzero(vols <= _DEPTH_EPS)
-        return int(empty[0]) if empty.size else self.params.Lc
+        populated = np.flatnonzero(vols > 0.0)
+        return int(populated[-1] + 1) if populated.size else 0
 
     def place_agent_order(self, volume: float, level: int) -> None:
         """Place the strategic ask at ``delta=level`` for the current interval."""
