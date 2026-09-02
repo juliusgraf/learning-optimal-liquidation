@@ -62,15 +62,14 @@ def test_mlp_shapes_and_structure():
     assert sum(isinstance(m, nn.ReLU) for m in net.modules()) == 2
 
 
-def test_no_cancel_config_builds_127_output_auction_head():
+def test_no_cancel_config_builds_673_output_auction_head():
     cfg = load_dqn_cfg(
         "actions.auction_cancel_mode=never",
-        "actions.auction_order_mode=multi",
     )
     agent = make_agent(cfg)
     x = torch.zeros(3, len(cfg.features.auction))
-    assert len(agent.auction_grid) == 127
-    assert agent.q["auction"](x).shape == (3, 127)
+    assert len(agent.auction_grid) == 673
+    assert agent.q["auction"](x).shape == (3, 673)
 
 
 # -- schedule -------------------------------------------------------------------

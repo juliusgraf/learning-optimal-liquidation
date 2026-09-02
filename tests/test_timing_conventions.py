@@ -36,7 +36,7 @@ def test_current_book_changes_only_the_next_indicative_price():
     env = new_env(cfg)
     drive_to_auction(env, seed=5)
     h_open = env.h_cl
-    env.generator.auction_flow.inject_market_maker(50.0, env.s_mid + 1.0)
+    env._generator.auction_flow.inject_market_maker(50.0, env.s_mid + 1.0)
     _, _, _, _, info = env.step(AuctionAction(2.0, 0, 0))
     assert info["H_used"] == h_open
     assert info["H_next"] != h_open
@@ -65,10 +65,10 @@ def test_cancel_removes_prior_schedules_but_not_current_schedule():
     env = new_env(cfg)
     drive_to_auction(env, seed=21)
     env.step(AuctionAction(3.0, 1, 0))
-    env.step(AuctionAction(5.0, 4, 1))
+    _, _, _, _, info = env.step(AuctionAction(5.0, 4, 1))
     K, S = env._ledger.live_orders()
     np.testing.assert_allclose(K, [5.0])
-    np.testing.assert_allclose(S, [env.s_mid + 4 * env.grid.alpha])
+    np.testing.assert_allclose(S, [info["S_a"]])
 
 
 def test_final_schedule_survives_same_step_cancel_and_is_cleared():
@@ -90,7 +90,7 @@ def test_final_schedule_survives_same_step_cancel_and_is_cleared():
     assert info is not None and info["action"].cancel == 1
     K, S = env._ledger.live_orders()
     np.testing.assert_allclose(K, [2.0])
-    np.testing.assert_allclose(S, [env.s_mid + 2 * env.grid.alpha])
+    np.testing.assert_allclose(S, [info["S_a"]])
     assert info["H_next"] == info["S_cl"]
     assert info["Z"] == pytest.approx(env._terminal_allocation.actual_agent)
 
@@ -103,13 +103,15 @@ def test_strategic_clob_action_never_enters_algorithm1_snapshot(synthetic_cfg):
     _, _, _, _, ib = b.step(ClobAction(30.0, 12))
     assert ia["H_used"] == ib["H_used"] == synthetic_cfg.algo1.H0
     assert ia["H_next"] == ib["H_next"]
-    assert b.generator.book.agent_remaining == 0.0
+    assert b._generator.book.agent_remaining == 0.0
 
 
 def test_h_cache_chain_across_phase_boundary_and_terminal(synthetic_cfg):
     env = new_env(synthetic_cfg)
     env.reset(seed=8)
     previous = env.h_cl
+    initial_history = env.paper_state()["X3"]
+    np.testing.assert_array_equal(initial_history, [previous])
     while True:
         if env.phase == "clob":
             volume = float(min(5, int(env.inventory)))
@@ -119,9 +121,16 @@ def test_h_cache_chain_across_phase_boundary_and_terminal(synthetic_cfg):
         _, _, done, _, info = env.step(action)
         assert info["H_used"] == previous
         previous = info["H_next"]
+        history = env.paper_state()["X3"]
+        assert history[-1] == env.h_cl == previous
+        assert len(history) == env.decision_index + 1
         if done:
             break
     assert info["S_cl"] == previous
+
+    # paper_state returns a diagnostic copy; callers cannot mutate latent X^3.
+    history[-1] = -1.0
+    assert env.paper_state()["X3"][-1] == previous
 
 
 def test_h0_is_used_at_the_first_clob_decision(synthetic_cfg):

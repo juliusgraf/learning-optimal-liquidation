@@ -16,13 +16,14 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 SEEDS="42 7 99"
 PASS=()   # --smoke / --symbol forwarded to reproduce_all -> run_*.sh
+AGGREGATE_SYMBOL=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --seeds) SEEDS="$2"; shift 2 ;;
     --seeds=*) SEEDS="${1#*=}"; shift ;;
     --smoke) PASS+=(--smoke); shift ;;
-    --symbol) PASS+=(--symbol "$2"); shift 2 ;;
-    --symbol=*) PASS+=(--symbol "${1#*=}"); shift ;;
+    --symbol) AGGREGATE_SYMBOL="$2"; PASS+=(--symbol "$2"); shift 2 ;;
+    --symbol=*) AGGREGATE_SYMBOL="${1#*=}"; PASS+=(--symbol "$AGGREGATE_SYMBOL"); shift ;;
     -h|--help) echo "usage: $0 [--seeds \"42 7 99\"] [--smoke] [--symbol TICKER]"; exit 0 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
@@ -34,5 +35,7 @@ for s in $SEEDS; do
 done
 
 echo "############ cross-seed IQM/CI aggregation ############"
-bash "$HERE/make_multiseed_outputs.sh" --seeds "$SEEDS"
+AGGREGATE_ARGS=(--seeds "$SEEDS" --require-complete)
+[[ -n "$AGGREGATE_SYMBOL" ]] && AGGREGATE_ARGS+=(--symbol "$AGGREGATE_SYMBOL")
+bash "$HERE/make_multiseed_outputs.sh" "${AGGREGATE_ARGS[@]}"
 echo "### run_multiseed complete (seeds: $SEEDS)"

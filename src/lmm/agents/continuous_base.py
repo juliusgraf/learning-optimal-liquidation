@@ -180,7 +180,7 @@ class ContinuousActorCriticAgent(Agent):
             self.critic_optim[phase] = torch.optim.Adam(params, lr=self.hp.critic_lr)
 
     def _initialize_safe_auction_actor(self, actor: nn.Module) -> None:
-        """Start the projected auction policy at K=0, b=0, cancel=0.
+        """Start the projected auction policy at ``(K,ell,c)=(0,0,0)``.
 
         The target values stay inside (-1,1), avoiding saturated tanh units.
         DDPG/TD3 expose a final linear head as ``net[-1]``; SAC has separate

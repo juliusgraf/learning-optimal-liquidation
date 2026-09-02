@@ -14,7 +14,7 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
-RESULTS_ROOT="results/revision_v9"
+RESULTS_ROOT="results/revision_v10"
 
 SEED=""
 SMOKE=0

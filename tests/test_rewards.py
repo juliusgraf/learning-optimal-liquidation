@@ -144,10 +144,9 @@ def test_auction_reward_subtracts_the_exact_signed_cancelled_shaping():
         )
 
 
-def test_single_replace_clawback_telescopes_to_the_surviving_credit_and_fees():
+def test_cancel_and_replace_clawback_telescopes_to_surviving_credit_and_fees():
     cfg = load_synthetic_cfg(
         "reward.center_initial_inventory_value=false",
-        "actions.auction_order_mode=single_replace",
     )
     env = new_env(cfg)
     drive_to_auction(env, seed=19)
@@ -177,10 +176,9 @@ def test_single_replace_clawback_telescopes_to_the_surviving_credit_and_fees():
     )
 
 
-def test_cancel_all_claws_back_every_live_credit_in_multi_order_mode():
+def test_cancel_all_claws_back_every_live_credit():
     cfg = load_synthetic_cfg(
         "reward.center_initial_inventory_value=false",
-        "actions.auction_order_mode=multi",
     )
     env = new_env(cfg)
     drive_to_auction(env, seed=2)
@@ -220,7 +218,6 @@ def test_environment_step_rewards_match_pure_formulas():
     cfg = load_synthetic_cfg(
         "reward.shaping_enabled=true",
         "reward.center_initial_inventory_value=false",
-        "actions.auction_order_mode=multi",
     )
     env = new_env(cfg)
     env.reset(seed=4)

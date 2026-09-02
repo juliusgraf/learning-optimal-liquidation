@@ -6,9 +6,8 @@ code (engineering conventions). No env stepping happens here.
 
 ``--run-dir`` accepts one or more run directories: the FIRST is the primary run
 (figures a-e read from it); ALL of them feed the cross-algorithm comparison
-(figure f). Each figure that lacks its inputs is skipped with a warning, so a
-single DQN-only run still yields a-e. Every figure is written as both PDF (for
-LaTeX) and PNG.
+(figure f). Missing inputs or failed promised outputs make the command return a
+nonzero status. Every figure is written as both PDF (for LaTeX) and PNG.
 
 Figures:
   a training_diagnostics  (metrics.csv)            -> replaces dqn_training_loss / *_returns
@@ -250,8 +249,8 @@ def fig_episode_anatomy(run_dir: Path, out: Path, *, policy: str = "dqn", episod
     if not clob.empty:
         twin.plot(clob["t"], clob["act_delta"], color=green, linewidth=1.0, label=r"$\delta_t$")
     if not auc.empty:
-        twin.plot(auc["t"], auc["act_offset"], color="0.4", linewidth=1.0, label="offset")
-    twin.set_ylabel("offset / $\\delta$")
+        twin.plot(auc["t"], auc["act_b"], color="0.4", linewidth=1.0, label=r"executed $b$")
+    twin.set_ylabel(r"$b$ / $\delta$")
     mark(ax)
     ax.set(title="Actions", xlabel=time_label); ax.legend(loc="upper left")
 
@@ -491,7 +490,7 @@ def fig_reward_decomposition(run_dirs, out: Path) -> None:
     risk-adjusted PnL is reported separately as the primary outcome.
 
     The sample for each (method, component) is the set of RUN-level means — one
-    number per run, its mean component reward over the 100 eval episodes —
+    number per run, its mean component reward over that run's evaluation episodes —
     aggregated across ALL runs of the setting (seeds, and tickers in the
     historical setting: the same 5x5 configurations as the convergence and
     policy-difference figures). Bars are the IQM across runs with a bootstrap 95% CI across
@@ -574,7 +573,7 @@ def fig_reward_decomposition(run_dirs, out: Path) -> None:
 def fig_algorithm_comparison_multiseed(run_dirs, out: Path) -> None:
     """Cross-seed comparison (rliable-style): per algo, the IQM of the per-seed
     mean primary outcome with a bootstrap 95% CI over seeds; AS/TWAP IQM reference lines.
-    One number per run (its 100-episode mean) is the seed-level sample. Emitted
+    One number per run (its evaluation-sample mean) is the seed-level sample. Emitted
     only when >= 2 seeds are present."""
     runs = [r for r in P.collect_runs(run_dirs) if r.records is not None and r.seed is not None]
     if len({r.seed for r in runs}) < 2:
@@ -904,44 +903,140 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     )
     out = Path(args.out) if args.out else primary / "figures"
     out.mkdir(parents=True, exist_ok=True)
+    failures: list[str] = []
+
+    runs = P.collect_runs(run_dirs)
+    if len(runs) != len(run_dirs):
+        failures.append(
+            f"resolved only {len(runs)} of {len(run_dirs)} requested run directories"
+        )
+    settings = {run.setting for run in runs}
+    if len(settings) != 1:
+        failures.append(
+            "one figure-generation invocation must contain exactly one setting; "
+            f"got {sorted(settings)}"
+        )
+
+    def require_file(path: Path) -> None:
+        if not path.is_file() or path.stat().st_size == 0:
+            failures.append(f"missing or empty required input artifact: {path}")
+
+    # A normal invocation requests the complete per-run publication figure set.
+    # Cross-algorithm figures use every run's records; anatomy figures use the
+    # explicitly selected primary run and trace episode.
+    for run_dir in run_dirs:
+        require_file(run_dir / "eval" / "records.csv")
+    if args.multiseed:
+        for run_dir in run_dirs:
+            require_file(run_dir / "metrics.csv")
+            require_file(run_dir / "seed.txt")
+        if len({run.seed for run in runs if run.seed is not None}) < 2:
+            failures.append("--multiseed requires at least two distinct master seeds")
+    else:
+        for relative in (
+            "metrics.csv",
+            "eval/policy_difference_as.csv",
+            "eval/policy_difference_twap.csv",
+            f"eval/traces/{learned_policy}_ep{args.episode}.csv",
+            f"eval/traces/as_ep{args.episode}.csv",
+            f"eval/traces/twap_ep{args.episode}.csv",
+        ):
+            require_file(primary / relative)
+
+    # Each entry carries the concrete artifacts it promises.  Comparing the
+    # before/after stat prevents a stale file from masking a generator that
+    # silently returned without producing its requested output.
+    FigureJob = tuple[str, object, tuple[Path, ...], bool]
+
+    def figure_paths(stem: str, *, csv_companion: bool = False) -> tuple[Path, ...]:
+        paths = (out / f"{stem}.pdf", out / f"{stem}.png")
+        return (*paths, out / f"{stem}.csv") if csv_companion else paths
 
     if args.multiseed:
-        funcs = [
+        difference_stem = (
+            f"policy_difference_multiseed_{args.difference_symbol}"
+            if (
+                args.difference_symbol is not None
+                and settings == {P.HISTORICAL_SETTING}
+            )
+            else "policy_difference_multiseed"
+        )
+        n_dqn = sum(run.algo == "dqn" for run in runs)
+        funcs: list[FigureJob] = [
             ("algorithm_comparison_multiseed",
-             lambda: fig_algorithm_comparison_multiseed(run_dirs, out)),
+             lambda: fig_algorithm_comparison_multiseed(run_dirs, out),
+             figure_paths("algorithm_comparison_multiseed"), True),
             ("convergence_curves",
-             lambda: fig_convergence_curves(run_dirs, out)),
+             lambda: fig_convergence_curves(run_dirs, out),
+             figure_paths("convergence_curves"), True),
             ("policy_difference_multiseed",
              lambda: fig_policy_difference_multiseed(
                  run_dirs, out, symbol=args.difference_symbol
-             )),
+             ), figure_paths(difference_stem), n_dqn >= 2),
             ("reward_decomposition",
-             lambda: fig_reward_decomposition(run_dirs, out)),
+             lambda: fig_reward_decomposition(run_dirs, out),
+             figure_paths("reward_decomposition", csv_companion=True), True),
         ]
     else:
+        distribution_stem = (
+            "eval_distributions_bars" if args.legacy_style else "eval_distributions"
+        )
         funcs = [
-            ("training_diagnostics", lambda: fig_training_diagnostics(primary, out)),
-            ("policy_difference_curve", lambda: fig_policy_difference_curve(primary, out)),
+            ("training_diagnostics", lambda: fig_training_diagnostics(primary, out),
+             figure_paths("training_diagnostics"), True),
+            ("policy_difference_curve", lambda: fig_policy_difference_curve(primary, out),
+             figure_paths("policy_difference_curve"), True),
             ("episode_anatomy",
              lambda: fig_episode_anatomy(
                  primary, out, policy=learned_policy, episode=args.episode
-             )),
-            ("benchmark_anatomy", lambda: fig_benchmark_anatomy(primary, out, episode=args.episode)),
-            ("cancellation_strategy",
-             lambda: fig_cancellation_strategy(
-                 primary, out, policy=learned_policy, episode=args.episode
-             )),
+             ), figure_paths("episode_anatomy"), True),
+            ("benchmark_anatomy",
+             lambda: fig_benchmark_anatomy(primary, out, episode=args.episode),
+             figure_paths("benchmark_anatomy"), True),
+            *(
+                [
+                    ("cancellation_strategy",
+                     lambda: fig_cancellation_strategy(
+                         primary, out, policy=learned_policy, episode=args.episode
+                     ), figure_paths("cancellation_strategy"), True)
+                ]
+                if primary_cfg.experiment.auction_enabled
+                else []
+            ),
             ("eval_distributions",
-             lambda: fig_eval_distributions(primary, out, legacy_style=args.legacy_style)),
-            ("algorithm_comparison", lambda: fig_algorithm_comparison(run_dirs, out)),
+             lambda: fig_eval_distributions(primary, out, legacy_style=args.legacy_style),
+             figure_paths(distribution_stem), True),
+            ("algorithm_comparison", lambda: fig_algorithm_comparison(run_dirs, out),
+             figure_paths("algorithm_comparison"), True),
         ]
-    for name, fn in funcs:
+    for name, fn, promised, required in funcs:
+        before = {
+            path: (path.stat().st_mtime_ns, path.stat().st_size)
+            for path in promised
+            if path.exists()
+        }
         try:
             fn()
-        except Exception as exc:  # one bad figure must not abort the batch
-            warnings.warn(f"figure {name!r} failed: {exc}", stacklevel=2)
+        except Exception as exc:
+            failures.append(f"figure {name!r} failed: {exc}")
+            continue
+        if required:
+            for path in promised:
+                if not path.is_file() or path.stat().st_size == 0:
+                    failures.append(
+                        f"figure {name!r} did not generate required artifact {path}"
+                    )
+                elif path in before and before[path] == (
+                    path.stat().st_mtime_ns,
+                    path.stat().st_size,
+                ):
+                    failures.append(
+                        f"figure {name!r} did not regenerate stale artifact {path}"
+                    )
+    for message in failures:
+        warnings.warn(message, stacklevel=2)
     print(f"figures written to {out}")
-    return 0
+    return 1 if failures else 0
 
 
 if __name__ == "__main__":

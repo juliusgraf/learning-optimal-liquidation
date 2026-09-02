@@ -181,7 +181,25 @@ def test_historical_dataset_has_verified_disjoint_nonempty_pools():
             repo_root=REPO_ROOT,
             data_split=split,
         )
-        assert env.midprice.paths.shape == (expected_count, cfg.grid.tau_op + 1)
+        assert env._midprice._paths.shape == (expected_count, cfg.grid.tau_op + 1)
+
+
+def test_public_environment_does_not_expose_presampled_future_paths_or_grid():
+    env = mdp_module.make_env(
+        load_historical_cfg(),
+        symbol="MSFT",
+        repo_root=REPO_ROOT,
+        data_split="train",
+    )
+    env.reset(seed=20260831)
+
+    assert not hasattr(env, "midprice")
+    assert not hasattr(env, "episode_grid")
+    assert not hasattr(env._midprice, "paths")
+    assert not hasattr(env._midprice, "path")
+    assert not hasattr(env._midprice, "path_index")
+    with pytest.raises(RuntimeError, match="unavailable until the episode completes"):
+        _ = env.completed_episode_grid
 
 
 def test_historical_mid_is_observed_through_open_then_frozen_during_call():
@@ -208,13 +226,15 @@ def test_historical_mid_is_observed_through_open_then_frozen_during_call():
 def test_realized_grid_is_strict_and_arrivals_form_an_exact_partition():
     env = new_env(_small_cfg())
     env.reset(seed=20260831)
-    grid = env.episode_grid
+    with pytest.raises(RuntimeError, match="unavailable until the episode completes"):
+        _ = env.completed_episode_grid
+    grid = env._episode_grid
     assert np.all(np.diff(grid.all_times) > 0.0)
     assert grid.clob_times[-1] == env.grid.tau_op - 1
     assert grid.auction_times[0] == env.grid.tau_op
     assert grid.terminal_time == env.grid.tau_cl
 
-    tape = env.generator._realization
+    tape = env._generator._realization
     assert tape is not None
     for times, bounds in (
         (tape.buy_arrival_times, tape.buy_bounds),
@@ -235,13 +255,13 @@ def test_policy_features_do_not_read_the_presampled_future():
     assert tuple(env.cfg.features.clob) == COMMON_FEATURES
     assert len(obs) == 18
 
-    tape = env.generator._realization
+    tape = env._generator._realization
     assert tape is not None
     changed_asks = tape.ask_tops.copy()
     changed_bids = tape.bid_tops.copy()
     changed_asks[1:] += 10_000.0
     changed_bids[1:] += 20_000.0
-    env.generator._realization = replace(
+    env._generator._realization = replace(
         tape,
         ask_tops=changed_asks,
         bid_tops=changed_bids,
@@ -379,7 +399,7 @@ def test_lagged_indicative_price_and_strict_before_agent_cancellation():
     opening_h = env.h_cl
     assert opening_h == last_clob["H_next"] == last_clob["H_used"]
 
-    env.generator.auction_flow.inject_market_maker(20.0, env.s_mid + 1.0)
+    env._generator.auction_flow.inject_market_maker(20.0, env.s_mid + 1.0)
     _, _, _, _, info = env.step(AuctionAction(2.0, 0, 0))
     assert info["H_used"] == opening_h
     assert env.h_cl == info["H_next"]
@@ -399,24 +419,27 @@ def test_dqn_action_counts_and_canonical_no_order_rules():
     cfg = _small_dqn_cfg()
     env = new_env(cfg)
     assert len(env.clob_grid) == 1 + 30 * 13 == 391
-    assert len(env.auction_grid) == 2 + 6 * 21 * 2 == 254
+    assert len(env.auction_grid) == 2 + 32 * 21 * 2 == 1346
     zero = [a for a in env.auction_grid.actions if a.K_a == 0.0]
-    assert zero == [AuctionAction(0.0, 0, 0), AuctionAction(0.0, 0, 1)]
+    assert [(a.K_a, a.ell, a.cancel) for a in zero] == [
+        (0.0, 0, 0),
+        (0.0, 0, 1),
+    ]
 
     _drive_to_auction(env)
-    assert env.action_mask().sum() == 127
+    assert env.action_mask().sum() == 673
     env.step(AuctionAction(cfg.actions.beta, 0, 0))
-    assert env.action_mask().sum() == 128
+    assert env.action_mask().sum() == len(env.auction_grid)
 
     no_cancel = new_env(
         _small_dqn_cfg(
             "actions.auction_cancel_mode=never",
-            "actions.auction_order_mode=multi",
         )
     )
-    assert len(no_cancel.auction_grid) == 1 + 6 * 21 == 127
-    assert [a for a in no_cancel.auction_grid.actions if a.K_a == 0.0] == [
-        AuctionAction(0.0, 0, 0)
+    assert len(no_cancel.auction_grid) == 1 + 32 * 21 == 673
+    no_order = [a for a in no_cancel.auction_grid.actions if a.K_a == 0.0]
+    assert [(a.K_a, a.ell, a.cancel) for a in no_order] == [
+        (0.0, 0, 0)
     ]
 
 
@@ -552,7 +575,7 @@ def test_auction_has_no_inventory_bound_or_terminal_clipping():
     )
     env = new_env(cfg)
     _drive_to_auction(env)
-    env.generator.auction_flow.inject_taker(+1, 10_000.0)
+    env._generator.auction_flow.inject_taker(+1, 10_000.0)
     _, _, done, _, info = env.step(
         AuctionAction(cfg.actions.auction_K_grid_max, -cfg.actions.B_max, 0)
     )
@@ -602,13 +625,14 @@ def test_no_auction_comparator_terminates_at_open_with_exogenous_mid_mark():
     cfg = _small_cfg(
         "experiment.auction_enabled=false",
         "reward.shaping_enabled=false",
+        "rl.h_cl_feature_enabled=false",
     )
     env = new_env(cfg)
     agent = TWAPBenchmarkAgent(cfg)
     agent.bind(env)
     agent.start_episode(0)
     result = run_episode(env, agent, 91, chi=cfg.rl.chi, train=False)
-    assert result.n_steps == len(env.episode_grid.clob_times)
+    assert result.n_steps == len(env.completed_episode_grid.clob_times)
     assert env.t == cfg.grid.tau_op
     assert result.z_tau_cl == 0.0
     assert result.s_cl == pytest.approx(result.residual_liquidation_price)
@@ -642,7 +666,7 @@ def test_benchmark_schedule_keeps_positive_part_and_inventory_cap():
     agent.start_episode(0)
     _drive_to_auction(env)
     action = agent._auction_action()
-    assert action.one_sided
+    assert not isinstance(action, AuctionAction)
     assert action.reference_price == pytest.approx(env.h_cl)
     assert action.quantity_cap == pytest.approx(env.inventory)
     external = CappedPositivePartSchedule(
@@ -656,7 +680,23 @@ def test_old_checkpoints_and_result_directories_are_rejected(tmp_path: Path):
     cfg = _small_dqn_cfg()
     agent = DQNAgent(cfg, seed_everything(19, SEED_COMPONENTS, seed_torch=True))
     old_checkpoint = tmp_path / "old.pt"
-    torch.save({"artifact_schema_version": cfg.experiment.artifact_schema_version}, old_checkpoint)
+    torch.save(
+        {
+            "artifact_schema_version": 9,
+            "environment_contract": "unified-minute-auction-mdp-2026-09-01-v6",
+        },
+        old_checkpoint,
+    )
+    with pytest.raises(ValueError, match="artifact_schema_version mismatch"):
+        agent.load(old_checkpoint)
+
+    torch.save(
+        {
+            "artifact_schema_version": cfg.experiment.artifact_schema_version,
+            "environment_contract": "unified-minute-auction-mdp-2026-09-01-v6",
+        },
+        old_checkpoint,
+    )
     with pytest.raises(ValueError, match="environment contract mismatch"):
         agent.load(old_checkpoint)
 

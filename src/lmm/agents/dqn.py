@@ -145,7 +145,7 @@ class DQNAgent(Agent):
                 with torch.no_grad():
                     head.weight.zero_()
                     head.bias.fill_(-self.hp.safe_auction_noop_margin)
-                    # AuctionActionGrid index zero is the canonical no-op.
+                    # Index zero is manuscript (K,ell,c)=(0,0,0).
                     head.bias[0] = 0.0
             tgt = mlp(self._obs_dim[phase], hidden, self._n_actions[phase], act_cls).to(self.device)
             tgt.load_state_dict(q.state_dict())
@@ -245,7 +245,7 @@ class DQNAgent(Agent):
             and phase == "auction"
             and self._episode < self.hp.auction_learning_start_episode
         ):
-            # Index zero is always the canonical (K,b,c)=(0,0,0), and hence
+            # Index zero is always the canonical (K,ell,c)=(0,0,0), and hence
             # admissible both before and after a live schedule exists.
             if not bool(mask[0]):
                 raise AssertionError("canonical auction no-op was masked")

@@ -1,8 +1,7 @@
-# DQN hyperparameters (ruling D9: textbook DQN, Mnih et al. 2015 conventions;
-# neither legacy NFQ nor paper Sec. 4 is authoritative). Legacy values are
-# kept where they are standard (lr, batch, buffer — see PARAMS_FROM_CODE.md
-# section 4); the update SCHEDULE is standard DQN, not legacy's per-episode
-# full-buffer refit. Final values recorded in docs/rl_design.md (Phase 4).
+# DQN hyperparameters for the manuscript's phase-specific Double-DQN
+# algorithm. This overlay is the authoritative numerical configuration;
+# legacy NFQ values are provenance only. The update schedule is online DQN,
+# not the superseded implementation's per-episode full-buffer refit.
 
 algo:
   name: dqn
@@ -35,6 +34,10 @@ algo:
     epsilon_end: 0.01
     epsilon_decay_episodes: 600.0
     epsilon_warmup_episodes: 50
-    epsilon_auction_scale: 0.1
+    # Headline Algorithm 1 uses the same masked epsilon-greedy probability in
+    # both phases. Phase-specific scaling is an explicit ablation only.
+    epsilon_auction_scale: 1.0
     safe_auction_noop_margin: 0.02
-    auction_learning_start_episode: 200
+    # No forced no-order curriculum: all 1,346 auction actions are available
+    # from episode zero and every eligible auction update counts toward maturity.
+    auction_learning_start_episode: 0

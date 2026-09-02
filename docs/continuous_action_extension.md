@@ -12,10 +12,15 @@ Actors end in `tanh` and emit normalized coordinates in `[-1,1]`:
 - CLOB: `(volume_coordinate, offset_coordinate)`;
 - auction with cancellation: `(slope_coordinate, offset_coordinate,
   cancellation_coordinate)`;
-- auction without cancellation: `(slope_coordinate, offset_coordinate)`.
+- auction without cancellation: `(slope_coordinate, ell_coordinate)`.
 
-The proposal is stored in replay. The environment adapter converts it to an
-executed market action and records both forms.
+The proposal is stored in replay. The adapter rounds it to the public local
+manuscript action, and the simulator separately records derived absolute `b`.
+
+In manuscript notation, `B_inf=150` bounds the absolute executed auction
+offset `b`, while `B_max=10` bounds the local proposal coordinate `ell` around
+the current indicative center. These are distinct coordinates and distinct
+configuration keys.
 
 ## Projection
 
@@ -25,12 +30,13 @@ offset in `[0,L_max]`. Both are rounded half-up. Volume is capped by
 canonicalized to offset zero.
 
 For the auction phase, the slope index and local offset are rounded half-up.
-Thus DDPG, TD3, and SAC execute 33 slope levels (`0,...,32`) and the same 21
-indicative-centred integer templates (`-10,...,10`) as DQN; DQN instead uses
-the six positive slope levels `{1,2,4,8,16,32}`. The adapter translates a local
-template into an absolute frozen-mid manuscript offset
+Thus DQN, DDPG, TD3, and SAC execute the same 33 slope levels (`0,...,32`)
+and 21 indicative-centred integer templates (`-10,...,10`). DQN enumerates
+this lattice directly; the actor-critic methods project a continuous raw
+proposal onto it. The adapter translates a local
+template into the derived absolute frozen-mid coordinate
 `b=round_half_up((H_t^cl-S_{tau_op}^{mid})/alpha)+ell`, clipped to the ambient
-`[-150,150]` band. Every executed reference is therefore still exactly
+`[-B_inf,B_inf]=[-150,150]` band. Every executed reference is therefore still exactly
 `S_t^a=S_{tau_op}^{mid}+alpha*b_t^a`. Positive-slope references must be
 nonnegative. In the enabled regime, a nonnegative
 cancellation coordinate requests cancel-all, but execution requires a live
@@ -41,7 +47,7 @@ Projection is not an auction inventory constraint. Learned schedules remain
 two-sided and may create a purchase. Terminal inventory is never clipped.
 
 Evaluation saves clipping, boundary saturation, rounding, inventory projection,
-offset-admissibility projection, and cancellation-threshold/execution counts.
+`ell_admissibility_projection`, and cancellation-threshold/execution counts.
 
 ## Exploration and targets
 

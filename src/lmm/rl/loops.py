@@ -1,7 +1,8 @@
 """Shared episode runner (Phase 4): ONE loop drives every policy.
 
-Running the DQN, the benchmarks and the initial-DQN baseline through the
-same function is the structural common-random-numbers guarantee (ruling D10,
+Running every learned policy, the benchmarks, and the corresponding untrained
+initial-policy diagnostic through the same function is the structural
+common-random-numbers guarantee (ruling D10,
 AUDIT N10): the env's exogenous draws are policy-independent, so two policies
 given the same env seed see the same market.
 
@@ -150,13 +151,6 @@ def run_episode(
 
     raw_obs, _ = env.reset(seed=env_seed)
     obs = agent.preprocess_observation(raw_obs)
-    grid = env.episode_grid
-    res.realized_grid = {
-        "time_unit": env.grid.time_unit,
-        "clob_times": [float(x) for x in grid.clob_times],
-        "auction_times": [float(x) for x in grid.auction_times],
-        "terminal_time": float(grid.terminal_time),
-    }
     res.initial_mid = float(env.s_mid)
     res.initial_inventory = float(env.inventory)
     done = False
@@ -203,10 +197,15 @@ def run_episode(
             "decision_index": int(info["decision_index"]),
             "phase": phase,
         }
-        executed_action = info.get("action")
-        for attr in ("volume", "delta", "K_a", "offset", "cancel"):
+        requested_action = info.get("action")
+        executed_action = info.get("executed_action", requested_action)
+        for attr in ("volume", "delta", "K_a", "cancel"):
             if executed_action is not None and hasattr(executed_action, attr):
                 action_record[f"executed_{attr}"] = float(getattr(executed_action, attr))
+        if requested_action is not None and hasattr(requested_action, "ell"):
+            action_record["requested_ell"] = float(requested_action.ell)
+        if "executed_b" in info:
+            action_record["executed_b"] = float(info["executed_b"])
         if "raw_action_vec" in info:
             action_record["raw_action"] = [
                 float(x) for x in np.asarray(info["raw_action_vec"]).reshape(-1)
@@ -354,6 +353,13 @@ def run_episode(
             on_step(res.n_steps - 1, phase, t_decision, reward, res.return_undisc, info, env)
         obs = next_obs
 
+    grid = env.completed_episode_grid
+    res.realized_grid = {
+        "time_unit": env.grid.time_unit,
+        "clob_times": [float(x) for x in grid.clob_times],
+        "auction_times": [float(x) for x in grid.auction_times],
+        "terminal_time": float(grid.terminal_time),
+    }
     res.n_degenerate_fallbacks = env.eq2.n_degenerate_fallbacks
     for k, values in diag_lists.items():
         if k.startswith("n_grad_steps"):

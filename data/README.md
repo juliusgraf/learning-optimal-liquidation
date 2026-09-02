@@ -1,6 +1,6 @@
 # Historical mid-price data
 
-## Publication candidate: true quote midpoints
+## Frozen publication input: true quote midpoints
 
 The current true-midquote historical path is `historical_sp500_midquotes_1m.csv`, with
 sidecar `historical_sp500_midquotes_1m.csv.meta.json`. It is generated from
@@ -16,6 +16,13 @@ nonpositive, crossed, zero-size, or stale quotes; it never interpolates from a
 future observation. The publication configuration requests Alpaca's `sip`
 feed (consolidated US quotes). The `iex` feed is supported only as an explicitly
 tagged single-venue diagnostic.
+
+Both processed files are version-controlled inputs. Together with the tracked
+raw quote archives under `raw/alpaca/sp500_midquotes_sip_2026-08_v1/`, they make
+the configured historical experiment available in a clean checkout. Normal
+training never contacts Alpaca and needs no credentials. The environment
+validates the processed digest, raw-archive digests, provenance, and split
+contract before use.
 
 The chronological pools are fixed in both the sidecar and
 `configs/historical_sp500_midquotes.yaml`:
@@ -35,10 +42,12 @@ split ranges, and nonempty split membership whenever a historical environment
 is constructed. Every run copies the verified sidecar to
 `historical_data_manifest.json`.
 
-### Build the quote artifact
+### Optionally regenerate the quote artifact
 
-Set credentials in the environment; do not put them in YAML or command-line
-arguments. The account must have access to the requested historical feed.
+Regeneration is provenance work, not a prerequisite for training from a clean
+checkout. To fetch a new candidate, set credentials in the environment; do not
+put them in YAML or command-line arguments. The account must have access to the
+requested historical feed.
 
 ```bash
 export APCA_API_KEY_ID='...'
@@ -68,7 +77,7 @@ python3 -m lmm.experiments.diagnose_simulator \
   --config configs/base.yaml \
   --config configs/historical_sp500_midquotes.yaml \
   --episodes 20 --assert-ready \
-  --json-out results/diagnostics_v6/midquote_simulator_gate.json
+  --json-out results/revision_v10/_diagnostics/midquote_simulator_gate.json
 ```
 
 ## Data interpretation

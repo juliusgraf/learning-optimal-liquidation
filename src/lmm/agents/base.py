@@ -25,7 +25,7 @@ __all__ = [
 # implementations from silently drifting apart.
 BELLMAN_FACTOR: Final[float] = 1.0
 REWARD_SCALE: Final[float] = 1.0e-3
-ENVIRONMENT_CONTRACT: Final[str] = "unified-minute-auction-mdp-2026-09-01-v6"
+ENVIRONMENT_CONTRACT: Final[str] = "unified-minute-auction-mdp-2026-09-01-v7"
 
 Action = Union[int, np.ndarray]  # discrete index (DQN) or continuous vector
 

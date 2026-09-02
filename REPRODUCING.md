@@ -2,9 +2,10 @@
 
 This repository implements the revised manuscript environment for the
 synthetic rough-Heston setting and the historical-midprice setting, with DQN
-and the DDPG/TD3/SAC continuous-action relaxations. Current minute-clock
-artifacts are written below `results/revision_v9/`; checkpoints and results
-from earlier environment contracts are rejected.
+and the DDPG/TD3/SAC continuous-action relaxations. Current artifacts use
+schema 10, are written below `results/revision_v10/`, and carry environment
+contract `unified-minute-auction-mdp-2026-09-01-v7`; checkpoints and results
+from earlier contracts are rejected.
 
 ## Setup
 
@@ -14,8 +15,13 @@ Python 3.10 or newer is required. The reference configs use CPU Torch.
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
-pip install -e ".[dev]"
+python -m pip install -e ".[dev]"
 ```
+
+`pyproject.toml` is the canonical dependency specification. For tooling that
+expects a requirements file, `python -m pip install -r requirements.txt` is
+equivalent: that file delegates to the same editable project and development
+extras instead of maintaining a second dependency list.
 
 ## Mandatory pre-run gate
 
@@ -56,31 +62,39 @@ space, cancellation/order semantics, reward, validation design, and
 algorithm-specific hyperparameters from `configs/base.yaml` and
 `configs/algo/*.yaml`. In particular, both use `lambda0=1`, `V_inf=2`,
 `rho_lob=0.96`, exogenous `L_max=200`, agent CLOB offset bound 12, and the
-same 254-template cancellation-enabled DQN auction head. The acceptance suite
+same 1,346-action cancellation-enabled DQN auction head. The acceptance suite
 compares every shared resolved section for all four learners.
 
-The exogenous auction quote support is `B_inf=150` ticks, so the exogenous
-bounds are `M1=-150` and `M2=150`. The strategic manuscript coordinate remains
-the absolute frozen-mid offset `b in [-B_max,B_max]`, with `B_max=150` and
-`S_t^a=S_{tau_op}^{mid}+alpha*b_t^a`. For tractability, every learned policy
-uses 21 local templates `ell in [-10,10]` around the lagged observable
-indicative price and resolves them at decision time to an absolute `b` inside
-the ambient band. `B_inf` and `B_max` happen to be numerically equal but have
-different exogenous and strategic roles.
+The manuscript notation is used directly in the active action configuration.
+`actions.B_inf=150` is the absolute bound on the executed frozen-mid offset
+`b`, so `b in [-B_inf,B_inf]` and
+`S_t^a=S_{tau_op}^{mid}+alpha*b_t^a`. The same absolute support sets the
+exogenous quote bounds `M1=-B_inf` and `M2=B_inf`; configuration validation
+requires `actions.B_inf == auction_flow.B_inf`. Every learned policy uses the
+21 local manuscript actions `ell in [-B_max,B_max]` around the lagged
+observable indicative price, where `actions.B_max=10`, and resolves an action
+at decision time to an admissible absolute `b`. Thus `B_inf` is the
+absolute market-coordinate bound and `B_max` is the local proposal bound; they
+are neither aliases nor interchangeable settings.
 
 ## Historical data requirement
 
-New historical experiments require
-`data/historical_sp500_midquotes_1m.csv` and its schema-3 sidecar. The artifact
-is built from timestamped bid/ask quotes (SIP for publication), stores raw USD
-midpoints without normalization, and maps each decision time to the latest
-valid quote at or before that time. The environment freezes the auction-open
-midquote during the call and rebases a selected session to `S0=100` only as an
-explicit model-coordinate transformation. Order flow, books, auction
-proposals, clearing, and allocation remain simulated.
+The repository includes `data/historical_sp500_midquotes_1m.csv` and its
+schema-3 provenance sidecar. A clean checkout can therefore run the historical
+experiment without a data account, network access, or a preprocessing step.
+The environment verifies the processed-file digest, every tracked raw-archive
+digest, source/feed declarations, and split contract before constructing a
+historical path.
 
-The exact credential-safe build command and raw-event archive contract are
-documented in `data/README.md`:
+The artifact was built from timestamped bid/ask quotes (SIP for publication),
+stores raw USD midpoints without normalization, and maps each decision time to
+the latest valid quote at or before that time. The environment freezes the
+auction-open midquote during the call and rebases a selected session to
+`S0=100` only as an explicit model-coordinate transformation. Order flow,
+books, auction proposals, clearing, and allocation remain simulated.
+
+The optional credential-safe regeneration command and raw-event archive
+contract are documented in `data/README.md`:
 
 ```bash
 python3 -m lmm.data.load_midquote_data --help
@@ -109,9 +123,10 @@ python3 -m lmm.experiments.diagnose_simulator \
 The matched confirmation budget is 800 episodes in both settings.
 Each run fits its feature normalizer on training-only paths. A checkpoint can
 enter the validation race only after both phase learners pass their configured
-optimizer-update maturity thresholds; DQN auction updates made while its
-behavior policy is locked to no-order do not count. Early-stopping patience
-starts with the first eligible validation. The initial economic score is a
+optimizer-update maturity thresholds. The headline DQN exposes the complete
+auction grid from episode zero and uses the same masked epsilon-greedy schedule
+in both phases, so all eligible auction updates count normally. Early-stopping
+patience starts with the first eligible validation. The initial economic score is a
 non-reportable safety floor; if no mature candidate beats it, the run records
 selection failure instead of creating `best.pt`. Otherwise `best.pt` is
 selected on validation risk-adjusted PnL and evaluated on 100 held-out test
@@ -163,10 +178,15 @@ scripts/run_synthetic_treatments.sh --seed 42
 scripts/run_synthetic_treatments.sh --smoke --seed 42
 ```
 
-The no-cancellation treatment gives DQN 127 auction actions; the enabled
-regime has 254. Continuous agents use two or three normalized auction
+The no-cancellation treatment gives DQN 673 auction actions; the enabled
+regime has 1,346. Continuous agents use two or three normalized auction
 proposal coordinates respectively while keeping the same 18-feature network
 input.
+
+The no-auction treatment removes both terminal auction participation and every
+auction-derived training input: it disables auction shaping and the projected
+clearing feature in addition to terminating at auction open. It is therefore a
+comparison against a policy that does not anticipate the modeled auction.
 
 For cross-seed reporting:
 
@@ -184,7 +204,7 @@ both in currency units and in basis points of initial notional.
 For a synthetic DQN run named `dqn_seed42`:
 
 ```bash
-RUN=results/revision_v9/synthetic_rough_heston/dqn_seed42
+RUN=results/revision_v10/synthetic_rough_heston/dqn_seed42
 
 python3 -m lmm.experiments.train \
   --config configs/base.yaml \
@@ -230,6 +250,22 @@ checkpoint selection. Historical tables additionally use
 `risk_adjusted_pnl_bps`.
 
 The full field-level schema is in `docs/metrics_schema.md`.
+
+## Compile the manuscript
+
+The two generated inputs currently referenced by `paper/main.tex` are tracked
+under `paper/results/`, so compilation does not depend on a local experiment
+output tree. With a TeX distribution providing `latexmk` and the packages
+listed in `paper/packages.tex`, build from a clean checkout with:
+
+```bash
+latexmk -cd -pdf -interaction=nonstopmode -halt-on-error paper/main.tex
+```
+
+Publication figures and tables should still be regenerated after the final
+experiments. Keeping the currently referenced inputs tracked guarantees build
+completeness; it does not promote an old smoke or pre-revision artifact to a
+new empirical result.
 
 ## Determinism
 

@@ -129,7 +129,7 @@ class OrderBook:
         """Number of populated exogenous levels on ``side`` (ask ``+1``)."""
         vols = self.ask_volumes if side > 0 else self.bid_volumes
         empty = np.flatnonzero(vols <= _DEPTH_EPS)
-        return int(empty[0] + 1) if empty.size else self.params.Lc
+        return int(empty[0]) if empty.size else self.params.Lc
 
     def place_agent_order(self, volume: float, level: int) -> None:
         """Place the strategic ask at ``delta=level`` for the current interval."""

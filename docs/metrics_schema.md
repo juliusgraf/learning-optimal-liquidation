@@ -1,7 +1,7 @@
 # Revised artifact and metrics schema
 
 All current confirmation runs live under
-`results/revision_v9/<experiment_name>/<run_name>/`. Readers require both the
+`results/revision_v10/<experiment_name>/<run_name>/`. Readers require both the
 current `artifact_schema_version` and the exact environment contract identifier
 stored in checkpoints and evaluation metadata. Missing or mismatched values are
 fatal; the pipeline does not load old checkpoints or result directories.

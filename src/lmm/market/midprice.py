@@ -206,24 +206,27 @@ class HistoricalMidPrice(MidPriceModel):
             )
         self.params = params
         self.grid = grid
-        self.paths = paths
-        self.path = self.paths[0]
-        self.path_index = 0
-        self.mid = float(self.path[0])
+        # The pool and the selected realization contain future observations.
+        # Keep them implementation-private so an environment-bound policy
+        # cannot inspect the rest of its episode after reset.
+        self._paths = paths
+        self._path = self._paths[0]
+        self._path_index = 0
+        self.mid = float(self._path[0])
 
     def reset(self, rng: np.random.Generator) -> float:
-        if self.params.path_policy == "split_pool" and len(self.paths) > 1:
-            self.path_index = int(rng.integers(0, len(self.paths)))
+        if self.params.path_policy == "split_pool" and len(self._paths) > 1:
+            self._path_index = int(rng.integers(0, len(self._paths)))
         else:
-            self.path_index = 0
-        self.path = self.paths[self.path_index]
-        self.mid = float(self.path[0])
+            self._path_index = 0
+        self._path = self._paths[self._path_index]
+        self.mid = float(self._path[0])
         return self.mid
 
     def advance_to(self, t: float) -> float:
         idx = int(math.floor(t))
-        idx = max(0, min(idx, len(self.path) - 1))
-        self.mid = float(self.path[idx])
+        idx = max(0, min(idx, len(self._path) - 1))
+        self.mid = float(self._path[idx])
         return self.mid
 
 

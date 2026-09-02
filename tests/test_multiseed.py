@@ -139,6 +139,12 @@ def test_multiseed_table_rejects_missing_revised_primary_outcome():
         )
 
 
+def test_single_seed_table_rejects_duplicate_run_identity():
+    run = _run("synthetic_rough_heston", "dqn", 42, 0.0)
+    with pytest.raises(ValueError, match="duplicate run identity"):
+        T.build_eval_summary([run, run])
+
+
 def test_figure_requires_revised_primary_outcome():
     all_metrics = pd.DataFrame(
         {

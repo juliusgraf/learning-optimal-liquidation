@@ -43,7 +43,7 @@ def test_run_script_smoke(script, setting, algo, symbol):
     res = _run(script, extra)
     assert res.returncode == 0, f"{script} failed:\n{res.stderr[-2000:]}"
     name = f"{algo}_{symbol}_seed{SEED}" if symbol else f"{algo}_seed{SEED}"
-    rd = REPO / "results" / "revision_v9" / setting / name
+    rd = REPO / "results" / "revision_v10" / setting / name
     assert (rd / "checkpoints" / "final.pt").exists()
     assert (rd / "eval" / "records.csv").exists()
     # Traces use the resolved learned-policy label.
@@ -65,7 +65,7 @@ def test_acceptance_run_then_make_all_outputs():
     )
     assert res.returncode == 0, res.stderr[-2000:]
 
-    rd = REPO / "results" / "revision_v9" / "synthetic_rough_heston" / f"dqn_seed{seed}"
+    rd = REPO / "results" / "revision_v10" / "synthetic_rough_heston" / f"dqn_seed{seed}"
     for name in ("training_diagnostics", "episode_anatomy", "eval_distributions"):
         assert (rd / "figures" / f"{name}.pdf").exists()
         assert (rd / "figures" / f"{name}.png").exists()
@@ -73,6 +73,6 @@ def test_acceptance_run_then_make_all_outputs():
         assert (rd / "tables" / f"{name}.tex").exists()
         assert (rd / "tables" / f"{name}.csv").exists()
 
-    combined = REPO / "results" / "revision_v9" / "synthetic_rough_heston" / "_combined"
+    combined = REPO / "results" / "revision_v10" / "synthetic_rough_heston" / "_combined"
     assert (combined / "figures" / "algorithm_comparison.png").exists()
     assert (combined / "tables" / "eval_summary_final.csv").exists()

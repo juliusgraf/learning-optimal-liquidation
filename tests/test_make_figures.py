@@ -5,6 +5,11 @@ No env stepping happens here — figures come from saved outputs only.
 
 from __future__ import annotations
 
+import dataclasses
+
+import yaml
+
+from lmm.config import load_config, save_resolved
 from lmm.experiments import make_figures
 
 PER_RUN_FIGURES = [
@@ -54,6 +59,20 @@ def test_convergence_curves_multiseed(fixture_run_dir, tmp_path):
         rd = tmp_path / f"run_seed{seed}"
         shutil.copytree(fixture_run_dir, rd)
         (rd / "seed.txt").write_text(seed + "\n")
+        cfg = load_config(rd / "config_resolved.yaml")
+        cfg = dataclasses.replace(
+            cfg,
+            experiment=dataclasses.replace(
+                cfg.experiment,
+                master_seed=int(seed),
+                seeds=(int(seed),),
+            ),
+        )
+        save_resolved(cfg, rd / "config_resolved.yaml")
+        metadata_path = rd / "eval" / "metadata.yaml"
+        metadata = yaml.safe_load(metadata_path.read_text())
+        metadata["master_seed"] = int(seed)
+        metadata_path.write_text(yaml.safe_dump(metadata, sort_keys=False))
         run_dirs.append(str(rd))
     out = tmp_path / "out"
     rc = make_figures.main(["--multiseed", "--run-dir", *run_dirs, "--out", str(out)])
@@ -99,3 +118,31 @@ def test_default_out_is_run_figures_dir(fixture_run_dir, tmp_path):
     shutil.copytree(fixture_run_dir, run)
     make_figures.main(["--run-dir", str(run)])
     assert (run / "figures" / "training_diagnostics.png").exists()
+
+
+def test_missing_requested_trace_returns_nonzero(fixture_run_dir, tmp_path):
+    (fixture_run_dir / "eval" / "traces" / "dqn_ep0.csv").unlink()
+    rc = make_figures.main(
+        ["--run-dir", str(fixture_run_dir), "--out", str(tmp_path / "out")]
+    )
+    assert rc == 1
+
+
+def test_no_auction_run_omits_cancellation_strategy(fixture_run_dir, tmp_path):
+    cfg = load_config(
+        "configs/base.yaml",
+        "configs/synthetic_rough_heston.yaml",
+        "configs/algo/dqn.yaml",
+        "configs/treatment/no_auction.yaml",
+    )
+    save_resolved(cfg, fixture_run_dir / "config_resolved.yaml")
+    out = tmp_path / "out"
+
+    rc = make_figures.main(
+        ["--run-dir", str(fixture_run_dir), "--out", str(out)]
+    )
+
+    assert rc == 0
+    assert not (out / "cancellation_strategy.pdf").exists()
+    assert not (out / "cancellation_strategy.png").exists()
+    _assert_pdf_png(out, "episode_anatomy")

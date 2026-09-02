@@ -1,8 +1,8 @@
 """Discrete five-coordinate actions and projected continuous proposals.
 
-The manuscript action is ``(v, delta, K, b, c)``.  The existing environment
-still consumes the phase-specific ``ClobAction``/``AuctionAction`` objects, so
-this module provides lossless conversions while preserving those constructors.
+The manuscript action is ``(v, delta, K, ell, c)``.  The local auction
+coordinate ``ell`` is resolved inside the simulator to the absolute frozen-mid
+coordinate ``b``; those two quantities deliberately use different types.
 """
 
 from __future__ import annotations
@@ -50,39 +50,42 @@ class ClobAction:
 
 @dataclass(frozen=True)
 class AuctionAction:
-    """Auction action (A^3, A^4, A^5): slope K^a, quote tick offset, scalar
-    cancel-all c_t in {0, 1} (ruling D4).
+    """Public manuscript auction action ``(K^a,ell,c)``.
 
-    ``one_sided=True`` identifies the external AS/TWAP capped positive-part
-    schedule. ``quantity_cap`` and ``reference_price`` carry its manuscript
-    execution metadata. The learned discrete grid contains only two-sided
-    linear schedules and never sets these fields."""
+    ``ell`` is the local integer displacement from the current indicative
+    price. The environment privately derives and validates absolute ``b``.
+    """
 
     K_a: float
-    offset: int
+    ell: int
     cancel: int
-    one_sided: bool = False
-    quantity_cap: float | None = None
-    reference_price: float | None = None
 
     def as_five_coordinate(self) -> "FiveCoordinateAction":
-        # quantity_cap/reference_price are external-policy execution metadata,
-        # not coordinates in the learned five-dimensional action.
-        return FiveCoordinateAction(0.0, 0, self.K_a, self.offset, self.cancel)
+        return FiveCoordinateAction(0.0, 0, self.K_a, self.ell, self.cancel)
+
+
+@dataclass(frozen=True)
+class _BenchmarkAuctionAction:
+    """Private trusted path for the capped positive-part AS/TWAP schedule."""
+
+    K_a: float
+    reference_price: float
+    quantity_cap: float
+    cancel: int = 0
 
 
 @dataclass(frozen=True, order=True)
 class FiveCoordinateAction:
-    """Common manuscript action ``(v, delta, K, b, c)``."""
+    """Common manuscript action ``(v, delta, K, ell, c)``."""
 
     volume: float
     delta: int
     K_a: float
-    offset: int
+    ell: int
     cancel: int
 
     def as_tuple(self) -> tuple[float, int, float, int, int]:
-        return (self.volume, self.delta, self.K_a, self.offset, self.cancel)
+        return (self.volume, self.delta, self.K_a, self.ell, self.cancel)
 
 
 def to_five_coordinate(
@@ -108,13 +111,13 @@ def from_five_coordinate(
             float(values[0]), int(values[1]), float(values[2]), int(values[3]), int(values[4])
         )
     if phase == "clob":
-        if (action.K_a, action.offset, action.cancel) != (0.0, 0, 0):
-            raise ValueError("CLOB action requires (K,b,c)=(0,0,0)")
+        if (action.K_a, action.ell, action.cancel) != (0.0, 0, 0):
+            raise ValueError("CLOB action requires (K,ell,c)=(0,0,0)")
         return ClobAction(action.volume, action.delta)
     if phase == "auction":
         if (action.volume, action.delta) != (0.0, 0):
             raise ValueError("auction action requires (v,delta)=(0,0)")
-        return AuctionAction(action.K_a, action.offset, action.cancel)
+        return AuctionAction(action.K_a, action.ell, action.cancel)
     raise ValueError(f"unknown phase {phase!r}")
 
 
@@ -141,6 +144,14 @@ class ClobActionGrid:
         return len(self.actions)
 
     def decode(self, index: int) -> ClobAction:
+        if isinstance(index, (bool, np.bool_)) or not isinstance(
+            index, (int, np.integer)
+        ):
+            raise TypeError("CLOB action index must be an integer")
+        if not 0 <= int(index) < len(self.actions):
+            raise ValueError(
+                f"CLOB action index {index} is outside [0,{len(self.actions) - 1}]"
+            )
         return self.actions[index]
 
     def mask(self, inventory: float) -> np.ndarray:
@@ -152,37 +163,27 @@ class ClobActionGrid:
 
 
 class AuctionActionGrid:
-    """Lexicographic auction policy templates with exact slopes ``beta*k``.
-
-    With ``frozen_mid`` centering, a template offset is the absolute manuscript
-    coordinate ``b``.  With ``indicative`` centering, it is a local displacement
-    that the environment resolves to absolute ``b`` at decision time.
-    """
+    """Lexicographic full manuscript lattice in ``(K^a,ell,c)``."""
 
     def __init__(self, params: ActionGridParams) -> None:
         self.params = params
         K_choices = tuple(params.beta * k for k in params.auction_K_multipliers)
-        template_offset_max = params.auction_template_offset_max
-        offsets = range(
-            -template_offset_max,
-            template_offset_max + 1,
-            params.auction_offset_step,
-        )
+        offsets = range(-params.B_max, params.B_max + 1)
         if params.auction_cancel_mode == "enabled":
             self.actions = (
                 AuctionAction(0.0, 0, 0),
                 AuctionAction(0.0, 0, 1),
             ) + tuple(
-                AuctionAction(float(K), off, c)
+                AuctionAction(float(K), ell, c)
                 for K in K_choices
-                for off in offsets
+                for ell in offsets
                 for c in (0, 1)
             )
         elif params.auction_cancel_mode == "never":
             self.actions = (AuctionAction(0.0, 0, 0),) + tuple(
-                AuctionAction(float(K), off, 0)
+                AuctionAction(float(K), ell, 0)
                 for K in K_choices
-                for off in offsets
+                for ell in offsets
             )
         else:
             raise ValueError(
@@ -194,16 +195,20 @@ class AuctionActionGrid:
         self._cancel_flags = np.fromiter(
             (a.cancel == 1 for a in self.actions), dtype=bool, count=len(self.actions)
         )
-        self._stacking_flags = np.fromiter(
-            (a.K_a > 0.0 and a.cancel == 0 for a in self.actions),
-            dtype=bool,
-            count=len(self.actions),
-        )
 
     def __len__(self) -> int:
         return len(self.actions)
 
     def decode(self, index: int) -> AuctionAction:
+        """Return the public local-coordinate action at ``index``."""
+        if isinstance(index, (bool, np.bool_)) or not isinstance(
+            index, (int, np.integer)
+        ):
+            raise TypeError("auction action index must be an integer")
+        if not 0 <= int(index) < len(self.actions):
+            raise ValueError(
+                f"auction action index {index} is outside [0,{len(self.actions) - 1}]"
+            )
         return self.actions[index]
 
     def mask(
@@ -212,19 +217,16 @@ class AuctionActionGrid:
         *,
         frozen_mid: float | None = None,
         alpha: float | None = None,
-        offset_center_ticks: int = 0,
+        indicative_b_ticks: int = 0,
     ) -> np.ndarray:
-        """Mask cancellation and resolved absolute-offset admissibility.
+        """Mask cancellation and resolved absolute-``b`` admissibility.
 
-        ``frozen_mid`` and ``alpha`` are optional for compatibility with the
-        direct action grid. ``offset_center_ticks`` resolves local policy
-        templates to the absolute manuscript coordinate ``b``. Supplying
-        exactly one of the price inputs is an error.
+        ``indicative_b_ticks`` is the frozen-mid coordinate of ``H_t^cl``;
+        execution resolves ``b=indicative_b_ticks+ell``. Supplying exactly one
+        of ``frozen_mid`` and ``alpha`` is an error.
         """
         if cancel_admissible:
             mask = np.ones(len(self.actions), dtype=bool)
-            if self.params.auction_order_mode == "single_replace":
-                mask &= ~self._stacking_flags
         else:
             mask = ~self._cancel_flags
         if (frozen_mid is None) != (alpha is None):
@@ -235,10 +237,11 @@ class AuctionActionGrid:
                 (
                     a.K_a == 0.0
                     or (
-                        abs(int(offset_center_ticks) + a.offset)
-                        <= self.params.B_max
+                        abs(int(indicative_b_ticks) + a.ell)
+                        <= self.params.B_inf
                         and float(frozen_mid)
-                        + float(alpha) * (int(offset_center_ticks) + a.offset)
+                        + float(alpha)
+                        * (int(indicative_b_ticks) + a.ell)
                         >= 0.0
                     )
                     for a in self.actions
@@ -329,9 +332,8 @@ class ContinuousActionAdapter:
         self._delta_max = int(ap.L_max)
         self._beta = float(ap.beta)
         self._K_index_max = int(ap.K_max)
-        self._offset_max = int(ap.B_max)
-        self._template_offset_max = int(ap.auction_template_offset_max)
-        self._offset_step = int(ap.auction_offset_step)
+        self._absolute_offset_max = int(ap.B_inf)
+        self._local_offset_max = int(ap.B_max)
         # The env always starts in the CLOB phase after reset(); _phase is not
         # set until then, so default to the CLOB box at construction.
         self.action_space = self._boxes["clob"]
@@ -372,12 +374,9 @@ class ContinuousActionAdapter:
         return self.env.decision_index
 
     @property
-    def episode_grid(self):
-        return self.env.episode_grid
-
-    @property
-    def generator(self):
-        return self.env.generator
+    def completed_episode_grid(self):
+        """The realized grid, available only after the episode has ended."""
+        return self.env.completed_episode_grid
 
     def action_mask(self) -> np.ndarray:
         return self.env.action_mask()
@@ -435,7 +434,7 @@ class ContinuousActionAdapter:
             "rounded_coordinate_count": int(not np.isclose(v_raw, v_rounded))
             + int(v > 0 and not np.isclose(delta_raw, delta_rounded)),
             "inventory_projection": bool(v_rounded > inventory_cap),
-            "offset_admissibility_projection": False,
+            "ell_admissibility_projection": False,
             "cancel_threshold_positive": False,
             "cancel_executed": False,
         }
@@ -453,59 +452,54 @@ class ContinuousActionAdapter:
         k_unclipped = round_half_up(K_raw / self._beta)
         k = int(np.clip(k_unclipped, 0, self._K_index_max))
         K = self._beta * k
-        b_raw = self._template_offset_max * raw[1]
-        b_index_unclipped = round_half_up(b_raw / self._offset_step)
-        b_rounded = self._offset_step * b_index_unclipped
-        template_offset = int(
+        ell_raw = self._local_offset_max * raw[1]
+        ell_unclipped = round_half_up(ell_raw)
+        ell = int(
             np.clip(
-                b_rounded,
-                -self._template_offset_max,
-                self._template_offset_max,
+                ell_unclipped,
+                -self._local_offset_max,
+                self._local_offset_max,
             )
         )
-        if self.cfg.actions.auction_offset_center == "indicative":
-            center_offset = round_half_up(
-                (float(self.env.h_cl) - float(self.env.s_mid))
-                / float(self.cfg.grid.alpha)
-            )
-        else:
-            center_offset = 0
-        offset = 0 if k == 0 else center_offset + template_offset
-        if k > 0:
-            # Continuous actors project a local indicative-centred proposal to
-            # the nearest valid absolute b at an ambient boundary.  Discrete
-            # actors mask templates whose exact resolution is inadmissible.
-            offset = int(np.clip(offset, -self._offset_max, self._offset_max))
-        offset_before_admissibility = offset
+        ell_before_admissibility = ell
         if k > 0:
             alpha = float(self.cfg.grid.alpha)
-            minimum_offset = math.ceil(-float(self.env.s_mid) / alpha)
-            offset = max(offset, minimum_offset)
-            offset = int(np.clip(offset, -self._offset_max, self._offset_max))
-            if float(self.env.s_mid) + alpha * offset < -1e-12:
-                raise ValueError("no auction offset in the configured band gives S_a >= 0")
+            center_b = self.env._indicative_b_ticks()
+            minimum_b = math.ceil(-float(self.env.s_mid) / alpha)
+            lower = max(
+                -self._local_offset_max,
+                -self._absolute_offset_max - center_b,
+                minimum_b - center_b,
+            )
+            upper = min(
+                self._local_offset_max,
+                self._absolute_offset_max - center_b,
+            )
+            if lower > upper:
+                raise ValueError(
+                    "no local auction ell resolves to an admissible absolute b"
+                )
+            ell = int(np.clip(ell, lower, upper))
+        else:
+            ell = 0
         if self.continuous_cancel == "never":
             cancel = 0
             committed = raw.astype(np.float32, copy=True)
         else:
             cancel = int(raw[2] >= 0.0 and bool(self.env.cancel_admissible))
-            if (
-                self.cfg.actions.auction_order_mode == "single_replace"
-                and k > 0
-                and bool(self.env.cancel_admissible)
-            ):
-                cancel = 1
             committed = raw.astype(np.float32, copy=True)
-        order = AuctionAction(K_a=K, offset=offset, cancel=cancel)
+        order = AuctionAction(K_a=K, ell=ell, cancel=cancel)
         diagnostics: dict[str, float | int | bool] = {
             "input_clipped": bool(np.any(a != raw)),
             "bound_saturation_count": int(np.count_nonzero(np.isclose(np.abs(raw), 1.0))),
             "rounded_coordinate_count": int(
                 not np.isclose(K_raw / self._beta, k_unclipped)
             )
-            + int(k > 0 and not np.isclose(b_raw, b_rounded)),
+            + int(k > 0 and not np.isclose(ell_raw, ell_unclipped)),
             "inventory_projection": False,
-            "offset_admissibility_projection": bool(offset != offset_before_admissibility),
+            "ell_admissibility_projection": bool(
+                ell != ell_before_admissibility
+            ),
             "cancel_threshold_positive": bool(
                 self.continuous_cancel == "threshold" and raw[2] >= 0.0
             ),

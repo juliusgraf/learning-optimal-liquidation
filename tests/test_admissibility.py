@@ -14,6 +14,7 @@ import numpy as np
 import pytest
 
 from lmm.env.action_spaces import AuctionAction, ClobAction
+from lmm.market.clob import OrderBook
 
 from helpers import NOOP_AUCTION, drive_to_auction, load_synthetic_cfg, new_env
 
@@ -23,6 +24,19 @@ def C_of_paper_state(ps) -> float:
     x9, x17 = ps["X9"], ps["X17"]
     vals = (1.0 - x9) * (x17 > 0.0)
     return float(np.max(vals)) if len(vals) else 0.0
+
+
+def test_clob_depth_is_the_populated_level_count(synthetic_cfg):
+    book = OrderBook(synthetic_cfg.clob_flow, synthetic_cfg.grid)
+    full = np.ones(synthetic_cfg.clob_flow.Lc, dtype=float)
+    book.ask_volumes = full.copy()
+    book.bid_volumes = full.copy()
+    assert book.depth(+1) == book.depth(-1) == synthetic_cfg.clob_flow.Lc
+
+    book.ask_volumes[2:] = 0.0
+    book.bid_volumes[:] = 0.0
+    assert book.depth(+1) == 2
+    assert book.depth(-1) == 0
 
 
 # ---------------------------------------------------------------------------
@@ -70,12 +84,6 @@ def assert_cancel_admissible(env, expected: bool):
     assert mask[cancel_rows].any() == expected
     if not expected:
         assert mask[~cancel_rows].all()
-    elif env.cfg.actions.auction_order_mode == "single_replace":
-        stacking = np.array(
-            [a.cancel == 0 and a.K_a > 0.0 for a in env.auction_grid.actions]
-        )
-        assert not mask[stacking].any()
-        assert mask[~(cancel_rows | stacking)].all()
     else:
         assert mask[~cancel_rows].all()
     assert env._ledger.cancel_admissible() == expected
@@ -89,8 +97,8 @@ def test_cancel_forbidden_at_auction_open_and_after_abstain(synthetic_cfg):
     env = new_env(synthetic_cfg)
     drive_to_auction(env, seed=2)
     assert_cancel_admissible(env, False)  # t = n+1: c_{t_{n+1}} = 0 forced
-    assert len(env.auction_grid) == 254
-    assert env.action_mask().sum() == 127
+    assert len(env.auction_grid) == 1346
+    assert env.action_mask().sum() == 673
     with pytest.raises(ValueError, match="cancel-all is ineligible"):
         env.step(AuctionAction(2.0, 2, 1))
 
@@ -105,7 +113,7 @@ def test_cancel_allowed_after_live_submission_then_forbidden_again(synthetic_cfg
     drive_to_auction(env, seed=2)
     env.step(AuctionAction(2.0, 1, 0))  # live prior order with K^a > 0
     assert_cancel_admissible(env, True)
-    assert env.action_mask().sum() == 128
+    assert env.action_mask().sum() == len(env.auction_grid)
 
     # Cancel-all WITHOUT a new submission: ledger empty again afterwards.
     env.step(AuctionAction(0.0, 0, 1))
@@ -119,8 +127,8 @@ def test_cancel_allowed_after_live_submission_then_forbidden_again(synthetic_cfg
     assert_cancel_admissible(env, True)  # the just-submitted K=1 order lives
 
 
-def test_single_replace_mode_requires_cancellation_before_a_new_live_schedule():
-    cfg = load_synthetic_cfg("actions.auction_order_mode=single_replace")
+def test_multiple_live_schedules_are_allowed_without_cancellation():
+    cfg = load_synthetic_cfg()
     env = new_env(cfg)
     drive_to_auction(env, seed=2)
     env.step(AuctionAction(cfg.actions.beta, 1, 0))
@@ -129,133 +137,122 @@ def test_single_replace_mode_requires_cancellation_before_a_new_live_schedule():
     stacking = np.array(
         [a.K_a > 0.0 and a.cancel == 0 for a in env.auction_grid.actions]
     )
-    assert not mask[stacking].any()
-    assert mask.sum() == 128  # two no-ops plus every cancel/replace action
-    with pytest.raises(ValueError, match="single_replace mode requires cancel=1"):
-        env.step(AuctionAction(cfg.actions.beta, 2, 0))
-
-    env.step(AuctionAction(cfg.actions.beta, 2, 1))
-    assert env.own_slope == pytest.approx(cfg.actions.beta)
+    assert mask[stacking].all()
+    assert mask.all()
+    env.step(AuctionAction(2.0 * cfg.actions.beta, 2, 0))
+    assert env.own_slope == pytest.approx(3.0 * cfg.actions.beta)
     assert env.cancel_admissible
 
 
-def test_absolute_frozen_mid_grid_is_independent_of_indicative_price():
+def test_local_action_resolves_to_private_absolute_b():
     cfg = load_synthetic_cfg(
         "actions.beta=6.666666666666667",
         "actions.K_max=5",
-        "actions.auction_slope_multipliers=[1,2,3,4,5]",
-        "auction_flow.B_inf=150",
+        "actions.B_inf=150",
         "actions.B_max=10",
-        "actions.auction_offset_center=frozen_mid",
-        "actions.auction_local_offset_max=null",
-        "actions.auction_order_mode=single_replace",
     )
     env = new_env(cfg)
     drive_to_auction(env, seed=2)
     assert len(env.auction_grid) == 212
 
-    # The observed indicative price does not recenter b: both indexed and
-    # direct actions execute at the manuscript's absolute frozen-mid offset.
+    # Both indexed and direct public actions carry local ell=-4. The simulator
+    # privately resolves it to absolute b=37-4=33.
     env._h_cache = env.s_mid + 37 * cfg.grid.alpha
     idx = next(
         i
         for i, a in enumerate(env.auction_grid.actions)
         if a.K_a == pytest.approx(cfg.actions.beta)
-        and a.offset == -4
+        and a.ell == -4
         and a.cancel == 0
     )
     assert env.action_mask()[idx]
     assert env._decode_auction(idx) == AuctionAction(cfg.actions.beta, -4, 0)
     direct = AuctionAction(cfg.actions.beta, -4, 0)
     assert env._decode_auction(direct) is direct
+    assert env._resolve_auction_action(direct).b == 33
 
 
-def test_indicative_centered_template_resolves_to_absolute_manuscript_offset():
+def test_index_and_decoded_template_execute_identically():
     cfg = load_synthetic_cfg(
-        "actions.beta=6.666666666666667",
+        "actions.beta=1.0",
         "actions.K_max=5",
-        "actions.auction_slope_multipliers=[1,2,3,4,5]",
-        "actions.B_max=150",
-        "actions.auction_offset_center=indicative",
-        "actions.auction_local_offset_max=10",
-        "actions.auction_order_mode=single_replace",
+        "actions.B_inf=150",
+        "actions.B_max=10",
     )
-    env = new_env(cfg)
-    drive_to_auction(env, seed=2)
-    assert len(env.auction_grid) == 212
-
-    # The indexed policy coordinate is local (-4); the executable manuscript
-    # coordinate remains absolute (37-4=33 ticks from the frozen mid).
-    env._h_cache = env.s_mid + 37 * cfg.grid.alpha
-    idx = next(
+    indexed, templated = new_env(cfg), new_env(cfg)
+    drive_to_auction(indexed, seed=12)
+    drive_to_auction(templated, seed=12)
+    indexed._h_cache = indexed.s_mid + 37 * cfg.grid.alpha
+    templated._h_cache = templated.s_mid + 37 * cfg.grid.alpha
+    index = next(
         i
-        for i, a in enumerate(env.auction_grid.actions)
-        if a.K_a == pytest.approx(cfg.actions.beta)
-        and a.offset == -4
-        and a.cancel == 0
+        for i, template in enumerate(indexed.auction_grid.actions)
+        if template.K_a == cfg.actions.beta
+        and template.ell == -4
+        and template.cancel == 0
     )
-    assert env.action_mask()[idx]
-    assert env._decode_auction(idx) == AuctionAction(cfg.actions.beta, 33, 0)
-    # Direct AuctionAction objects always carry absolute b.
-    direct = AuctionAction(cfg.actions.beta, -4, 0)
-    assert env._decode_auction(direct) is direct
+    template = templated.auction_grid.decode(index)
+
+    obs_i, reward_i, done_i, _, info_i = indexed.step(index)
+    obs_t, reward_t, done_t, _, info_t = templated.step(template)
+    np.testing.assert_array_equal(obs_i, obs_t)
+    assert reward_i == reward_t
+    assert done_i == done_t
+    assert info_i["action"] == info_t["action"] == AuctionAction(
+        cfg.actions.beta, -4, 0
+    )
+    assert info_i["executed_b"] == info_t["executed_b"] == 33
+    assert info_i["H_next"] == info_t["H_next"]
 
 
 def test_indicative_templates_are_masked_at_the_ambient_absolute_boundary():
     cfg = load_synthetic_cfg(
-        "actions.B_max=30",
-        "actions.auction_offset_center=indicative",
-        "actions.auction_local_offset_max=10",
+        "auction_flow.B_inf=30",
+        "actions.B_inf=30",
+        "actions.B_max=10",
     )
     env = new_env(cfg)
     drive_to_auction(env, seed=2)
     env._h_cache = env.s_mid + 28 * cfg.grid.alpha
     mask = env.action_mask()
     outside = np.array(
-        [a.K_a > 0.0 and a.offset > 2 for a in env.auction_grid.actions]
+        [a.K_a > 0.0 and a.ell > 2 for a in env.auction_grid.actions]
     )
     assert not mask[outside].any()
+    with pytest.raises(ValueError, match="resolved auction b"):
+        env.step(AuctionAction(cfg.actions.beta, 3, 0))
 
 
-def test_nonuniform_slope_subset_keeps_small_and_large_actions_compact():
-    cfg = load_synthetic_cfg(
-        "actions.beta=1.0",
-        "actions.K_max=32",
-        "actions.auction_slope_multipliers=[1,2,4,8,16,32]",
-        "auction_flow.B_inf=150",
-        "actions.B_max=10",
-        "actions.auction_offset_center=frozen_mid",
-        "actions.auction_local_offset_max=null",
-    )
+def test_slope_grid_is_the_complete_manuscript_lattice():
+    cfg = load_synthetic_cfg("actions.beta=0.5", "actions.K_max=5")
     env = new_env(cfg)
     slopes = sorted({a.K_a for a in env.auction_grid.actions if a.K_a > 0.0})
-    assert slopes == [1.0, 2.0, 4.0, 8.0, 16.0, 32.0]
-    assert len(env.auction_grid) == 254
+    assert slopes == [0.5, 1.0, 1.5, 2.0, 2.5]
+    assert len(env.auction_grid) == 212
 
 
-def test_strategic_B_max_is_independent_of_exogenous_B_inf():
+def test_common_B_inf_controls_strategic_and_exogenous_price_bands():
     cfg = load_synthetic_cfg(
-        "auction_flow.B_inf=3",
+        "auction_flow.B_inf=10",
+        "actions.B_inf=10",
         "actions.B_max=10",
-        "actions.auction_offset_center=frozen_mid",
-        "actions.auction_local_offset_max=null",
     )
     env = new_env(cfg)
     drive_to_auction(env, seed=2)
-    env._h_cache = env.s_mid + 28 * cfg.grid.alpha
-    before = env.action_mask().copy()
-    env._h_cache = env.s_mid - 41 * cfg.grid.alpha
-    np.testing.assert_array_equal(env.action_mask(), before)
-    assert sorted({a.offset for a in env.auction_grid.actions if a.K_a > 0.0}) == list(
-        range(-10, 11)
-    )
-    assert env._decode_auction(
+    assert (cfg.auction_flow.M1, cfg.auction_flow.M2) == (-10, 10)
+    assert sorted(
+        {a.ell for a in env.auction_grid.actions if a.K_a > 0.0}
+    ) == list(range(-10, 11))
+    action = env._decode_auction(
         next(
             i
             for i, a in enumerate(env.auction_grid.actions)
-            if a.K_a > 0.0 and a.offset == -10 and a.cancel == 0
+            if a.K_a > 0.0 and a.ell == -10 and a.cancel == 0
         )
-    ).offset == -10
+    )
+    assert action.ell == -10
+    env._h_cache = env.s_mid
+    assert env._resolve_auction_action(action).b == -10
 
 
 def test_cancel_admissibility_is_in_the_auction_observation(synthetic_cfg):
@@ -283,10 +280,22 @@ def test_env_rejects_inadmissible_auction_actions(synthetic_cfg):
     drive_to_auction(env, seed=3)
     with pytest.raises(ValueError, match="K\\^a must be finite and nonnegative"):
         env.step(AuctionAction(-1.0, 0, 0))
+    with pytest.raises(ValueError, match="beta lattice"):
+        env.step(AuctionAction(0.5 * synthetic_cfg.actions.beta, 0, 0))
     with pytest.raises(ValueError, match="cancel must be 0 or 1"):
         env.step(AuctionAction(1.0, 0, 2))
     with pytest.raises(TypeError):
         env.step(ClobAction(1.0, 2))  # wrong phase's action type
+
+
+def test_negative_discrete_action_indices_are_rejected(synthetic_cfg):
+    env = new_env(synthetic_cfg)
+    env.reset(seed=3)
+    with pytest.raises(ValueError, match="CLOB action index -1"):
+        env.step(-1)
+    drive_to_auction(env, seed=3)
+    with pytest.raises(ValueError, match="auction action index -1"):
+        env.step(-1)
 
 
 # ---------------------------------------------------------------------------
@@ -314,7 +323,7 @@ def test_ledger_mask_agrees_with_C_on_paper_state_throughout(synthetic_cfg):
         cancel = int(
             admissible
             and (K > 0.0 or rng.random() < 0.4)
-        )  # single-replace requires cancellation for a new live schedule
+        )
         offset = 0 if K == 0.0 else int(rng.integers(-3, 4))
         _, _, term, _, _ = env.step(AuctionAction(K, offset, cancel))
         if term:

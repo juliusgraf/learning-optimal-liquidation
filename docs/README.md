@@ -1,11 +1,14 @@
-# docs/
+# Design documentation
 
-Filled in by Phases 4-5:
+- `rl_design.md` documents the active learner representation, action mapping,
+  reward/accounting split, and validation protocol.
+- `continuous_action_extension.md` documents the DDPG/TD3/SAC projected
+  continuous-proposal methods and their relationship to executable actions.
+- `metrics_schema.md` is the field-level schema for training and evaluation
+  artifacts.
+- `manuscript_update_notes.md` is an advisory author checklist. It is not an
+  executable source of truth and may contain items the author has already
+  applied.
 
-- `rl_design.md` — precise DQN architecture, update rules, schedules,
-  pseudocode and hyperparameters, written so the author can rewrite paper
-  Section 4 directly from it (ruling D9).
-- `continuous_action_extension.md` — the DDPG/TD3/SAC continuous-action
-  relaxation; every mathematical change vs the discrete setting documented.
-- `metrics_schema.md` — schema of metrics.csv and the eval/ per-episode
-  records.
+Active numerical values come from `configs/base.yaml` plus setting, learner,
+and treatment overlays. Reports under `audit/` characterize superseded code.

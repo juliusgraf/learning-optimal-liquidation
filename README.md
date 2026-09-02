@@ -1,10 +1,44 @@
-In this work, we investigate the market-making problem on a trading session in which a continuous phase on a limit order book is followed by a closing auction. Whereas standard optimal market-making models typically rely on terminal inventory penalties to manage end-of-day risk, ignoring the significant liquidity events available in closing auctions, we propose a Deep Q-Learning framework that explicitly incorporates this mechanism. We introduce a market-making framework designed to explicitly anticipate the closing auction, continuously refining the projected clearing price as the trading session evolves. We develop a generative stochastic market model to simulate the trading session and to emulate the market. Our theoretical model and Deep Q-Learning method is applied on the generator in two settings: (1) when the mid price follows a rough Heston model with generative data from this stochastic model; and (2) when the mid price corresponds to historical data of assets from the S&P 500 index and the performance of our algorithm is compared with classical benchmarks from optimal market making.
+# Learning Optimal Liquidation with Closing Auctions
 
-Both active numerical settings use a one-minute physical clock: a 120-minute
-CLOB phase followed by a 30-minute closing auction. Synthetic rough-Heston time
-is converted from minutes to trading years with 98,280 trading minutes/year.
-They also use one shared market simulator, action space, reward, and learning
-configuration. The sole economic setting difference is the exogenous mid-price:
-rough Heston versus verified SIP bid/ask midquotes. The shared CLOB calibration
-is `lambda0=1`, `V_inf=2`, `rho_lob=0.96`, and `L_max=200`; the enabled DQN
-auction grid has 254 local-indicative templates with conditional cancellation.
+This repository implements the simulator and reinforcement-learning methods
+for an end-of-day liquidation problem with a continuous limit-order-book phase
+followed by a two-sided closing call. The controlled CLOB policy is a
+one-sided liquidator. At auction open, the admissible controls expand to
+signed schedules, so terminal inventory can be positive or negative.
+
+The implemented learners are DQN and the projected continuous-proposal methods
+DDPG, TD3, and SAC. Synthetic rough-Heston and historical-midquote experiments
+use the same market mechanics, action semantics, rewards, and learning
+configuration; only the exogenous mid-price source changes. Historical runs
+replay frozen SIP midquotes while order flow, books, auction updates, clearing,
+and allocation remain simulated.
+
+## Sources of truth
+
+- `paper/main.tex` defines the mathematical model.
+- `configs/base.yaml`, setting overlays, algorithm overlays, and treatment
+  overlays define the active executable configuration.
+- `REPRODUCING.md` is the operational guide for installation, validation,
+  training, evaluation, and paper compilation.
+- `docs/rl_design.md` documents how the mathematical controls are represented
+  by the learners.
+
+Legacy implementations and the reports under `audit/` are retained for
+provenance and characterization only. They are not active specifications.
+
+## Quick start
+
+Python 3.10 or newer is required.
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -e ".[dev]"
+pytest -q tests/test_revision_acceptance.py
+pytest -q -m 'not network and not slow'
+```
+
+The repository includes the frozen processed historical artifact and its
+verified provenance sidecar, so the historical simulator does not require API
+credentials after checkout. See `REPRODUCING.md` for the complete workflow.

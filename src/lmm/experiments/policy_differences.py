@@ -10,7 +10,8 @@ from typing import Optional, Sequence
 import yaml
 
 from lmm.agents.base import ENVIRONMENT_CONTRACT
-from lmm.config import load_config
+from lmm.config import ACTIVE_ARTIFACT_SCHEMA_VERSION, load_config
+from lmm.experiments import plotting as P
 
 __all__ = ["build_parser", "main"]
 
@@ -46,6 +47,32 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             "evaluation artifact predates the revised environment contract; "
             "old result files cannot be compared"
         )
+    metadata_schema = metadata.get("artifact_schema_version")
+    if metadata_schema is None or int(metadata_schema) != ACTIVE_ARTIFACT_SCHEMA_VERSION:
+        raise SystemExit(
+            "evaluation artifact_schema_version mismatch: expected active schema "
+            f"{ACTIVE_ARTIFACT_SCHEMA_VERSION}, got {metadata_schema!r}"
+        )
+    if int(metadata_schema) != cfg.experiment.artifact_schema_version:
+        raise SystemExit(
+            "evaluation artifact_schema_version disagrees with config_resolved.yaml"
+        )
+    seed_path = run_dir / "seed.txt"
+    if not seed_path.exists():
+        raise SystemExit("run artifact is missing seed.txt")
+    master_seed = int(seed_path.read_text().strip())
+    if master_seed != cfg.experiment.master_seed:
+        raise SystemExit(
+            "seed.txt disagrees with config_resolved.yaml experiment.master_seed"
+        )
+    metadata_seed = metadata.get("master_seed")
+    if metadata_seed is not None and int(metadata_seed) != master_seed:
+        raise SystemExit("evaluation metadata master_seed disagrees with seed.txt")
+    records = P.read_records(run_dir)
+    try:
+        P.validate_evaluation_records(run_dir, cfg, metadata, records)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
     if cfg.algo is None:
         raise ValueError("resolved run config has no learned algorithm")
     policy = args.policy or cfg.algo.name
@@ -53,7 +80,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     by_policy: dict[str, dict[int, dict[str, str]]] = {}
     with (run_dir / "eval" / "records.csv").open(newline="") as f:
         for row in csv.DictReader(f):
-            by_policy.setdefault(row["policy"], {})[int(row["episode"])] = row
+            policy_rows = by_policy.setdefault(row["policy"], {})
+            episode = int(row["episode"])
+            if episode in policy_rows:
+                raise SystemExit(
+                    f"records.csv contains duplicate policy/episode row: "
+                    f"{row['policy']!r}/{episode}"
+                )
+            policy_rows[episode] = row
     benchmark_rows = by_policy.get(args.benchmark)
     policy_rows = by_policy.get(policy)
     if not benchmark_rows or not policy_rows:

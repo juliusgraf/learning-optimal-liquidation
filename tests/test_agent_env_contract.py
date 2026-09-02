@@ -91,7 +91,7 @@ def test_benchmark_without_clob_fills_uses_H_fallback_and_submits_once(cfg):
     drive_to_auction(env, seed=5)
     assert agent._exec_prices == []
     action = agent._auction_action()
-    assert action.one_sided
+    assert not hasattr(action, "offset")
     assert action.reference_price == pytest.approx(env.h_cl)
     assert action.quantity_cap == pytest.approx(env.inventory)
     assert agent._auction_action().K_a == 0.0
@@ -106,8 +106,8 @@ def test_presampled_clob_tape_is_identical_across_different_policies(cfg):
     # Reset both with the same environment seed before either policy acts.
     twap_env.reset(seed=31337)
     noop_env.reset(seed=31337)
-    a = twap_env.generator._realization
-    b = noop_env.generator._realization
+    a = twap_env._generator._realization
+    b = noop_env._generator._realization
     assert a is not None and b is not None
     for name in (
         "buy_arrival_times",

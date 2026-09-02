@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import dataclasses
+import math
 import typing
 from dataclasses import dataclass, field
 from datetime import date
@@ -25,6 +26,7 @@ from typing import Any, Optional, Sequence, Union
 import yaml
 
 __all__ = [
+    "ACTIVE_ARTIFACT_SCHEMA_VERSION",
     "ConfigError",
     "ExperimentMeta",
     "GridParams",
@@ -51,6 +53,9 @@ __all__ = [
 ]
 
 
+ACTIVE_ARTIFACT_SCHEMA_VERSION = 10
+
+
 class ConfigError(ValueError):
     """Raised on unknown keys, missing required keys, or bad value types."""
 
@@ -70,7 +75,7 @@ class ExperimentMeta:
     episodes: int  # E; active settings use one matched budget
     master_seed: int  # single master seed; ruling D10
     results_root: Path  # gitignored output root
-    artifact_schema_version: int = 2
+    artifact_schema_version: int = ACTIVE_ARTIFACT_SCHEMA_VERSION
     seeds: tuple[int, ...] = (42,)
     ablation_label: str = "H_on__shaping_on__auction_on"
     auction_enabled: bool = True
@@ -209,8 +214,7 @@ class HistoricalParams:
     normalize_first: float
     n_rows: int  # compatibility loader minimum; env regularizes through tau_op
     date: str = ""  # session date provenance (Phase 6: never a hard-coded constant)
-    path_policy: str = "fixed"  # active historical config uses "split_pool";
-    # "fixed" is retained for diagnostics and "bootstrap" remains reserved
+    path_policy: str = "fixed"  # supported: "fixed" | "split_pool"
     timezone: str = "America/New_York"
     missing_data_treatment: str = "error"
     split_id: str = ""
@@ -329,32 +333,15 @@ class ActionGridParams:
     L_max: int  # strategic CLOB quote offsets are 0..L_max; => 12
     beta: float  # strategic auction slope step; shared => 1
     K_max: int  # maximum strategic slope index k; shared => 32
-    # Absolute frozen-mid offset bound in
-    # S_t^a = S_{tau_op}^{mid} + alpha*b_t^a.
-    B_max: int  # ambient strategic auction offset bound; shared => 150 ticks
-    auction_cancel_mode: str = "enabled"  # shared grids: enabled 254 | never 127
-    # Numerical coarsening of the integer auction reference-price coordinate.
-    # The ambient manuscript action remains integer-valued; a value >1 selects
-    # a broad, regular subset without exploding the DQN output head.
-    auction_offset_step: int = 1
-    # ``frozen_mid`` enumerates the manuscript offset b directly.  The
-    # diagnostic ``indicative`` parameterization enumerates local templates
-    # around H_t^cl and resolves them to absolute b at execution time.
-    auction_offset_center: str = "frozen_mid"
-    # Local half-width used only by ``auction_offset_center=indicative``.  The
-    # resolved action remains the manuscript's absolute frozen-mid b and must
-    # lie inside [-B_max,B_max].
-    auction_local_offset_max: Optional[int] = None
-    # Optional non-uniform DQN slope subset, expressed as integer multipliers
-    # of beta.  Empty preserves the canonical 1..K_max grid.  A geometric
-    # subset gives fine control near zero and keeps the largest manuscript
-    # slope without multiplying it by every offset/cancellation choice.
-    auction_slope_multipliers: tuple[int, ...] = ()
-    # ``multi`` is the manuscript ambient action family.  ``single_replace``
-    # is a numerical policy-class restriction: once an agent schedule is live,
-    # a new schedule must simultaneously cancel/replace it.
-    auction_order_mode: str = "multi"
-
+    # Manuscript B_inf: the absolute frozen-mid coordinate bound in
+    # S_t^a = S_{tau_op}^{mid} + alpha*b_t^a. Validation requires this to equal
+    # AuctionFlowParams.B_inf so one named parameter controls the common
+    # strategic/exogenous price-deviation band.
+    B_inf: int
+    # Manuscript B_max: local policy coordinate ell in [-B_max, B_max].
+    # This is 10 ticks in the headline run.
+    B_max: int
+    auction_cancel_mode: str = "enabled"  # full grid: enabled 1,346 | never 673
     @property
     def clob_volume_max(self) -> int:
         return self.V_max
@@ -381,8 +368,7 @@ class ActionGridParams:
 
     @property
     def auction_K_multipliers(self) -> tuple[int, ...]:
-        if self.auction_slope_multipliers:
-            return self.auction_slope_multipliers
+        """The complete manuscript lattice ``{1,...,K_max}``."""
         return tuple(range(1, self.K_max + 1))
 
     @property
@@ -390,18 +376,12 @@ class ActionGridParams:
         return len(self.auction_K_multipliers)
 
     @property
-    def auction_offset_max(self) -> int:
-        return self.B_max
+    def auction_absolute_offset_max(self) -> int:
+        return self.B_inf
 
     @property
-    def auction_template_offset_max(self) -> int:
-        """Half-width represented by the policy's auction offset coordinate."""
-        if self.auction_offset_center == "indicative":
-            if self.auction_local_offset_max is None:
-                raise ConfigError(
-                    "actions.auction_local_offset_max is required for indicative centering"
-                )
-            return self.auction_local_offset_max
+    def auction_local_offset_max(self) -> int:
+        """Compatibility alias for manuscript ``B_max``."""
         return self.B_max
 
 
@@ -414,15 +394,6 @@ class FeatureParams:
 
     clob: tuple[str, ...]  # 8 dims; feat_clob main.py:1443-1450
     auction: tuple[str, ...]  # revision default adds cancel_admissible to legacy 7 dims
-    # Affine normalization for the OPTIONAL price features ``h_cl_norm`` /
-    # ``s_mid_norm`` only (the legacy raw ``h_cl`` / ``s_mid`` ignore these):
-    # x_norm = clip((x - S0) / price_norm_scale, -clip, +clip), centered at the
-    # initial mid S0. Used by the continuous agents (the raw ~100-valued price
-    # features sit next to O(1) features and, before the small-slope clearing
-    # guard, can spike); the discrete DQN keeps the legacy raw features.
-    # Defaults are inert (no config that uses the raw names is affected).
-    price_norm_scale: float = 1.0
-    price_norm_clip: float = 20.0
 
 
 @dataclass(frozen=True)
@@ -430,7 +401,6 @@ class BenchmarkParams:
     """AS / TWAP benchmarks (sec:benchmark; bounded common envelope, D23)."""
 
     z: float  # auction heuristic slope multiplier z; main.py:1048 => 10.0
-    dust_threshold: float  # q < dust => no auction order; => 1e-2
     as_n_samples: int  # K-hat regression samples; main.py:1935 => 10000
     as_gamma: float  # AS risk aversion gamma; => 0.0
     as_sigma_rule: str  # "pooled_paths" for both active settings; single_path supported
@@ -669,7 +639,7 @@ def _migrate_legacy_schema(tree: dict[str, Any]) -> None:
             "auction_offset_max",
         )
     ):
-        canonical = {"V_max", "L_max", "beta", "K_max", "B_max"}
+        canonical = {"V_max", "L_max", "beta", "K_max", "B_inf", "B_max"}
         overlap = canonical.intersection(actions)
         if overlap:
             raise ConfigError(
@@ -682,7 +652,7 @@ def _migrate_legacy_schema(tree: dict[str, Any]) -> None:
             old_k_min = actions.pop("auction_K_grid_min")
             old_k_value_max = actions.pop("auction_K_grid_max")
             old_k_index_max = actions.pop("auction_K_grid_n")
-            actions["B_max"] = actions.pop("auction_offset_max")
+            legacy_absolute_bound = actions.pop("auction_offset_max")
         except KeyError as exc:
             raise ConfigError(
                 f"actions: incomplete legacy action-grid schema; missing {exc.args[0]!r}"
@@ -691,13 +661,51 @@ def _migrate_legacy_schema(tree: dict[str, Any]) -> None:
             raise ConfigError("actions.auction_K_grid_n must be positive")
         actions["beta"] = old_k_value_max / old_k_index_max
         actions["K_max"] = old_k_index_max
+        actions["B_inf"] = legacy_absolute_bound
+        # A frozen-mid legacy grid enumerated the entire absolute band. Using
+        # the same value for the otherwise inactive local bound preserves it.
+        actions["B_max"] = legacy_absolute_bound
         # ``auction_K_grid_min`` was the old first sampled value.  The revised
         # grid is defined by beta*k, so it is intentionally not carried over.
         _ = old_k_min
 
-    # Revision-v5 resolved configs already used the two distinct bounds now
-    # supported here: an absolute ambient B_max and a local indicative-centred
-    # policy-template width.  Keep both when such a config is loaded.
+    if isinstance(actions, dict):
+        # Revision-v5/v9 resolved configs called the absolute strategic bound
+        # ``B_max`` and the manuscript-local bound
+        # ``auction_local_offset_max``. Canonicalize those unambiguously to
+        # B_inf (absolute) and B_max (local).
+        if "auction_local_offset_max" in actions:
+            if "B_inf" in actions:
+                raise ConfigError(
+                    "actions: cannot mix B_inf with legacy auction_local_offset_max"
+                )
+            if "B_max" not in actions:
+                raise ConfigError(
+                    "actions: legacy auction_local_offset_max requires legacy B_max"
+                )
+            absolute_bound = actions["B_max"]
+            local_bound = actions.pop("auction_local_offset_max")
+            if local_bound is None:
+                # Legacy frozen-mid configs did not use a local coordinate.
+                local_bound = absolute_bound
+            actions["B_inf"] = absolute_bound
+            actions["B_max"] = local_bound
+        elif "B_max" in actions and "B_inf" not in actions:
+            # Older frozen-mid resolved configs had one absolute B_max only.
+            actions["B_inf"] = actions["B_max"]
+
+        legacy_order_mode = actions.pop("auction_order_mode", None)
+        if legacy_order_mode == "single_replace":
+            raise ConfigError(
+                "actions.auction_order_mode=single_replace is incompatible with "
+                "the manuscript policy class; review the config and remove the "
+                "restriction explicitly"
+            )
+        if legacy_order_mode not in (None, "multi"):
+            raise ConfigError(
+                "actions.auction_order_mode: unsupported legacy value "
+                f"{legacy_order_mode!r}"
+            )
 
 
 def _apply_override(tree: dict[str, Any], spec: str) -> None:
@@ -745,78 +753,134 @@ def _parse_date_range(
 
 def _validate_experiment_config(cfg: ExperimentConfig) -> ExperimentConfig:
     """Enforce cross-field contracts that a dataclass alone cannot express."""
+    if cfg.experiment.episodes <= 0:
+        raise ConfigError("experiment.episodes must be positive")
+    if not cfg.experiment.seeds or len(set(cfg.experiment.seeds)) != len(
+        cfg.experiment.seeds
+    ):
+        raise ConfigError("experiment.seeds must be nonempty and unique")
+    if not 0 < cfg.grid.tau_op < cfg.grid.tau_cl:
+        raise ConfigError("grid times must satisfy 0 < tau_op < tau_cl")
     if cfg.grid.h != cfg.grid.tau_cl - cfg.grid.tau_op:
         raise ConfigError("grid.h must equal grid.tau_cl-grid.tau_op")
     if cfg.grid.time_unit not in ("minutes", "seconds"):
         raise ConfigError("grid.time_unit must be 'minutes' or 'seconds'")
-    if cfg.grid.T_physical <= 0.0:
-        raise ConfigError("grid.T_physical must be positive")
+    if not math.isfinite(cfg.grid.T_physical) or cfg.grid.T_physical <= 0.0:
+        raise ConfigError("grid.T_physical must be finite and positive")
     if abs(cfg.grid.physical_time_per_grid_unit - 1.0) > 1e-12:
         raise ConfigError(
             "the simulator clock requires one physical time_unit per integer grid interval: "
             "grid.T_physical must equal grid.tau_cl"
         )
-    if cfg.actions.auction_offset_step <= 0:
-        raise ConfigError("actions.auction_offset_step must be positive")
-    if cfg.actions.K_max <= 0 or cfg.actions.beta <= 0.0:
+    if not math.isfinite(cfg.grid.alpha) or cfg.grid.alpha <= 0.0:
+        raise ConfigError("grid.alpha must be finite and positive")
+    if not math.isfinite(cfg.grid.S0) or cfg.grid.S0 <= 0.0:
+        raise ConfigError("grid.S0 must be finite and positive")
+    if cfg.grid.I0 <= 0 or cfg.grid.I_max < cfg.grid.I0:
+        raise ConfigError("grid.I0 must be positive and grid.I_max must be at least I0")
+
+    clob = cfg.clob_flow
+    if not all(
+        math.isfinite(value)
+        for value in (
+            clob.lambda0,
+            clob.v_m,
+            clob.gamma_m,
+            clob.V_inf,
+            clob.beta_a,
+            clob.beta_b,
+            clob.rho_lob,
+        )
+    ):
+        raise ConfigError("CLOB flow parameters must be finite")
+    if min(clob.lambda0, clob.v_m, clob.gamma_m, clob.V_inf) <= 0.0:
+        raise ConfigError("clob_flow lambda0, v_m, gamma_m, and V_inf must be positive")
+    if clob.V <= 0 or clob.V < clob.v_m:
+        raise ConfigError("clob_flow.V must be positive and no smaller than v_m")
+    if clob.beta_a <= 0.0 or clob.beta_b <= 0.0:
+        raise ConfigError("clob_flow beta_a and beta_b must be positive")
+    if not 0.0 < clob.rho_lob <= 1.0:
+        raise ConfigError("clob_flow.rho_lob must lie in (0,1]")
+    if clob.L_max <= 0:
+        raise ConfigError("clob_flow.L_max must be positive")
+
+    auction = cfg.auction_flow
+    probabilities = (auction.p1, auction.p2, auction.p3, auction.p4)
+    if not all(math.isfinite(value) and 0.0 <= value <= 1.0 for value in probabilities):
+        raise ConfigError("auction_flow probabilities p1..p4 must lie in [0,1]")
+    if not all(
+        math.isfinite(value) for value in (auction.D_mu, auction.U1, auction.U2)
+    ):
+        raise ConfigError("auction_flow D_mu, U1, and U2 must be finite")
+    if auction.D_mu <= 0.0 or auction.U1 <= 0.0 or auction.U2 < auction.U1:
+        raise ConfigError(
+            "auction_flow requires D_mu>0 and 0<U1<=U2"
+        )
+
+    if not math.isfinite(cfg.algo1.H0) or cfg.algo1.H0 <= 0.0:
+        raise ConfigError("algo1.H0 must be finite and positive")
+    if not math.isfinite(cfg.algo1.eta_H) or not 0.0 < cfg.algo1.eta_H <= 1.0:
+        raise ConfigError("algo1.eta_H must lie in (0,1]")
+    if cfg.actions.V_max <= 0 or cfg.actions.L_max < 0:
+        raise ConfigError("actions.V_max must be positive and actions.L_max nonnegative")
+    if cfg.actions.L_max > cfg.clob_flow.L_max:
+        raise ConfigError("actions.L_max cannot exceed clob_flow.L_max")
+    if (
+        cfg.actions.K_max <= 0
+        or not math.isfinite(cfg.actions.beta)
+        or cfg.actions.beta <= 0.0
+    ):
         raise ConfigError("actions.K_max and actions.beta must be positive")
-    if cfg.actions.B_max <= 0:
-        raise ConfigError("actions.B_max must be positive")
+    if cfg.actions.B_inf <= 0 or cfg.actions.B_max <= 0:
+        raise ConfigError("actions.B_inf and actions.B_max must be positive")
     if cfg.auction_flow.B_inf <= 0:
         raise ConfigError("auction_flow.B_inf must be positive")
-    if cfg.actions.auction_offset_center not in ("frozen_mid", "indicative"):
+    if cfg.actions.B_inf != cfg.auction_flow.B_inf:
         raise ConfigError(
-            "actions.auction_offset_center must be frozen_mid|indicative"
+            "actions.B_inf must equal auction_flow.B_inf: both represent the "
+            "manuscript's common absolute price-deviation bound"
         )
-    if cfg.actions.auction_offset_center == "indicative":
-        local_max = cfg.actions.auction_local_offset_max
-        if local_max is None or local_max <= 0:
-            raise ConfigError(
-                "indicative centering requires a positive "
-                "actions.auction_local_offset_max"
-            )
-        if local_max > cfg.actions.B_max:
-            raise ConfigError(
-                "actions.auction_local_offset_max cannot exceed the absolute B_max"
-            )
-    elif cfg.actions.auction_local_offset_max is not None:
+    if cfg.actions.B_max > cfg.actions.B_inf:
         raise ConfigError(
-            "actions.auction_local_offset_max is only valid with indicative centering"
+            "actions.B_max (local policy bound) cannot exceed actions.B_inf "
+            "(absolute price-deviation bound)"
         )
-    if cfg.actions.auction_template_offset_max % cfg.actions.auction_offset_step != 0:
-        raise ConfigError(
-            "the policy auction-template half-width must be divisible by "
-            "actions.auction_offset_step"
-        )
-    multipliers = cfg.actions.auction_K_multipliers
-    if (
-        not multipliers
-        or tuple(sorted(set(multipliers))) != multipliers
-        or multipliers[0] <= 0
-        or multipliers[-1] > cfg.actions.K_max
+    if cfg.actions.auction_cancel_mode not in ("enabled", "never"):
+        raise ConfigError("actions.auction_cancel_mode must be enabled|never")
+    if not cfg.experiment.auction_enabled and (
+        cfg.rl.h_cl_feature_enabled
+        or cfg.reward.effective_clob_shaping
+        or cfg.reward.effective_auction_shaping
     ):
         raise ConfigError(
-            "actions.auction_slope_multipliers must be strictly increasing, "
-            "unique, positive, and no larger than actions.K_max"
-        )
-    if cfg.actions.auction_order_mode not in ("multi", "single_replace"):
-        raise ConfigError("actions.auction_order_mode must be multi|single_replace")
-    if (
-        cfg.actions.auction_order_mode == "single_replace"
-        and cfg.actions.auction_cancel_mode != "enabled"
-    ):
-        raise ConfigError(
-            "actions.auction_order_mode=single_replace requires cancellation enabled"
+            "experiment.auction_enabled=false requires rl.h_cl_feature_enabled=false "
+            "and all reward shaping disabled"
         )
     if cfg.rl.chi != 1.0:
         raise ConfigError("the revised finite-horizon objective requires rl.chi=1")
-    if not 0.0 <= cfg.reward.q <= 1.0:
+    if not math.isfinite(cfg.reward.q) or not 0.0 <= cfg.reward.q <= 1.0:
         raise ConfigError("reward.q must lie in [0,1]")
+    if (
+        cfg.reward.k_star <= 0
+        or not math.isfinite(cfg.reward.lambda_inv)
+        or cfg.reward.lambda_inv < 0.0
+        or not math.isfinite(cfg.reward.d)
+        or cfg.reward.d < 0.0
+    ):
+        raise ConfigError(
+            "reward requires k_star>0, lambda_inv>=0, and d>=0"
+        )
+    if (
+        not math.isfinite(cfg.reward.numerical_guard_bound)
+        or cfg.reward.numerical_guard_bound <= 0.0
+    ):
+        raise ConfigError("reward.numerical_guard_bound must be finite and positive")
     if cfg.rl.discount_mode != "undiscounted":
         raise ConfigError("the revised objective requires rl.discount_mode='undiscounted'")
-    if cfg.experiment.artifact_schema_version < 2:
+    if cfg.experiment.artifact_schema_version != ACTIVE_ARTIFACT_SCHEMA_VERSION:
         raise ConfigError(
-            "revised runs require experiment.artifact_schema_version >= 2"
+            "experiment.artifact_schema_version must equal the active schema "
+            f"{ACTIVE_ARTIFACT_SCHEMA_VERSION}"
         )
     if cfg.rl.normalizer_fit_episodes <= 0:
         raise ConfigError("rl.normalizer_fit_episodes must be positive")
@@ -833,6 +897,22 @@ def _validate_experiment_config(cfg: ExperimentConfig) -> ExperimentConfig:
     ) < 0:
         raise ConfigError("checkpoint maturity update thresholds must be nonnegative")
 
+    benchmark = cfg.benchmark
+    if not math.isfinite(benchmark.z) or benchmark.z <= 0.0:
+        raise ConfigError("benchmark.z must be finite and positive")
+    if benchmark.as_n_samples < 2 or benchmark.as_sigma_n_paths <= 0:
+        raise ConfigError(
+            "benchmark.as_n_samples must be at least 2 and as_sigma_n_paths positive"
+        )
+    if benchmark.as_gamma != 0.0:
+        raise ConfigError("only benchmark.as_gamma=0 is implemented")
+    if benchmark.as_sigma_rule not in ("single_path", "pooled_paths"):
+        raise ConfigError(
+            "benchmark.as_sigma_rule must be single_path|pooled_paths"
+        )
+    if benchmark.twap_delta_mode != "min":
+        raise ConfigError("only benchmark.twap_delta_mode=min is implemented")
+
     historical = cfg.midprice.historical
     if cfg.midprice.model == "historical":
         if historical is None:
@@ -841,6 +921,19 @@ def _validate_experiment_config(cfg: ExperimentConfig) -> ExperimentConfig:
             )
         if cfg.grid.time_unit != "minutes":
             raise ConfigError("historical mid-price paths require grid.time_unit='minutes'")
+        if (
+            not math.isfinite(historical.normalize_first)
+            or historical.normalize_first <= 0.0
+            or historical.n_rows < cfg.grid.tau_op + 1
+        ):
+            raise ConfigError(
+                "historical normalize_first must be positive and n_rows must cover "
+                "minutes 0..tau_op"
+            )
+        if not historical.symbols or len(set(historical.symbols)) != len(
+            historical.symbols
+        ):
+            raise ConfigError("historical symbols must be nonempty and unique")
         ranges = {
             "train_date_range": _parse_date_range(
                 "train_date_range",
@@ -871,17 +964,44 @@ def _validate_experiment_config(cfg: ExperimentConfig) -> ExperimentConfig:
             raise ConfigError(
                 "midprice.historical.missing_data_treatment must be error|ffill"
             )
-        if historical.path_policy not in ("fixed", "split_pool", "bootstrap"):
+        if historical.path_policy not in ("fixed", "split_pool"):
             raise ConfigError(
-                "midprice.historical.path_policy must be fixed|split_pool|bootstrap"
+                "midprice.historical.path_policy must be fixed|split_pool"
             )
     elif cfg.midprice.model == "rough_heston":
         if cfg.midprice.rough_heston is None:
             raise ConfigError(
                 "midprice.model=rough_heston requires midprice.rough_heston"
             )
-        if cfg.midprice.rough_heston.s_star <= 0.0:
-            raise ConfigError("midprice.rough_heston.s_star must be positive")
+        rough = cfg.midprice.rough_heston
+        if not all(
+            math.isfinite(value)
+            for value in (
+                rough.H,
+                rough.rho_h,
+                rough.v0,
+                rough.theta,
+                rough.varsigma,
+                rough.nu,
+                rough.s_star,
+            )
+        ):
+            raise ConfigError("rough-Heston parameters must be finite")
+        if not 0.0 < rough.H < 0.5:
+            raise ConfigError("midprice.rough_heston.H must lie in (0,0.5)")
+        if not -1.0 <= rough.rho_h <= 1.0:
+            raise ConfigError("midprice.rough_heston.rho_h must lie in [-1,1]")
+        if (
+            rough.v0 < 0.0
+            or rough.theta < 0.0
+            or rough.varsigma < 0.0
+            or rough.nu < 0.0
+            or rough.s_star <= 0.0
+        ):
+            raise ConfigError(
+                "rough-Heston v0, theta, varsigma, and nu must be nonnegative; "
+                "s_star must be positive"
+            )
     else:
         raise ConfigError(f"unknown midprice.model {cfg.midprice.model!r}")
     return cfg

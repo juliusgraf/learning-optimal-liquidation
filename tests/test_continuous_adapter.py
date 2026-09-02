@@ -20,7 +20,7 @@ def cfg():
     return load_synthetic_cfg()
 
 
-def normalized_for(order, cfg, *, offset_center=0):
+def normalized_for(order, cfg):
     if isinstance(order, ClobAction):
         return np.array(
             [
@@ -32,7 +32,7 @@ def normalized_for(order, cfg, *, offset_center=0):
     return np.array(
         [
             2.0 * order.K_a / cfg.actions.auction_K_grid_max - 1.0,
-            (order.offset - offset_center) / cfg.actions.auction_template_offset_max,
+            order.ell / cfg.actions.B_max,
             1.0 if order.cancel else -1.0,
         ],
         dtype=np.float32,
@@ -71,21 +71,19 @@ def test_discrete_grid_points_produce_identical_full_episode(cfg):
 
     step = 0
     while True:
-        offset_center = 0
         if discrete.phase == "clob":
             volume = 4.0 if discrete.inventory >= 4.0 else 0.0
             order = ClobAction(volume, 3 if volume else 0)
         else:
             cancel = int(discrete.cancel_admissible)
-            offset_center = discrete._auction_offset_center_ticks()
             order = AuctionAction(
                 2.0 * cfg.actions.beta,
-                offset_center + 3,
+                3,
                 cancel,
             )
         obs_d, reward_d, done_d, _, info_d = discrete.step(order)
         obs_c, reward_c, done_c, _, info_c = relaxed.step(
-            normalized_for(order, cfg, offset_center=offset_center)
+            normalized_for(order, cfg)
         )
         np.testing.assert_array_equal(obs_d, obs_c)
         assert reward_d == reward_c
@@ -119,13 +117,16 @@ def test_auction_projection_snaps_slope_offset_and_cancel(cfg):
     drive_to_auction(env)
     order, committed, diagnostics = env._project_auction(np.array([0.0, 0.1, 1.0]))
     assert order.K_a == pytest.approx(0.5 * cfg.actions.auction_K_grid_max)
-    assert order.offset == env.env._auction_offset_center_ticks() + 1
+    assert order.ell == 1
     assert order.cancel == 0  # threshold positive, but cancellation is not admissible yet
     assert diagnostics["cancel_threshold_positive"]
     assert not diagnostics["cancel_executed"]
     np.testing.assert_allclose(committed, [0.0, 0.1, 1.0], rtol=0.0, atol=2e-8)
 
     env.step(np.array([0.0, 0.0, -1.0]))
+    stacked, _, stacked_diag = env._project_auction(np.array([0.0, 0.0, -1.0]))
+    assert stacked.K_a > 0.0 and stacked.cancel == 0
+    assert not stacked_diag["cancel_executed"]
     order, _, diagnostics = env._project_auction(np.array([0.0, 0.0, 0.0]))
     assert order.cancel == 1
     assert diagnostics["cancel_executed"]
@@ -138,53 +139,53 @@ def test_zero_slope_has_canonical_zero_offset(cfg):
     assert order == AuctionAction(0.0, 0, 0)
 
 
-def test_continuous_auction_offset_is_absolute_and_indicative_independent():
+def test_continuous_auction_action_remains_local_when_indicative_price_moves():
     cfg = load_synthetic_cfg(
-        "auction_flow.B_inf=3",
+        "auction_flow.B_inf=150",
+        "actions.B_inf=150",
         "actions.B_max=10",
-        "actions.auction_offset_center=frozen_mid",
-        "actions.auction_local_offset_max=null",
     )
     env = ContinuousActionAdapter(new_env(cfg))
     drive_to_auction(env)
     env.env._h_cache = env.s_mid + 37 * cfg.grid.alpha
     order, _, _ = env._project_auction(np.array([0.0, 0.5, -1.0]))
-    assert order.offset == 5
+    assert order.ell == 5
     env.env._h_cache = env.s_mid - 41 * cfg.grid.alpha
     shifted_h_order, _, _ = env._project_auction(np.array([0.0, 0.5, -1.0]))
-    assert shifted_h_order.offset == 5
+    assert shifted_h_order.ell == 5
 
 
-def test_continuous_auction_offset_can_be_centered_on_indicative_price():
+def test_continuous_local_ell_resolves_to_absolute_b_inside_environment():
     cfg = load_synthetic_cfg(
-        "actions.B_max=150",
-        "actions.auction_offset_center=indicative",
-        "actions.auction_local_offset_max=10",
+        "actions.B_inf=150",
+        "actions.B_max=10",
     )
     env = ContinuousActionAdapter(new_env(cfg))
     drive_to_auction(env)
     env.env._h_cache = env.s_mid + 37 * cfg.grid.alpha
     order, _, _ = env._project_auction(np.array([0.0, 0.5, -1.0]))
-    assert order.offset == 42  # indicative center 37 plus local displacement 5
+    assert order.ell == 5
+    _, _, _, _, info = env.step(np.array([0.0, 0.5, -1.0]))
+    assert info["projected_action_five"][3] == 5
+    assert info["action"].ell == 5
+    assert info["executed_b"] == 42
 
 
-def test_discrete_and_continuous_agents_share_21_local_offsets_but_not_slope_grid(cfg):
+def test_discrete_and_continuous_agents_share_full_slope_and_local_offset_grids(cfg):
     raw = new_env(cfg)
     dqn_offsets = sorted(
-        {a.offset for a in raw.auction_grid.actions if a.K_a > 0.0}
+        {a.ell for a in raw.auction_grid.actions if a.K_a > 0.0}
     )
     dqn_slopes = sorted({a.K_a for a in raw.auction_grid.actions})
     assert dqn_offsets == list(range(-10, 11))
-    assert dqn_slopes == [0.0, 1.0, 2.0, 4.0, 8.0, 16.0, 32.0]
+    assert dqn_slopes == [float(k) for k in range(33)]
 
     env = ContinuousActionAdapter(new_env(cfg))
     drive_to_auction(env)
-    center = env.env._auction_offset_center_ticks()
     continuous_offsets = sorted(
         {
-            env._project_auction(np.array([0.0, b / 10.0, -1.0]))[0].offset
-            - center
-            for b in range(-10, 11)
+            env._project_auction(np.array([0.0, ell / 10.0, -1.0]))[0].ell
+            for ell in range(-10, 11)
         }
     )
     continuous_slopes = sorted(
@@ -202,7 +203,6 @@ def test_discrete_and_continuous_agents_share_21_local_offsets_but_not_slope_gri
 def test_no_cancel_treatment_uses_two_dimensional_auction_proposal():
     cfg = load_synthetic_cfg(
         "actions.auction_cancel_mode=never",
-        "actions.auction_order_mode=multi",
     )
     specs = continuous_action_specs(cfg)
     assert specs["clob"].dim == 2 and specs["auction"].dim == 2
@@ -214,17 +214,25 @@ def test_no_cancel_treatment_uses_two_dimensional_auction_proposal():
 
 
 def test_no_auction_treatment_can_terminate_from_clob_phase():
-    cfg = load_synthetic_cfg("experiment.auction_enabled=false")
+    cfg = load_synthetic_cfg(
+        "experiment.auction_enabled=false",
+        "rl.h_cl_feature_enabled=false",
+        "reward.shaping_enabled=false",
+    )
     env = ContinuousActionAdapter(new_env(cfg))
-    env.reset(seed=260831)
+    obs, _ = env.reset(seed=260831)
+    h_index = cfg.features.clob.index("h_cl")
+    assert obs[h_index] == 0.0
 
     terminated = False
     while not terminated:
         assert env.phase == "clob"
-        _, _, terminated, truncated, _ = env.step(
+        obs, _, terminated, truncated, info = env.step(
             np.array([-1.0, -1.0], dtype=np.float32)
         )
         assert not truncated
+        assert obs[h_index] == 0.0
+        assert info["clob_shaping_adjustment"] == 0.0
 
     assert env.phase == "terminal"
     # A terminal state has no next action; retaining the last active box keeps

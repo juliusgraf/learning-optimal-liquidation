@@ -58,23 +58,46 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     runs = P.collect_runs(run_dirs)
     written: list[Path] = []
+    failures: list[str] = []
+
+    if len(runs) != len(run_dirs):
+        failures.append(
+            f"resolved only {len(runs)} of {len(run_dirs)} requested run directories"
+        )
+    settings = {run.setting for run in runs}
+    if len(settings) > 1:
+        failures.append(
+            "one table-generation invocation must contain exactly one setting; "
+            f"got {sorted(settings)}"
+        )
 
     def safe(fn, *, what: str):
         try:
             fn()
-        except Exception as exc:  # one bad table must not abort the batch
-            warnings.warn(f"table {what!r} failed: {exc}", stacklevel=2)
+        except Exception as exc:
+            message = f"table {what!r} failed: {exc}"
+            failures.append(message)
+
+    # Different settings write the same canonical filenames and would silently
+    # overwrite one another.  Fail before producing a mixed publication set.
+    if len(settings) > 1:
+        for message in failures:
+            warnings.warn(message, stacklevel=2)
+        return 1
 
     # (a)/(b) per-setting result tables. With --multiseed, build ONLY the
     # cross-seed aggregates (the single-seed builders would silently keep just
     # one seed's run per algo if handed pooled seeds).
     for setting, group in _group_by_setting(runs).items():
         if not any(r.records is not None for r in group):
+            failures.append(f"{setting}: no eval/records.csv artifacts were supplied")
             continue
         if args.multiseed:
             n_seeds = len({r.seed for r in group if r.seed is not None})
             if n_seeds < 2:
-                warnings.warn(f"--multiseed: {setting} has <2 seeds; skipping", stacklevel=2)
+                message = f"--multiseed: {setting} has <2 seeds"
+                failures.append(message)
+                warnings.warn(message, stacklevel=2)
                 continue
             if P.is_historical_setting(setting):
                 def _hist_ms(group=group):
@@ -113,8 +136,15 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             safe(_eval, what=f"eval_summary[{setting}]")
 
     if args.multiseed:
+        if not written:
+            failures.append("no multiseed table artifacts were generated")
+        for path in written:
+            if not path.is_file() or path.stat().st_size == 0:
+                failures.append(f"missing or empty generated table artifact: {path}")
+        for message in failures:
+            warnings.warn(message, stacklevel=2)
         print(f"wrote {len(written)} table files to {out}")
-        return 0
+        return 1 if failures else 0
 
     # (c) parameter tables from the PRIMARY run's resolved config.
     def _params():
@@ -135,8 +165,15 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 written.extend(T.write_table(table, out, f"hyperparams_{algo}"))
         safe(_hp, what=f"hyperparams_{algo}")
 
+    if not written:
+        failures.append("no table artifacts were generated")
+    for path in written:
+        if not path.is_file() or path.stat().st_size == 0:
+            failures.append(f"missing or empty generated table artifact: {path}")
+    for message in failures:
+        warnings.warn(message, stacklevel=2)
     print(f"wrote {len(written)} table files to {out}")
-    return 0
+    return 1 if failures else 0
 
 
 if __name__ == "__main__":

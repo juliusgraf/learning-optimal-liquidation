@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "lmm"
 version = "0.1.0"
-description = "Learning Market Making with Closing Auctions (Graf & Mastrolia) — code revision"
+description = "Learning Optimal Liquidation with Closing Auctions — research code"
 requires-python = ">=3.10"
 dependencies = [
     "certifi>=2025.1.31",

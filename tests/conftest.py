@@ -6,6 +6,7 @@ from pathlib import Path
 import shutil
 
 import matplotlib
+import numpy as np
 import pandas as pd
 import pytest
 import yaml
@@ -23,21 +24,22 @@ def _upgrade_artifact_fixture(source: Path, target: Path, algo: str) -> Path:
     """Copy legacy-shaped sample numbers into the revised artifact envelope.
 
     The committed directories remain deliberately stale so rejection can be
-    tested.  Figure/table tests receive a temporary schema-2 artifact with the
+    tested. Figure/table tests receive a temporary current-schema artifact with the
     current contract and current primary outcome columns.
     """
     shutil.copytree(source, target)
     cfg = load_dqn_cfg() if algo == "dqn" else load_algo_cfg(algo)
     save_resolved(cfg, target / "config_resolved.yaml")
+    (target / "seed.txt").write_text(f"{cfg.experiment.master_seed}\n")
 
     metadata_path = target / "eval" / "metadata.yaml"
     metadata = yaml.safe_load(metadata_path.read_text()) or {}
     metadata.update(
+        master_seed=cfg.experiment.master_seed,
         environment_contract=ENVIRONMENT_CONTRACT,
         artifact_schema_version=cfg.experiment.artifact_schema_version,
         checkpoint_selection={"metric": "risk_adjusted_pnl"},
     )
-    metadata_path.write_text(yaml.safe_dump(metadata, sort_keys=False))
 
     records_path = target / "eval" / "records.csv"
     records = pd.read_csv(records_path)
@@ -58,7 +60,58 @@ def _upgrade_artifact_fixture(source: Path, target: Path, algo: str) -> Path:
     records["risk_adjusted_pnl_bps"] = (
         10_000.0 * records["risk_adjusted_pnl_per_initial_notional"]
     )
+    learned_records = records[records["policy"] == algo].sort_values("episode")
+    metadata.update(
+        n_episodes=len(learned_records),
+        policies=[algo, "initial", "as", "twap"],
+        learned_policy_label=algo,
+        evaluation_episode_seeds=[
+            int(value) for value in learned_records["env_seed"].tolist()
+        ],
+    )
+    metadata_path.write_text(yaml.safe_dump(metadata, sort_keys=False))
     records.to_csv(records_path, index=False)
+
+    # Test-only migration of deliberately stale pre-v10 trace fixtures. The
+    # production reader remains fail-closed and requires explicit act_ell/b.
+    traces_dir = target / "eval" / "traces"
+    if traces_dir.exists():
+        for trace_path in traces_dir.glob("*.csv"):
+            trace = pd.read_csv(trace_path)
+            if "act_offset" not in trace:
+                continue
+            trace = trace.rename(columns={"act_offset": "act_b"})
+            policy = trace_path.stem.split("_ep", 1)[0]
+            if policy in (algo, "initial"):
+                auction = trace["phase"].eq("auction")
+                center_b = np.floor(
+                    (trace.loc[auction, "h_cl"].astype(float)
+                     - trace.loc[auction, "s_mid"].astype(float))
+                    / float(cfg.grid.alpha)
+                    + 0.5
+                ).astype(int)
+                slope_index = np.floor(
+                    trace.loc[auction, "act_Ka"].astype(float)
+                    / float(cfg.actions.beta)
+                    + 0.5
+                ).clip(0, cfg.actions.K_max).astype(int)
+                trace.loc[auction, "act_Ka"] = (
+                    slope_index * float(cfg.actions.beta)
+                )
+                ell = np.floor(
+                    trace.loc[auction, "act_b"].astype(float) - center_b + 0.5
+                ).clip(-cfg.actions.B_max, cfg.actions.B_max).astype(int)
+                ell.loc[slope_index.eq(0)] = 0
+                trace["act_ell"] = pd.Series(pd.NA, index=trace.index, dtype="Int64")
+                trace.loc[auction, "act_ell"] = ell
+                trace.loc[auction, "act_b"] = center_b + ell
+                trace.loc[auction, "S_a"] = (
+                    trace.loc[auction, "s_mid"].astype(float)
+                    + float(cfg.grid.alpha) * trace.loc[auction, "act_b"].astype(float)
+                )
+            else:
+                trace["act_ell"] = pd.NA
+            trace.to_csv(trace_path, index=False)
 
     metrics_path = target / "metrics.csv"
     if metrics_path.exists():

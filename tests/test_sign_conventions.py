@@ -74,7 +74,7 @@ def taker_twins(cfg, seed: int, side: int, volume: float):
     drive_to_auction(env_b, seed=seed)
     for _ in range(2):
         step_pair(env_a, env_b, AUCTION_HOLD)
-    env_b.generator.auction_flow.inject_taker(side, volume)
+    env_b._generator.auction_flow.inject_taker(side, volume)
     return step_pair(env_a, env_b, AUCTION_HOLD)
 
 
@@ -93,7 +93,7 @@ def test_injected_buy_taker_raises_terminal_clearing(crn_synthetic_cfg):
     env_a, env_b = new_env(crn_synthetic_cfg), new_env(crn_synthetic_cfg)
     drive_to_auction(env_a, seed=29)
     drive_to_auction(env_b, seed=29)
-    env_b.generator.auction_flow.inject_taker(+1, 100.0)
+    env_b._generator.auction_flow.inject_taker(+1, 100.0)
     info_a = info_b = None
     while True:
         (_, info_a), (_, info_b) = step_pair(env_a, env_b, AUCTION_HOLD)

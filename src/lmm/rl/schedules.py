@@ -8,9 +8,11 @@ __all__ = ["LinearEpsilonSchedule", "ExponentialEpsilonSchedule"]
 class LinearEpsilonSchedule:
     """Warm-up followed by an exact linear decay.
 
-    With the manuscript values, episodes 0--99 use epsilon 1, episode 100
-    starts the linear schedule, and episode 700 reaches 0.01 exactly.  Values
-    thereafter remain at the endpoint.
+    The endpoints are entirely configuration-driven.  With the active DQN
+    values, episodes 0--49 use epsilon 1, episode 50 starts the linear decay,
+    and episode 650 reaches 0.01 exactly.  Values thereafter remain at the
+    endpoint.  The active DQN applies this same schedule in both phases;
+    phase multipliers and delayed unlocks are explicit ablations only.
     """
 
     def __init__(self, start: float, end: float, decay_episodes: float, warmup_episodes: int) -> None:

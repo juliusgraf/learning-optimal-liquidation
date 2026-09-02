@@ -37,7 +37,6 @@ def make_cont_agent(cfg, cls, master_seed: int = 1234):
 def test_shared_no_cancel_mode_changes_sac_action_dim_and_target_entropy():
     cfg = load_sac_cfg(
         "actions.auction_cancel_mode=never",
-        "actions.auction_order_mode=multi",
     )
     agent = make_cont_agent(cfg, SACAgent)
     assert agent._act_dim["auction"] == 2

@@ -5,13 +5,15 @@ __pycache__/
 .env
 .venv
 .envrc
-results/
+# Experiment outputs are local. Keep this root-anchored so manuscript inputs
+# under paper/results/ remain version-controlled and a clean clone can compile.
+/results/
 *.egg-info/
 .pytest_cache/
 build/
 # Ad-hoc loader outputs and cache; the canonical frozen dataset is tracked.
 data/*.csv
 data/*.meta.json
-!data/historical_sp500_1m.csv
-!data/historical_sp500_1m.csv.meta.json
+!data/historical_sp500_midquotes_1m.csv
+!data/historical_sp500_midquotes_1m.csv.meta.json
 .cache/

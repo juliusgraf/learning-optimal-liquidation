@@ -80,12 +80,14 @@ def diagnose(
             env_seed = int(seed + symbol_index * 1_000_003 + episode)
             env.reset(seed=env_seed)
             n_arrivals = 0
+            n_clob_decisions = 0
             while env.phase == "clob":
                 _, _, _, _, info = env.step(ClobAction(0.0, 0))
                 n_arrivals += int(info["n_buy_step"]) + int(info["n_sell_step"])
+                n_clob_decisions += 1
             residual = float(
-                np.sum(env.generator.book.ask_volumes)
-                + np.sum(env.generator.book.bid_volumes)
+                np.sum(env._generator.book.ask_volumes)  # noqa: SLF001
+                + np.sum(env._generator.book.bid_volumes)  # noqa: SLF001
             )
             mid_range_ticks = float(
                 (np.max(env._clob_mid_values) - np.min(env._clob_mid_values))  # noqa: SLF001
@@ -96,7 +98,7 @@ def diagnose(
             ranges.append(mid_range_ticks)
             residuals.append(residual)
             arrivals.append(float(n_arrivals))
-            steps.append(float(env.episode_grid.n + 1))
+            steps.append(float(n_clob_decisions))
 
         slope_array = np.asarray(slopes)
         per_symbol[symbol] = {
@@ -129,9 +131,9 @@ def diagnose(
             "D_mu": cfg.auction_flow.D_mu,
             "auction_B_inf": cfg.auction_flow.B_inf,
             "agent_slope_choices": list(cfg.actions.auction_K_multipliers),
+            "agent_B_inf": cfg.actions.B_inf,
             "agent_B_max": cfg.actions.B_max,
-            "agent_offset_center": cfg.actions.auction_offset_center,
-            "agent_template_offset_max": cfg.actions.auction_template_offset_max,
+            "agent_local_offset_max": cfg.actions.B_max,
         },
         "pooled": {
             "fallback_rate": float(np.mean(pooled_array < cfg.auction_flow.D_mu)),

@@ -14,8 +14,10 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+import yaml
 
 from lmm.config import ConfigError, load_config, save_resolved, to_dict
+from lmm.experiments import train as train_mod
 from lmm.utils.logging import create_run_dir, write_run_metadata
 from lmm.utils.seeding import seed_everything, spawn_child
 
@@ -101,8 +103,8 @@ def test_config_binding_values_synthetic() -> None:
     assert cfg.grid.T_physical == 150.0
     assert cfg.auction_flow.B_inf == 150
     assert (cfg.auction_flow.M1, cfg.auction_flow.M2) == (-150, 150)
-    assert cfg.actions.B_max == 150
-    assert cfg.actions.auction_offset_center == "indicative"
+    assert cfg.actions.B_inf == 150
+    assert cfg.actions.B_max == 10
     assert cfg.actions.auction_local_offset_max == 10
     assert cfg.midprice.model == "rough_heston"
     rh = cfg.midprice.rough_heston
@@ -144,6 +146,29 @@ def test_config_round_trip(tmp_path: Path) -> None:
     assert cfg2 == cfg  # frozen dataclasses compare by value
 
 
+def test_pre_v10_action_bound_names_migrate_without_ambiguity(tmp_path: Path) -> None:
+    cfg = _load_synthetic()
+    legacy = to_dict(cfg)
+    actions = legacy["actions"]
+    absolute_bound = actions.pop("B_inf")
+    local_bound = actions["B_max"]
+    actions["B_max"] = absolute_bound
+    actions["auction_local_offset_max"] = local_bound
+    actions["auction_order_mode"] = "multi"
+    path = tmp_path / "legacy_resolved.yaml"
+    path.write_text(yaml.safe_dump(legacy, sort_keys=False))
+
+    migrated = load_config(path)
+    assert migrated.actions.B_inf == absolute_bound
+    assert migrated.actions.B_max == local_bound
+    assert "auction_order_mode" not in to_dict(migrated)["actions"]
+
+    actions["auction_order_mode"] = "single_replace"
+    path.write_text(yaml.safe_dump(legacy, sort_keys=False))
+    with pytest.raises(ConfigError, match="incompatible with the manuscript policy class"):
+        load_config(path)
+
+
 def test_config_cli_override() -> None:
     base = _load_synthetic()
     cfg = _load_synthetic(overrides=["reward.d=0.2", "experiment.episodes=10"])
@@ -155,9 +180,21 @@ def test_config_cli_override() -> None:
     assert d1 == d2
 
 
-def test_config_rejects_unknown_key() -> None:
+@pytest.mark.parametrize(
+    "override",
+    [
+        "reward.not_a_param=1",
+        "features.price_norm_scale=10",
+        "features.price_norm_clip=5",
+        "actions.auction_slope_multipliers=[1,2,4]",
+        "actions.auction_offset_center=frozen_mid",
+        "actions.auction_offset_step=2",
+        "benchmark.dust_threshold=0.01",
+    ],
+)
+def test_config_rejects_unknown_key(override: str) -> None:
     with pytest.raises(ConfigError, match="unknown key"):
-        _load_synthetic(overrides=["reward.not_a_param=1"])
+        _load_synthetic(overrides=[override])
 
 
 def test_config_rejects_incoherent_physical_clock() -> None:
@@ -167,29 +204,86 @@ def test_config_rejects_incoherent_physical_clock() -> None:
         _load_synthetic(overrides=["grid.time_unit=hours"])
 
 
-def test_indicative_centering_requires_an_explicit_local_width() -> None:
-    with pytest.raises(ConfigError, match="auction_local_offset_max"):
-        _load_synthetic(
-            overrides=[
-                "actions.auction_offset_center=indicative",
-                "actions.auction_local_offset_max=null",
-            ]
-        )
-    cfg = _load_synthetic(
-        overrides=[
-            "actions.B_max=150",
-            "actions.auction_offset_center=indicative",
-            "actions.auction_local_offset_max=10",
-        ]
+def test_config_rejects_old_or_future_artifact_schema_labels() -> None:
+    for schema in (9, 11):
+        with pytest.raises(ConfigError, match="active schema 10"):
+            _load_synthetic(
+                overrides=[f"experiment.artifact_schema_version={schema}"]
+            )
+
+
+@pytest.mark.parametrize(
+    ("override", "message"),
+    [
+        ("grid.tau_op=0", "0 < tau_op < tau_cl"),
+        ("grid.alpha=0.0", "grid.alpha"),
+        ("grid.S0=0.0", "grid.S0"),
+        ("grid.I0=0", "grid.I0"),
+        ("clob_flow.lambda0=0.0", "lambda0"),
+        ("clob_flow.v_m=0.0", "v_m"),
+        ("clob_flow.gamma_m=0.0", "gamma_m"),
+        ("clob_flow.V=1", "clob_flow.V"),
+        ("clob_flow.beta_a=0.0", "beta_a"),
+        ("clob_flow.rho_lob=1.1", "rho_lob"),
+        ("clob_flow.L_max=0", "clob_flow.L_max"),
+        ("auction_flow.p3=1.1", "probabilities"),
+        ("auction_flow.D_mu=0.0", "D_mu>0"),
+        ("auction_flow.U1=3.0", "0<U1<=U2"),
+        ("algo1.H0=0.0", "algo1.H0"),
+        ("algo1.eta_H=0.0", "algo1.eta_H"),
+        ("actions.L_max=201", "actions.L_max"),
+        ("actions.beta=.nan", "actions.K_max and actions.beta"),
+        ("reward.k_star=0", "reward requires"),
+        ("reward.lambda_inv=-1.0", "reward requires"),
+        ("benchmark.as_gamma=0.1", "as_gamma=0"),
+        ("benchmark.as_sigma_rule=unknown", "as_sigma_rule"),
+        ("midprice.rough_heston.H=0.5", "rough_heston.H"),
+        ("midprice.rough_heston.rho_h=1.1", "rho_h"),
+        ("midprice.rough_heston.v0=-0.1", "rough-Heston v0"),
+    ],
+)
+def test_config_rejects_parameters_outside_model_domains(
+    override: str, message: str
+) -> None:
+    with pytest.raises(ConfigError, match=message):
+        _load_synthetic(overrides=[override])
+
+
+def test_no_auction_config_fails_closed_without_information_removal() -> None:
+    with pytest.raises(ConfigError, match="all reward shaping disabled"):
+        _load_synthetic(overrides=["experiment.auction_enabled=false"])
+
+    cfg = load_config(
+        CONFIGS / "base.yaml",
+        CONFIGS / "synthetic_rough_heston.yaml",
+        CONFIGS / "treatment" / "no_auction.yaml",
+        CONFIGS / "algo" / "dqn.yaml",
     )
-    assert cfg.actions.auction_template_offset_max == 10
-    with pytest.raises(ConfigError, match="cannot exceed"):
+    assert not cfg.experiment.auction_enabled
+    assert not cfg.rl.h_cl_feature_enabled
+    assert not cfg.reward.effective_clob_shaping
+    assert not cfg.reward.effective_auction_shaping
+
+
+def test_action_bounds_use_manuscript_names_and_cannot_drift() -> None:
+    cfg = _load_synthetic()
+    assert cfg.actions.B_max == 10
+    assert cfg.actions.auction_absolute_offset_max == 150
+
+    with pytest.raises(ConfigError, match="must equal auction_flow.B_inf"):
+        _load_synthetic(overrides=["actions.B_inf=149"])
+    with pytest.raises(ConfigError, match="local policy bound"):
         _load_synthetic(
-            overrides=[
-                "actions.B_max=10",
-                "actions.auction_offset_center=indicative",
-                "actions.auction_local_offset_max=11",
-            ]
+            overrides=["actions.B_max=151"]
+        )
+
+
+def test_config_rejects_unimplemented_historical_bootstrap_policy() -> None:
+    with pytest.raises(ConfigError, match=r"path_policy must be fixed\|split_pool"):
+        load_config(
+            CONFIGS / "base.yaml",
+            CONFIGS / "historical_sp500_midquotes.yaml",
+            overrides=["midprice.historical.path_policy=bootstrap"],
         )
 
 
@@ -266,3 +360,25 @@ def test_run_dir_and_metadata(tmp_path: Path) -> None:
         assert d.is_dir()
     # The dumped config round-trips.
     assert load_config(paths.config_resolved) == cfg
+
+
+def test_cli_seed_override_is_part_of_resolved_provenance(tmp_path: Path) -> None:
+    cfg = _load_synthetic()
+    resolved = train_mod._with_master_seed_override(cfg, 97)
+    assert cfg.experiment.master_seed == 42  # frozen input remains unchanged
+    assert resolved.experiment.master_seed == 97
+    assert resolved.experiment.seeds == (97,)
+
+    paths = create_run_dir(tmp_path, resolved.experiment.name, "seed97")
+    write_run_metadata(paths, resolved, master_seed=97)
+    saved = load_config(paths.config_resolved)
+    assert saved.experiment.master_seed == 97
+    assert saved.experiment.seeds == (97,)
+    assert paths.seed_txt.read_text().strip() == "97"
+
+
+def test_metadata_rejects_contradictory_seed(tmp_path: Path) -> None:
+    cfg = _load_synthetic()
+    paths = create_run_dir(tmp_path, cfg.experiment.name, "bad_seed")
+    with pytest.raises(ValueError, match="master seed disagree"):
+        write_run_metadata(paths, cfg, master_seed=97)

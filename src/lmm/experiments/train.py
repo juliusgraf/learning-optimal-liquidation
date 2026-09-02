@@ -1,12 +1,12 @@
 """Train any agent on any setting from config (Phase 4).
 
-Writes the configured results root (currently results/revision_v9) with config_resolved.yaml,
+Writes the configured results root (currently results/revision_v10) with config_resolved.yaml,
 seed.txt, git_sha.txt, metrics.csv (per-episode), checkpoints/, logs/run.log
 (engineering conventions, CLAUDE.md). Figures/tables are produced separately
 by make_figures.py / make_tables.py from these saved outputs.
 
-Checkpoints: ``initial.pt`` BEFORE any training (the "initial-DQN" baseline
-evaluated by evaluate.py), periodic resumable ``ckpt_ep{N}.pt`` (+ sidecar
+Checkpoints: ``initial.pt`` BEFORE any training (the untrained initial-policy
+diagnostic evaluated by evaluate.py), periodic resumable ``ckpt_ep{N}.pt`` (+ sidecar
 ``ckpt_ep{N}_trainstate.pt`` with the loop's own RNG/counters), ``best.pt``
 on eligible economic-validation improvement, ``final.pt`` at the end. The
 untrained and pre-maturity policies remain diagnostics and cannot become
@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import dataclasses
 import json
 import time
 from pathlib import Path
@@ -460,10 +461,30 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _with_master_seed_override(
+    cfg: ExperimentConfig, master_seed: int | None
+) -> ExperimentConfig:
+    """Reflect a single-run CLI seed override in resolved provenance."""
+    if master_seed is None:
+        return cfg
+    return dataclasses.replace(
+        cfg,
+        experiment=dataclasses.replace(
+            cfg.experiment,
+            master_seed=master_seed,
+            seeds=(master_seed,),
+        ),
+    )
+
+
 def main(argv: Optional[Sequence[str]] = None) -> int:
     args = build_parser().parse_args(argv)
-    cfg = config_from_args(args)
-    master_seed = args.seed if args.seed is not None else cfg.experiment.master_seed
+    # ``config_resolved.yaml`` is the canonical description of what was
+    # executed.  A CLI seed override therefore has to be reflected in the
+    # resolved dataclass before provenance is written (and before resume
+    # compatibility is checked), rather than living only in ``seed.txt``.
+    cfg = _with_master_seed_override(config_from_args(args), args.seed)
+    master_seed = cfg.experiment.master_seed
 
     paths = create_run_dir(cfg.experiment.results_root, cfg.experiment.name, args.run_name)
     material_outputs_exist = (
@@ -569,7 +590,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 sort_keys=False,
             )
         )
-        # The "initial-DQN" baseline: the untrained networks, saved BEFORE
+        # The initial-policy diagnostic: the untrained networks, saved BEFORE
         # any training (evaluated by evaluate.py as the initial reference).
         agent.save(paths.checkpoints / "initial.pt")
         # Retain the untrained policy as a diagnostic reference, but never let

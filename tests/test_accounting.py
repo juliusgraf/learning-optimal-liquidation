@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+from dataclasses import fields
 from types import SimpleNamespace
 
 import pytest
 
 from helpers import load_dqn_cfg, new_env
 from lmm.agents.benchmarks import TWAPBenchmarkAgent
-from lmm.env.action_spaces import AuctionAction, ClobAction
+from lmm.env.action_spaces import AuctionAction, ClobAction, FiveCoordinateAction
 from lmm.experiments.accounting import compute_liquidation_accounting
 from lmm.experiments import train as train_mod
 from lmm.rl.loops import run_episode
@@ -114,9 +115,46 @@ def test_benchmark_auction_action_uses_capped_positive_part_schedule():
     agent._exec_prices = [env.s_mid - 100.0]  # force an extreme raw quote target
     action = agent._auction_action()
     assert 0.0 <= action.K_a <= cfg.actions.auction_K_grid_max
-    assert action.one_sided is True
+    assert not isinstance(action, AuctionAction)
     assert action.quantity_cap == pytest.approx(env.inventory)
     assert action.reference_price == pytest.approx(agent._exec_prices[0])
+
+
+def test_public_auction_action_has_only_manuscript_coordinates():
+    assert tuple(field.name for field in fields(AuctionAction)) == (
+        "K_a",
+        "ell",
+        "cancel",
+    )
+    assert tuple(field.name for field in fields(FiveCoordinateAction)) == (
+        "volume",
+        "delta",
+        "K_a",
+        "ell",
+        "cancel",
+    )
+    with pytest.raises(TypeError):
+        AuctionAction(1.0, 0, 0, reference_price=100.0)
+
+
+def test_benchmark_uses_formal_zero_inventory_rule_without_dust_cutoff():
+    cfg = load_dqn_cfg()
+    env = new_env(cfg)
+    env.reset(seed=7)
+    while env.phase == "clob":
+        env.step(ClobAction(0.0, 0))
+    agent = TWAPBenchmarkAgent(cfg)
+    agent.bind(env)
+
+    env._inventory = 0.005
+    agent.start_episode(0)
+    tiny = agent._auction_action()
+    assert tiny.K_a > 0.0
+    assert tiny.quantity_cap == pytest.approx(0.005)
+
+    env._inventory = 0.0
+    agent.start_episode(1)
+    assert agent._auction_action() == AuctionAction(0.0, 0, 0)
 
 
 def test_raw_auction_actions_cannot_bypass_common_bounds():
@@ -127,7 +165,7 @@ def test_raw_auction_actions_cannot_bypass_common_bounds():
         env.step(ClobAction(0.0, 0))
     with pytest.raises(ValueError, match=r"K\^a exceeds"):
         env.step(AuctionAction(cfg.actions.auction_K_grid_max + 1.0, 0, 0))
-    with pytest.raises(ValueError, match="auction offset"):
+    with pytest.raises(ValueError, match="auction ell"):
         env.step(AuctionAction(1.0, cfg.actions.B_max + 1, 0))
 
 
@@ -135,22 +173,31 @@ def test_dqn_auction_grid_has_unique_canonical_zero_slope_actions():
     cfg = load_dqn_cfg()
     env = new_env(cfg)
     grid = env.auction_grid
-    assert len(grid) == 254
+    assert len(grid) == 1346
     zero = [a for a in grid.actions if a.K_a == 0.0]
-    assert zero == [AuctionAction(0.0, 0, 0), AuctionAction(0.0, 0, 1)]
-    semantics = {(a.K_a, a.offset if a.K_a > 0.0 else 0, a.cancel) for a in grid.actions}
+    assert [(a.K_a, a.ell, a.cancel) for a in zero] == [
+        (0.0, 0, 0),
+        (0.0, 0, 1),
+    ]
+    semantics = {
+        (a.K_a, a.ell if a.K_a > 0.0 else 0, a.cancel)
+        for a in grid.actions
+    }
     assert len(semantics) == len(grid)
 
 
-def test_no_cancel_treatment_has_genuine_127_action_grid_and_rejects_cancel():
+def test_no_cancel_treatment_has_genuine_673_action_grid_and_rejects_cancel():
     cfg = load_dqn_cfg(
         "actions.auction_cancel_mode=never",
-        "actions.auction_order_mode=multi",
     )
     env = new_env(cfg)
     grid = env.auction_grid
-    assert len(grid) == 127
-    assert grid.actions[0] == AuctionAction(0.0, 0, 0)
+    assert len(grid) == 673
+    assert (
+        grid.actions[0].K_a,
+        grid.actions[0].ell,
+        grid.actions[0].cancel,
+    ) == (0.0, 0, 0)
     assert all(a.cancel == 0 for a in grid.actions)
     env.reset(seed=7)
     while env.phase == "clob":
@@ -177,7 +224,6 @@ def test_completed_episode_economic_objective_decomposes_exactly():
 def test_no_cancel_treatment_has_zero_cancellations_and_fees():
     cfg = load_dqn_cfg(
         "actions.auction_cancel_mode=never",
-        "actions.auction_order_mode=multi",
     )
     env = new_env(cfg)
     agent = TWAPBenchmarkAgent(cfg)

@@ -1,7 +1,7 @@
 """Frozen-policy evaluation with common random numbers (Phase 4).
 
-Evaluates the checkpointed DQN, the untrained "initial" DQN, and the AS/TWAP
-benchmarks on the SAME seed set (CRN: identical env seed for every policy
+Evaluates the checkpointed learned policy, its untrained "initial" diagnostic,
+and the AS/TWAP benchmarks on the SAME seed set (CRN: identical env seed for every policy
 within an episode; fixes AUDIT N10), under ONE reward definition and one
 bounded executable action envelope for all policies. The primary economic
 outcome is liquidation P&L less cancellation costs and the terminal inventory
@@ -215,6 +215,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     learned_name = cfg.algo.name
     policies = (learned_name, *POLICIES)
     master_seed = int((run_dir / "seed.txt").read_text().strip())
+    if master_seed != cfg.experiment.master_seed:
+        raise ValueError(
+            f"seed.txt ({master_seed}) disagrees with config_resolved.yaml "
+            f"experiment.master_seed ({cfg.experiment.master_seed})"
+        )
     seeds = seed_everything(master_seed, SEED_COMPONENTS, seed_torch=True)
     n_episodes = (
         args.n_episodes
@@ -399,10 +404,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         [
             "policy", "episode", "env_seed", "time", "decision_index", "phase",
             "raw_action", "raw_proposal", "projected_action_five",
-            "executed_volume", "executed_delta", "executed_K_a", "executed_offset",
+            "executed_volume", "executed_delta", "executed_K_a", "requested_ell",
+            "executed_b",
             "executed_cancel", "input_clipped", "bound_saturation_count",
             "rounded_coordinate_count", "inventory_projection",
-            "offset_admissibility_projection", "cancel_threshold_positive",
+            "ell_admissibility_projection", "cancel_threshold_positive",
             "cancel_executed",
         ],
     )
@@ -485,8 +491,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                         "inventory_projection_frequency": frequency(
                             "inventory_projection"
                         ),
-                        "offset_admissibility_projection_frequency": frequency(
-                            "offset_admissibility_projection"
+                        "ell_admissibility_projection_frequency": frequency(
+                            "ell_admissibility_projection"
                         ),
                         "cancel_threshold_positive_count": threshold_n,
                         "cancel_executed_count": cancel_n,
@@ -514,7 +520,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             "input_clipping_frequency", "bound_saturation_action_frequency",
             "mean_bound_saturated_coordinates", "rounding_action_frequency",
             "mean_rounded_coordinates", "inventory_projection_frequency",
-            "offset_admissibility_projection_frequency",
+            "ell_admissibility_projection_frequency",
             "cancel_threshold_positive_count", "cancel_executed_count",
             "cancel_execution_rate_given_positive_threshold",
             "unique_projected_actions", "many_to_one_projection_bucket_count",

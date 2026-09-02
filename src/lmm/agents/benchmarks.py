@@ -27,7 +27,12 @@ import numpy as np
 
 from lmm.agents.base import Agent, Transition
 from lmm.config import BenchmarkParams, ExperimentConfig
-from lmm.env.action_spaces import AuctionAction, ClobAction, round_half_up
+from lmm.env.action_spaces import (
+    AuctionAction,
+    ClobAction,
+    _BenchmarkAuctionAction,
+    round_half_up,
+)
 from lmm.market.clob import OrderBook, sample_mo_volume
 
 __all__ = ["ASBenchmarkAgent", "TWAPBenchmarkAgent"]
@@ -80,14 +85,14 @@ class _LiquidationBenchmark(Agent):
     def _clob_action(self) -> ClobAction:
         raise NotImplementedError
 
-    def _auction_action(self) -> AuctionAction:
+    def _auction_action(self) -> AuctionAction | _BenchmarkAuctionAction:
         """Submit ``min(q, K*(p-S_tilde)_+)`` once at the auction open."""
         if self._auction_opened:
             return AuctionAction(0.0, 0, 0)
         self._auction_opened = True
         env = self._env
         q = float(env.inventory)
-        if q < self.params.dust_threshold:
+        if q <= 0.0:
             return AuctionAction(0.0, 0, 0)
         if self._exec_prices:
             s_tilde = 0.5 * (
@@ -95,20 +100,11 @@ class _LiquidationBenchmark(Agent):
             )
         else:
             s_tilde = float(env.h_cl)
-        alpha = env.grid.alpha
-        # Diagnostic five-coordinate offset only.  The environment consumes
-        # the exact unprojected reference_price metadata for this external
-        # schedule, so the learned-policy template map and ambient B_max bound
-        # are not applied.
-        offset = round_half_up((s_tilde - env.s_mid) / alpha)
         K = min(self.params.z * q, self.cfg.actions.auction_K_grid_max)
-        return AuctionAction(
-            float(K),
-            int(offset),
-            0,
-            one_sided=True,
-            quantity_cap=float(q),
+        return _BenchmarkAuctionAction(
+            K_a=float(K),
             reference_price=float(s_tilde),
+            quantity_cap=float(q),
         )
 
     def _q_int(self) -> int:
@@ -223,15 +219,11 @@ class ASBenchmarkAgent(_LiquidationBenchmark):
         training pool (or simulates that many synthetic paths)."""
         g = self.cfg.grid
         n_paths = 1 if self.params.as_sigma_rule == "single_path" else self.params.as_sigma_n_paths
-        rets: list[np.ndarray] = []
-        for _ in range(n_paths):
-            mid0 = env.midprice.reset(rng)
-            path = [mid0] + [env.midprice.advance_to(float(t)) for t in range(1, g.tau_op + 1)]
-            rets.append(np.diff(np.log(np.asarray(path))))
+        pooled_returns = env._sample_calibration_log_returns(rng, n_paths)
         # One integer interval is one configured physical clock unit (one
         # minute in every active setting), so sigma is per sqrt(clock unit).
         dt = g.physical_time_per_grid_unit
-        return float(np.std(np.concatenate(rets), ddof=1) / math.sqrt(dt))
+        return float(np.std(pooled_returns, ddof=1) / math.sqrt(dt))
 
     def _build_delta_table(self) -> np.ndarray:
         """delta^{a,*}(t, q) in ticks via the stable cumulative-logsumexp of

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 import math
+from dataclasses import dataclass
 from typing import Any
 
 import gymnasium
@@ -22,6 +23,7 @@ from lmm.env.action_spaces import (
     AuctionActionGrid,
     ClobAction,
     ClobActionGrid,
+    _BenchmarkAuctionAction,
     round_half_up,
 )
 from lmm.env.features import COMMON_FEATURES, FeatureExtractor
@@ -54,6 +56,15 @@ logger = logging.getLogger(__name__)
 _EPS = 1e-9
 
 
+@dataclass(frozen=True)
+class _ExecutedAuctionAction:
+    """Private executable schedule after local ``ell`` resolves to ``b``."""
+
+    K_a: float
+    b: int
+    cancel: int
+
+
 class MarketMakingEnv(gymnasium.Env):
     """Gymnasium-style environment with phase-specific action spaces."""
 
@@ -68,8 +79,14 @@ class MarketMakingEnv(gymnasium.Env):
 
         self.cfg = cfg
         self.grid = cfg.grid
-        self.midprice = midprice
-        self.generator = MarketGenerator(cfg.clob_flow, cfg.auction_flow, cfg.grid)
+        # A mid-price model may hold a complete preloaded historical path.
+        # Keep it private so the agent-facing environment API exposes only
+        # the currently revealed ``s_mid`` value.
+        self._midprice = midprice
+        # The pre-sampled episode realization is simulator-private: exposing
+        # the generator would reveal future random decision times to a bound
+        # policy before those times enter the filtration.
+        self._generator = MarketGenerator(cfg.clob_flow, cfg.auction_flow, cfg.grid)
         self.algo1 = Algo1Estimator(cfg.algo1, cfg.grid)
         self.eq2 = Eq2Cache(cfg.grid)
         self.features = FeatureExtractor(
@@ -106,7 +123,7 @@ class MarketMakingEnv(gymnasium.Env):
         super().reset(seed=seed)
 
         # The grid must exist before the non-uniform mid-price path is built.
-        self._episode_grid = self.generator.reset_episode(self.np_random)
+        self._episode_grid = self._generator.reset_episode(self.np_random)
         self._prepare_midprice_path()
 
         self._phase = "clob"
@@ -134,9 +151,12 @@ class MarketMakingEnv(gymnasium.Env):
 
         self.algo1.reset(self.cfg.algo1.H0)
         self._h_cache = self.algo1.h
+        # Complete latent X^3 history through the current decision time. The
+        # reduced feature vector deliberately keeps only the last component.
+        self._h_history = [float(self._h_cache)]
         self.eq2.reset(self._h_cache)
         self._ledger.reset()
-        self.generator.prepare_clob_decision(0, self._k_mid())
+        self._generator.prepare_clob_decision(0, self._k_mid())
 
         self._n = self._episode_grid.n
         self._m = self._episode_grid.m
@@ -147,23 +167,45 @@ class MarketMakingEnv(gymnasium.Env):
             "decision_index": self._decision_index,
             "phase": self._phase,
             "H_used": self._h_cache,
-            "episode_n": self._n,
-            "episode_m": self._m,
         }
         return self.features.clob_features(self), info
 
     def _prepare_midprice_path(self) -> None:
         """Simulate/replay the complete revealed path and project half-up."""
         alpha = self.grid.alpha
-        values = [round_half_up_to_tick(self.midprice.reset(self.np_random), alpha)]
+        values = [round_half_up_to_tick(self._midprice.reset(self.np_random), alpha)]
         for t in self._episode_grid.clob_times[1:]:
-            values.append(round_half_up_to_tick(self.midprice.advance_to(float(t)), alpha))
+            values.append(
+                round_half_up_to_tick(self._midprice.advance_to(float(t)), alpha)
+            )
         frozen = round_half_up_to_tick(
-            self.midprice.advance_to(float(self.grid.tau_op)), alpha
+            self._midprice.advance_to(float(self.grid.tau_op)), alpha
         )
         self._clob_mid_values = np.asarray(values, dtype=float)
         self._clob_mid_values.setflags(write=False)
         self._prepared_frozen_mid = float(frozen)
+
+    def _sample_calibration_log_returns(
+        self, rng: np.random.Generator, n_paths: int
+    ) -> np.ndarray:
+        """Sample pooled integer-grid returns for trusted benchmark setup.
+
+        This deliberately private hook lets the AS calibration share the
+        environment's training-split mid-price model without publishing its
+        historical pool or the active episode's future realization.
+        """
+        if n_paths <= 0:
+            raise ValueError("n_paths must be positive")
+        returns: list[np.ndarray] = []
+        for _ in range(n_paths):
+            mid0 = self._midprice.reset(rng)
+            path = [mid0]
+            path.extend(
+                self._midprice.advance_to(float(t))
+                for t in range(1, self.grid.tau_op + 1)
+            )
+            returns.append(np.diff(np.log(np.asarray(path, dtype=float))))
+        return np.concatenate(returns)
 
     # ------------------------------------------------------------------
     # Gym transition
@@ -186,9 +228,9 @@ class MarketMakingEnv(gymnasium.Env):
         i = self._clob_index
         h_used = self._h_cache
         s_bullet = float(self._mid + self.grid.alpha * a.delta)
-        book = self.generator.book
+        book = self._generator.book
         book.place_agent_order(a.volume, a.delta)
-        flow = self.generator.step_clob_index(i)
+        flow = self._generator.step_clob_index(i)
         executed = float(flow.executed_agent)
         self._inventory -= executed
         if -_EPS < self._inventory < 0.0:
@@ -284,6 +326,7 @@ class MarketMakingEnv(gymnasium.Env):
         self._decision_index = self._episode_grid.n + 1
         self._phase = "terminal"
         self._done = True
+        self._h_history.append(float(self._h_cache))
         empty_counts = {
             name: {
                 "proposed": 0,
@@ -341,9 +384,10 @@ class MarketMakingEnv(gymnasium.Env):
         self._decision_index = int(next_index)
         self._t = float(self._episode_grid.clob_times[next_index])
         self._mid = float(self._clob_mid_values[next_index])
-        snapshot = self.generator.prepare_clob_decision(next_index, self._k_mid())
+        snapshot = self._generator.prepare_clob_decision(next_index, self._k_mid())
         self._current_algo1_diag = self.algo1.observe(next_index, snapshot)
         self._h_cache = self._current_algo1_diag.H
+        self._h_history.append(float(self._h_cache))
 
     def _open_auction(self, carryover: CarryoverCalibration) -> None:
         self._phase = "auction"
@@ -355,14 +399,15 @@ class MarketMakingEnv(gymnasium.Env):
         self._I_tau_op = self._inventory
         self._ledger.reset()
         self._auction_shaping_credit_by_slot.fill(0.0)
-        self.generator.auction_flow.reset(self._frozen_mid, carryover)
+        self._h_history.append(float(self._h_cache))
+        self._generator.auction_flow.reset(self._frozen_mid, carryover)
         self._carryover_slope = float(carryover.total_slope)
         self._fallback_used = any(
             rec.provenance == "fallback"
-            for rec in self.generator.auction_flow.active_schedules
+            for rec in self._generator.auction_flow.active_schedules
         )
         persistent = [
-            rec for rec in self.generator.auction_flow.active_schedules if rec.persistent
+            rec for rec in self._generator.auction_flow.active_schedules if rec.persistent
         ]
         if len(persistent) != 1:
             raise AssertionError("auction initialization must designate one persistent schedule")
@@ -375,26 +420,34 @@ class MarketMakingEnv(gymnasium.Env):
 
     def _prepare_current_auction_proposals(self) -> None:
         """Accept current proposals before constructing the action state."""
-        self._pending_auction_events = self.generator.step_auction(self.np_random)
-        self.generator.auction_flow.assert_valid()
+        self._pending_auction_events = self._generator.step_auction(self.np_random)
+        self._generator.auction_flow.assert_valid()
 
     def _step_auction(
         self, action
     ) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
         a = self._decode_auction(action)
-        external = self._is_external_action(a)
-        s_a = self._auction_reference(a)
-        self._validate_auction_action(a, s_a, external)
+        external = isinstance(a, _BenchmarkAuctionAction)
+        if external:
+            self._validate_benchmark_auction_action(a)
+            executed: _ExecutedAuctionAction | _BenchmarkAuctionAction = a
+        else:
+            self._validate_auction_action(a)
+            executed = self._resolve_auction_action(a)
+            self._validate_executed_auction_action(executed)
+        s_a = self._auction_reference(executed)
+        K_a = float(executed.K_a)
+        cancel = int(executed.cancel)
         if self._pending_auction_events is None:
             raise AssertionError("auction proposals were not prepared before the action")
 
         t = self._t
         h_used = self._h_cache
         d_t = float(self._auction_index) * self.cfg.reward.d
-        fee = d_t * int(a.cancel)
+        fee = d_t * cancel
         prior_live = self._ledger.live.copy()
         clawback = 0.0
-        if a.cancel == 1 and self.cfg.reward.clawback_shaping:
+        if cancel == 1 and self.cfg.reward.clawback_shaping:
             # Reverse the exact signed credits assigned when the currently
             # live schedules were submitted. Re-marking them with H_t would
             # not telescope and would define a different reward.
@@ -406,36 +459,36 @@ class MarketMakingEnv(gymnasium.Env):
             self.cfg.reward.effective_auction_shaping and not external
         )
         interim_shaping = (
-            auction_fictive_reward(a.K_a, s_a, h_used, self.cfg.reward.q)
+            auction_fictive_reward(K_a, s_a, h_used, self.cfg.reward.q)
             if shaping_active
             else 0.0
         )
         interim_reward = auction_reward(
-            a.K_a,
+            K_a,
             s_a,
             h_used,
             self.cfg.reward.q,
             d_t,
-            a.cancel,
+            cancel,
             shaping_enabled=self.cfg.reward.effective_auction_shaping,
             external_policy=external,
             cancelled_interim_shaping=clawback,
         )
 
-        if a.cancel == 1:
+        if cancel == 1:
             # A canceled slot cannot be clawed back a second time, including
             # in the legacy no-clawback treatment.
             self._auction_shaping_credit_by_slot[prior_live] = 0.0
             self._ledger.apply_cancel_all(t)
         self._ledger.submit(
             t,
-            a.K_a,
+            K_a,
             s_a,
             one_sided=external,
-            quantity_cap=a.quantity_cap,
+            quantity_cap=a.quantity_cap if external else None,
             reference_price=s_a if external else None,
         )
-        if a.K_a > 0.0 and shaping_active:
+        if K_a > 0.0 and shaping_active:
             self._auction_shaping_credit_by_slot[self._auction_index] = (
                 interim_shaping
             )
@@ -449,6 +502,7 @@ class MarketMakingEnv(gymnasium.Env):
         )
         self._last_clearing_result = result
         self._h_cache = result.tick_price
+        self._h_history.append(float(self._h_cache))
 
         events = self._pending_auction_events
         info: dict[str, Any] = {
@@ -461,12 +515,20 @@ class MarketMakingEnv(gymnasium.Env):
             "decision_index": self._decision_index,
             "phase": "auction",
             "action": a,
+            "executed_action": executed,
+            "executed_b": (
+                int(executed.b)
+                if isinstance(executed, _ExecutedAuctionAction)
+                else round_half_up(
+                    (float(s_a) - float(self._frozen_mid)) / self.grid.alpha
+                )
+            ),
             "H_used": h_used,
             "H_next": result.tick_price,
             "S_a": s_a,
             "d_t": d_t,
             "events": events,
-            "proposal_counts": self.generator.auction_flow.proposal_counts,
+            "proposal_counts": self._generator.auction_flow.proposal_counts,
             "carryover_slope": self._carryover_slope,
             "fallback_used": self._fallback_used,
             "persistent_schedule_id": self._persistent_schedule_id,
@@ -612,28 +674,23 @@ class MarketMakingEnv(gymnasium.Env):
         if isinstance(action, ClobAction):
             return action
         if isinstance(action, (int, np.integer)):
-            return self.clob_grid.decode(int(action))
+            return self.clob_grid.decode(action)
         raise TypeError(
             f"CLOB action must be an index or ClobAction, got {type(action).__name__}"
         )
 
-    def _decode_auction(self, action) -> AuctionAction:
+    def _decode_auction(
+        self, action
+    ) -> AuctionAction | _BenchmarkAuctionAction:
         if isinstance(action, AuctionAction):
             return action
+        if isinstance(action, _BenchmarkAuctionAction):
+            return action
         if isinstance(action, (int, np.integer)):
-            template = self.auction_grid.decode(int(action))
-            if (
-                template.K_a > 0.0
-                and self.cfg.actions.auction_offset_center == "indicative"
-            ):
-                return AuctionAction(
-                    K_a=template.K_a,
-                    offset=self._auction_offset_center_ticks() + template.offset,
-                    cancel=template.cancel,
-                )
-            return template
+            return self.auction_grid.decode(action)
         raise TypeError(
-            f"auction action must be an index or AuctionAction, got {type(action).__name__}"
+            "auction action must be an index or local AuctionAction, got "
+            f"{type(action).__name__}"
         )
 
     def _validate_clob_action(self, a: ClobAction) -> None:
@@ -656,54 +713,74 @@ class MarketMakingEnv(gymnasium.Env):
         if a.volume == 0.0 and int(a.delta) != 0:
             raise ValueError("the canonical zero CLOB action has delta=0")
 
-    @staticmethod
-    def _is_external_action(a: AuctionAction) -> bool:
-        return bool(
-            a.one_sided or a.quantity_cap is not None or a.reference_price is not None
-        )
-
-    def _auction_reference(self, a: AuctionAction) -> float:
-        if a.reference_price is not None:
+    def _auction_reference(
+        self, a: _ExecutedAuctionAction | _BenchmarkAuctionAction
+    ) -> float:
+        if isinstance(a, _BenchmarkAuctionAction):
             return float(a.reference_price)
         if self._frozen_mid is None:
             raise AssertionError("auction reference requested before auction open")
-        return float(self._frozen_mid + self.grid.alpha * int(a.offset))
+        return float(self._frozen_mid + self.grid.alpha * int(a.b))
 
-    def _validate_auction_action(
-        self, a: AuctionAction, s_a: float, external: bool
-    ) -> None:
+    def _validate_auction_action(self, a: AuctionAction) -> None:
         if not math.isfinite(float(a.K_a)) or a.K_a < 0.0:
             raise ValueError(f"K^a must be finite and nonnegative, got {a.K_a}")
-        if not external and a.K_a > self.cfg.actions.auction_K_grid_max + _EPS:
+        if a.K_a > self.cfg.actions.auction_K_grid_max + _EPS:
             raise ValueError(
                 f"K^a exceeds {self.cfg.actions.auction_K_grid_max}: {a.K_a}"
             )
-        if int(a.offset) != a.offset:
-            raise ValueError("auction offset must be integer-valued")
-        if not external and abs(int(a.offset)) > self.cfg.actions.B_max:
+        slope_index = float(a.K_a) / float(self.cfg.actions.beta)
+        if not math.isclose(
+            slope_index,
+            round(slope_index),
+            rel_tol=1e-10,
+            abs_tol=1e-10,
+        ):
             raise ValueError(
-                "auction offset must lie in "
+                "strategic auction slope must lie on the beta lattice "
+                "{beta*k: k=0,...,K_max}"
+            )
+        if int(a.ell) != a.ell:
+            raise ValueError("auction ell must be integer-valued")
+        if abs(int(a.ell)) > self.cfg.actions.B_max:
+            raise ValueError(
+                "auction ell must lie in "
                 f"[-{self.cfg.actions.B_max},{self.cfg.actions.B_max}]"
             )
-        if a.K_a == 0.0 and int(a.offset) != 0:
-            raise ValueError("the canonical zero-slope action has offset=0")
-        if not math.isfinite(float(s_a)) or s_a < 0.0:
-            raise ValueError(f"auction reference price must be nonnegative, got {s_a}")
+        if a.K_a == 0.0 and int(a.ell) != 0:
+            raise ValueError("the canonical zero-slope action has ell=0")
         if a.cancel not in (0, 1):
             raise ValueError(f"cancel must be 0 or 1, got {a.cancel}")
         if a.cancel and self.cfg.actions.auction_cancel_mode == "never":
             raise ValueError("cancellation is disabled in this treatment")
         if a.cancel and not self._ledger.cancel_admissible():
             raise ValueError("cancel-all is ineligible without a live prior schedule")
-        if (
-            not external
-            and self.cfg.actions.auction_order_mode == "single_replace"
-            and a.K_a > 0.0
-            and not a.cancel
-            and self._ledger.cancel_admissible()
-        ):
+
+    def _resolve_auction_action(self, a: AuctionAction) -> _ExecutedAuctionAction:
+        b = 0 if a.K_a == 0.0 else self._indicative_b_ticks() + int(a.ell)
+        return _ExecutedAuctionAction(a.K_a, b, a.cancel)
+
+    def _validate_executed_auction_action(self, a: _ExecutedAuctionAction) -> None:
+        if abs(int(a.b)) > self.cfg.actions.B_inf:
             raise ValueError(
-                "single_replace mode requires cancel=1 when replacing a live schedule"
+                "resolved auction b must lie in "
+                f"[-{self.cfg.actions.B_inf},{self.cfg.actions.B_inf}]"
+            )
+        s_a = self._auction_reference(a)
+        if not math.isfinite(float(s_a)) or s_a < 0.0:
+            raise ValueError(f"auction reference price must be nonnegative, got {s_a}")
+
+    @staticmethod
+    def _validate_benchmark_auction_action(a: _BenchmarkAuctionAction) -> None:
+        if not math.isfinite(float(a.K_a)) or a.K_a < 0.0:
+            raise ValueError(f"K^a must be finite and nonnegative, got {a.K_a}")
+        if a.cancel != 0:
+            raise ValueError("benchmark auction schedules cannot cancel")
+        if not math.isfinite(float(a.quantity_cap)) or a.quantity_cap < 0.0:
+            raise ValueError("benchmark quantity cap must be finite and nonnegative")
+        if not math.isfinite(float(a.reference_price)) or a.reference_price < 0.0:
+            raise ValueError(
+                "benchmark reference price must be finite and nonnegative"
             )
 
     def action_mask(self) -> np.ndarray:
@@ -715,15 +792,13 @@ class MarketMakingEnv(gymnasium.Env):
             self.cancel_admissible,
             frozen_mid=self._frozen_mid,
             alpha=self.grid.alpha,
-            offset_center_ticks=self._auction_offset_center_ticks(),
+            indicative_b_ticks=self._indicative_b_ticks(),
         )
 
-    def _auction_offset_center_ticks(self) -> int:
-        """Resolve the policy offset origin in manuscript tick coordinates."""
-        if self.cfg.actions.auction_offset_center == "frozen_mid":
-            return 0
+    def _indicative_b_ticks(self) -> int:
+        """Absolute ``b`` coordinate of current indicative price ``H_t^cl``."""
         if self._frozen_mid is None:
-            raise AssertionError("auction offset center requested before auction open")
+            raise AssertionError("indicative b requested before auction open")
         return round_half_up(
             (float(self._h_cache) - float(self._frozen_mid)) / self.grid.alpha
         )
@@ -733,7 +808,7 @@ class MarketMakingEnv(gymnasium.Env):
     # ------------------------------------------------------------------
 
     def _clearing_inputs(self) -> ClearingInputs:
-        flow = self.generator.auction_flow
+        flow = self._generator.auction_flow
         K_exo, S_exo = flow.supply_curves()
         K_agent, S_agent = self._ledger.live_orders()
         return ClearingInputs(
@@ -751,7 +826,12 @@ class MarketMakingEnv(gymnasium.Env):
         return int(round(float(self._mid) / self.grid.alpha))
 
     @property
-    def episode_grid(self) -> EpisodeGrid:
+    def completed_episode_grid(self) -> EpisodeGrid:
+        """Return the realized grid only after it can no longer inform actions."""
+        if not self._done:
+            raise RuntimeError(
+                "the realized episode grid is unavailable until the episode completes"
+            )
         return self._episode_grid
 
     @property
@@ -780,35 +860,35 @@ class MarketMakingEnv(gymnasium.Env):
 
     @property
     def depth_ask(self) -> int:
-        return self.generator.book.depth(+1) if self._phase == "clob" else 0
+        return self._generator.book.depth(+1) if self._phase == "clob" else 0
 
     @property
     def depth_bid(self) -> int:
-        return self.generator.book.depth(-1) if self._phase == "clob" else 0
+        return self._generator.book.depth(-1) if self._phase == "clob" else 0
 
     @property
     def top_ask(self) -> float:
         return (
-            float(self.generator.book.ask_volumes[0]) if self._phase == "clob" else 0.0
+            float(self._generator.book.ask_volumes[0]) if self._phase == "clob" else 0.0
         )
 
     @property
     def top_bid(self) -> float:
         return (
-            float(self.generator.book.bid_volumes[0]) if self._phase == "clob" else 0.0
+            float(self._generator.book.bid_volumes[0]) if self._phase == "clob" else 0.0
         )
 
     @property
     def n_mm(self) -> int:
-        return self.generator.auction_flow.n_mm if self._phase == "auction" else 0
+        return self._generator.auction_flow.n_mm if self._phase == "auction" else 0
 
     @property
     def n_buy(self) -> int:
-        return self.generator.auction_flow.n_buy if self._phase == "auction" else 0
+        return self._generator.auction_flow.n_buy if self._phase == "auction" else 0
 
     @property
     def n_sell(self) -> int:
-        return self.generator.auction_flow.n_sell if self._phase == "auction" else 0
+        return self._generator.auction_flow.n_sell if self._phase == "auction" else 0
 
     @property
     def cancel_admissible(self) -> bool:
@@ -829,7 +909,7 @@ class MarketMakingEnv(gymnasium.Env):
     @property
     def exogenous_slope(self) -> float:
         return (
-            self.generator.auction_flow.aggregates()[0]
+            self._generator.auction_flow.aggregates()[0]
             if self._phase == "auction"
             else 0.0
         )
@@ -837,7 +917,7 @@ class MarketMakingEnv(gymnasium.Env):
     @property
     def auction_imbalance(self) -> float:
         return (
-            self.generator.auction_flow.aggregates()[2]
+            self._generator.auction_flow.aggregates()[2]
             if self._phase == "auction"
             else 0.0
         )
@@ -845,7 +925,7 @@ class MarketMakingEnv(gymnasium.Env):
     @property
     def exogenous_weighted_quote(self) -> float:
         return (
-            self.generator.auction_flow.aggregates()[1]
+            self._generator.auction_flow.aggregates()[1]
             if self._phase == "auction"
             else 0.0
         )
@@ -856,13 +936,13 @@ class MarketMakingEnv(gymnasium.Env):
 
     def paper_state(self) -> dict[str, Any]:
         in_clob = self._phase == "clob"
-        flow = self.generator.auction_flow
+        flow = self._generator.auction_flow
         S_hist, K_hist = self._ledger.history_at(self._t)
         K_exo, S_exo = flow.supply_curves()
         return {
             "X1": self._inventory,
             "X2": self._Z if self._done else 0.0,
-            "X3": self._h_cache,
+            "X3": np.asarray(self._h_history, dtype=float).copy(),
             "X4": self.depth_ask,
             "X5": self.depth_bid,
             "X6": self.n_mm,
@@ -872,8 +952,8 @@ class MarketMakingEnv(gymnasium.Env):
             "X10": self._mid,
             "X11": flow.buy_volumes.copy() if not in_clob else np.zeros(0),
             "X12": flow.sell_volumes.copy() if not in_clob else np.zeros(0),
-            "X13": self.generator.book.ask_volumes.copy() if in_clob else np.zeros(0),
-            "X14": self.generator.book.bid_volumes.copy() if in_clob else np.zeros(0),
+            "X13": self._generator.book.ask_volumes.copy() if in_clob else np.zeros(0),
+            "X14": self._generator.book.bid_volumes.copy() if in_clob else np.zeros(0),
             "X15": (
                 np.column_stack((K_exo, S_exo)) if not in_clob else np.zeros((0, 2))
             ),

@@ -1,0 +1,44 @@
+\begin{table}[H]
+\centering
+\begin{tabular}{lcc}
+\toprule
+\textbf{Symbol} & \textbf{Value} & \textbf{Comment} \\
+\midrule
+$\tau^{\mathrm{op}}$ & 120 min & Auction opening time \\
+$\tau^{\mathrm{cl}}$ & 150 min & Clearing time \\
+$I_0$ & 100 & Initial inventory \\
+$\lambda_0$ & 1/min/side & Continuous phase Poisson intensity \\
+$v_m$ & 2 & Pareto distribution scale parameter \\
+$\gamma_m$ & 2.5 & Pareto distribution shape parameter \\
+$V_\infty$ & 2 & Beta distribution scaling parameter \\
+$\beta_a$ & 2 & First Beta distribution shape parameter \\
+$\beta_b$ & 5 & Second Beta distribution shape parameter \\
+$\rho$ & 0.96 & Limit order book volume decay parameter \\
+$V$ & 30 & Exogenous market/taker-order volume cap \\
+$V_\text{max}$ & 30 & Strategic CLOB submitted-volume cap \\
+$L_\infty$ & 200 & Maximum LOB depth \\
+$L_\text{max}$ & 12 & Agent CLOB quote bound \\
+$B_\infty$ & 150 & Absolute auction price-deviation bound \\
+$B_\text{max}$ & 10 & Local indicative-offset bound \\
+$D_\mu$ & 0.1 & Numerical lower slope bound \\
+$U_1$ & 0.1 & Exogenous supply slope lower bound \\
+$U_2$ & 2 & Exogenous supply slope upper bound \\
+$p_1$ & 1 & One new market maker each auction minute \\
+$p_2$ & 0 & No market-maker cancellation; schedules persist \\
+$p_3$ & 0.3 & New market taker arrival probability \\
+$p_4$ & 0.05 & Market taker cancellation probability \\
+$\lambda$ & 2 & Inventory penalty \\
+$q$ & 1 & Wrong-side dealing penalty \\
+$k^*$ & 1000 & Tolerance \\
+$d$ & 0.1 & Cancellation cost per unit \\
+$\alpha$ & 0.01 & Tick size \\
+$\beta$ & 1 & Tick size of grid on $K^a$ \\
+$K_\text{max}$ & 32 & Upper bound on $K^a/\beta$\footnotemark \\
+$H_0$ & 100 & Initial projected clearing signal \\
+$\eta_H$ & 0.95 & Update weight in Algorithm \ref{alg:hyp_clearing_price}\\
+\bottomrule
+\end{tabular}
+\caption{Generative stochastic market model parameters}
+\label{tab:params_generative}
+\end{table}
+\footnotetext{All four learners use the full slope lattice $K^a/\beta\in\llbracket 0,32\rrbracket$; zero slope is represented by the canonical no-order action.}

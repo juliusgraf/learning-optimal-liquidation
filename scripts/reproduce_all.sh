@@ -12,6 +12,29 @@
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ARGS=("$@")
+OUTPUT_ARGS=()
+REQUIRE_COMPLETE=1
+
+# ``make_all_outputs.sh`` accepts only the seed-selection flag, so extract it
+# from the runner arguments instead of dropping it (or forwarding ``--smoke``
+# and ``--symbol``, which that script intentionally does not accept).
+for ((i = 0; i < ${#ARGS[@]}; i += 1)); do
+  case "${ARGS[$i]}" in
+    --seed)
+      if ((i + 1 >= ${#ARGS[@]})); then
+        echo "--seed requires a value" >&2
+        exit 2
+      fi
+      OUTPUT_ARGS=(--seed "${ARGS[$((i + 1))]}")
+      i=$((i + 1))
+      ;;
+    --seed=*) OUTPUT_ARGS=(--seed "${ARGS[$i]#*=}") ;;
+    --symbol|--symbol=*) REQUIRE_COMPLETE=0 ;;
+  esac
+done
+if [[ "$REQUIRE_COMPLETE" -eq 1 ]]; then
+  OUTPUT_ARGS+=(--require-complete)
+fi
 
 RUNNERS=(
   run_synthetic_dqn run_synthetic_ddpg run_synthetic_td3 run_synthetic_sac
@@ -22,5 +45,5 @@ for s in "${RUNNERS[@]}"; do
   bash "$HERE/${s}.sh" "${ARGS[@]}"
 done
 
-bash "$HERE/make_all_outputs.sh"
+bash "$HERE/make_all_outputs.sh" ${OUTPUT_ARGS[@]+"${OUTPUT_ARGS[@]}"}
 echo "### reproduce_all complete"

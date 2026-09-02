@@ -225,6 +225,24 @@ def _policy_frames(runs: list[RunInfo]) -> dict[str, pd.DataFrame]:
     AS/TWAP/initial come from the DQN run if present, else the first run that
     has them.
     """
+    identities: set[tuple[str, str | None, str, int]] = set()
+    contexts: set[tuple[str, str | None, int]] = set()
+    for run in runs:
+        identity = (run.setting, run.symbol, run.algo, run.seed)
+        if identity in identities:
+            raise ValueError(
+                "duplicate run identity supplied to table aggregation: "
+                f"setting={run.setting!r}, symbol={run.symbol!r}, "
+                f"algo={run.algo!r}, seed={run.seed}"
+            )
+        identities.add(identity)
+        contexts.add((run.setting, run.symbol, run.seed))
+    if len(contexts) > 1:
+        raise ValueError(
+            "single-seed policy aggregation requires one setting/symbol/seed "
+            f"context; got {sorted(contexts, key=repr)}"
+        )
+
     frames: dict[str, pd.DataFrame] = {}
     dqn_run = next((r for r in runs if r.algo == "dqn" and r.records is not None), None)
     shared_src = dqn_run or next((r for r in runs if r.records is not None), None)
@@ -278,10 +296,62 @@ def _returns(df: pd.DataFrame, col: str | None = None) -> np.ndarray:
     return df.sort_values("episode")[col or _primary_col(df)].to_numpy(dtype=float)
 
 
+def _episode_index(df: pd.DataFrame) -> tuple[int, ...]:
+    """Return and validate the evaluation episode index of one policy frame."""
+    if "episode" not in df.columns:
+        raise KeyError("evaluation artifact is missing required column 'episode'")
+    if df["episode"].isna().any():
+        raise ValueError("evaluation artifact contains a missing episode index")
+    episodes = tuple(sorted(int(v) for v in df["episode"].tolist()))
+    if len(episodes) != len(set(episodes)):
+        raise ValueError("evaluation artifact contains duplicate policy/episode rows")
+    if not episodes:
+        raise ValueError("evaluation artifact contains no episodes")
+    return episodes
+
+
+def _common_evaluation_episode_count(frames) -> int:
+    """Require a complete common episode set and return its actual size.
+
+    Publication tables make paired comparisons.  Allowing a merge to silently
+    discard unmatched episodes would both mislabel the sample size and break
+    the common-random-numbers contract, so mismatched episode sets are errors.
+    """
+    frames = [df for df in frames if df is not None]
+    if not frames:
+        raise ValueError("no evaluation policy records were supplied")
+    expected = _episode_index(frames[0])
+    for frame in frames[1:]:
+        observed = _episode_index(frame)
+        if observed != expected:
+            raise ValueError(
+                "evaluation policy episode sets differ; refusing to report a "
+                "partially aligned comparison"
+            )
+    return len(expected)
+
+
+def _selected_frames_across_seeds(runs: list[RunInfo]) -> list[pd.DataFrame]:
+    """Frames selected by aggregate builders, grouped by full run context."""
+    by_context: dict[tuple[str, str | None, int], list[RunInfo]] = {}
+    for run in runs:
+        if run.records is not None:
+            by_context.setdefault(
+                (run.setting, run.symbol, run.seed), []
+            ).append(run)
+    return [
+        frame
+        for context in sorted(by_context, key=repr)
+        for frame in _policy_frames(by_context[context]).values()
+    ]
+
+
 def _aligned(
     a: pd.DataFrame, b: pd.DataFrame, col: str | None = None
 ) -> tuple[np.ndarray, np.ndarray]:
     """CRN-aligned (paired) value arrays on the shared episode index."""
+    if _episode_index(a) != _episode_index(b):
+        raise ValueError("paired policy episode sets differ")
     merged = a.merge(b, on="episode", suffixes=("_a", "_b"))
     if "env_seed_a" in merged and not (merged["env_seed_a"] == merged["env_seed_b"]).all():
         raise ValueError("CRN violation: env seeds differ between policies at matched episodes")
@@ -341,6 +411,7 @@ def build_eval_summary(runs: list[RunInfo], *, rng: int = 0) -> Table:
     and paired Wilcoxon/t-test p-values under CRN.
     """
     frames = _policy_frames(runs)
+    n_eval = _common_evaluation_episode_count(frames.values())
     cols = [p for p in POLICY_ORDER if p in frames]
     learned = [p for p in cols if p not in ("initial", "as", "twap")]
     headers = [POLICY_LABELS.get(p, p) for p in cols]
@@ -437,7 +508,7 @@ def build_eval_summary(runs: list[RunInfo], *, rng: int = 0) -> Table:
         columns=headers,
         rows=rows,
         caption=(
-            f"Evaluation results (100 episodes; {OUTCOME_CAPTIONS[metric]}; "
+            f"Evaluation results ({n_eval} episodes; {OUTCOME_CAPTIONS[metric]}; "
             "common random numbers across policies)."
         ),
         label="tab:eval_summary_final",
@@ -484,11 +555,12 @@ def build_historical_results(
                 algos_present.append(r.algo)
     algos_present = [a for a in ["dqn", "ddpg", "td3", "sac"] if a in algos_present]
 
-    ret_cols = ["$\\hat\\sigma$", "Initial NFQ", "AS", "TWAP"] + [POLICY_LABELS[a] for a in algos_present]
+    ret_cols = ["$\\hat\\sigma$", POLICY_LABELS["initial"], "AS", "TWAP"] + [POLICY_LABELS[a] for a in algos_present]
     ret_rows: list[Row] = []
     # accumulate per-symbol means for the Mean row
     acc: dict[str, list[float]] = {c: [] for c in ret_cols}
     imp_rows: list[Row] = []
+    evaluation_frames: list[pd.DataFrame] = []
     imp_cols: list[str] = []
     for a in algos_present:
         imp_cols += [f"{POLICY_LABELS[a]} vs AS", f"{POLICY_LABELS[a]} vs TWAP"]
@@ -496,6 +568,7 @@ def build_historical_results(
 
     for sym in symbols:
         frames = _policy_frames(groups[sym])
+        evaluation_frames.extend(frames.values())
         meta = next((r.metadata for r in groups[sym] if r.metadata), {})
         sigma = meta.get("as_calibration", {}).get("sigma", float("nan"))
 
@@ -533,12 +606,13 @@ def build_historical_results(
     imp_mean = [float(np.nanmean(imp_acc[c])) if len(imp_acc[c]) else float("nan") for c in imp_cols]
     imp_rows.append(Row("Mean", imp_mean, value_fmt))
 
+    n_eval = _common_evaluation_episode_count(evaluation_frames)
     returns_table = Table(
         columns=ret_cols,
         rows=ret_rows,
         caption=(
             "Per-ticker mean outcomes on the historical S\\&P 500 setting "
-            f"(100 episodes; {OUTCOME_CAPTIONS[metric]}; $\\hat\\sigma$ = estimated "
+            f"({n_eval} episodes; {OUTCOME_CAPTIONS[metric]}; $\\hat\\sigma$ = estimated "
             "continuous-session volatility)."
         ),
         label="tab:dqn_results_full_bps" if normalized else "tab:dqn_results_full",
@@ -570,10 +644,11 @@ def build_historical_results(
 
 def build_eval_summary_multiseed(runs: list[RunInfo], *, rng: int = 0) -> Table:
     """Cross-seed aggregate for the synthetic setting. Each seed contributes one
-    number per policy (its 100-episode mean outcome); these are aggregated across
+    number per policy (its evaluation-sample mean outcome); these are aggregated across
     seeds with the IQM (interquartile mean) and a percentile-bootstrap 95\\% CI
     (Agarwal et al. 2021). Few seeds => wide CIs (the honest multi-seed signal)."""
     metric = _common_primary_col(r.records for r in runs if r.records is not None)
+    n_eval = _common_evaluation_episode_count(_selected_frames_across_seeds(runs))
     indexed = _seed_policy_means_indexed(runs, metric)
     sm = {
         pol: [by_seed[seed] for seed in sorted(by_seed)]
@@ -629,8 +704,9 @@ def build_eval_summary_multiseed(runs: list[RunInfo], *, rng: int = 0) -> Table:
     return Table(
         columns=headers,
         rows=rows,
-        caption=f"Cross-seed aggregate (synthetic; {n_seeds} seeds). IQM of the "
-        f"per-seed mean {outcome_caption} with percentile-bootstrap 95\\% CIs over seeds; "
+        caption=f"Cross-seed aggregate (synthetic; {n_seeds} seeds; {n_eval} "
+        f"evaluation episodes per policy and seed). IQM of the per-seed mean "
+        f"{outcome_caption} with percentile-bootstrap 95\\% CIs over seeds; "
         "policy-minus-benchmark intervals use paired seed-level differences. "
         "Reported policy = best mature validation checkpoint above the initial economic safety floor.",
         label="tab:eval_summary_multiseed",
@@ -646,6 +722,7 @@ def build_historical_results_multiseed(
     per-seed mean outcomes, with a final row pooling all ticker$\\times$seed runs
     into an IQM with a bootstrap 95\\% CI."""
     groups = _group_by_symbol(runs)
+    n_eval = _common_evaluation_episode_count(_selected_frames_across_seeds(runs))
     metric = _require_common_metric(
         (r.records for r in runs if r.records is not None), metric
     )
@@ -737,7 +814,8 @@ def build_historical_results_multiseed(
     return Table(
         columns=headers,
         rows=rows,
-        caption="Cross-seed aggregate (historical S\\&P 500). Per-ticker IQM of "
+        caption=f"Cross-seed aggregate (historical S\\&P 500; {n_eval} evaluation "
+        "episodes per policy, ticker, and seed). Per-ticker IQM of "
         f"the per-seed mean {outcome_caption}; aggregate rows pool all ticker$\\times$seed "
         "runs into an IQM with a bootstrap 95\\% CI. Policy-minus-benchmark "
         "intervals use paired seed-level differences, per ticker and pooled. "
@@ -780,19 +858,27 @@ PARAM_SYMBOLS: list[tuple[str, Any, str]] = [
     ("$\\beta_a$", "clob_flow.beta_a", "First Beta distribution shape parameter"),
     ("$\\beta_b$", "clob_flow.beta_b", "Second Beta distribution shape parameter"),
     ("$\\rho$", "clob_flow.depth_decay", "Limit order book volume decay parameter"),
-    ("$V$", "clob_flow.V_max", "Maximum volume admitted by the market"),
+    ("$V$", "clob_flow.V", "Exogenous market/taker-order volume cap"),
+    ("$V_{\\max}$", "actions.V_max", "Strategic CLOB submitted-volume cap"),
     ("$L_{\\mathrm{book}}$", "clob_flow.L_max", "Maximum exogenous CLOB depth"),
     ("$L_{\\mathrm{agent}}$", "actions.L_max", "Maximum strategic CLOB quote offset"),
-    ("$B_\\infty$", "auction_flow.B_inf", "Exogenous auction quote-support half-width"),
-    ("$B_{\\mathrm{max}}$", "actions.B_max", "Ambient absolute strategic offset bound"),
-    ("$B_{\\mathrm{loc}}$", "actions.auction_template_offset_max", "Indicative-centred policy-template half-width"),
+    (
+        "$B_\\infty$",
+        "actions.B_inf",
+        "Common absolute strategic/exogenous auction price-deviation bound",
+    ),
+    (
+        "$B_{\\mathrm{max}}$",
+        "actions.B_max",
+        "Indicative-centred local policy-coordinate half-width",
+    ),
     ("$D_\\mu$", "auction_flow.D_mu", "Minimum active exogenous auction slope"),
     ("$U_1$", "auction_flow.K_min", "Exogenous supply slope lower bound"),
     ("$U_2$", "auction_flow.K_max", "Exogenous supply slope upper bound"),
     ("$M_1$", "auction_flow.M1", "Exogenous supply spread lower bound"),
     ("$M_2$", "auction_flow.M2", "Exogenous supply spread upper bound"),
-    ("$p_1$", "auction_flow.p1", "New market maker arrival probability"),
-    ("$p_2$", "auction_flow.p2", "Market maker cancellation probability"),
+    ("$p_1$", "auction_flow.p1", "New-MM probability (one arrival each active minute)"),
+    ("$p_2$", "auction_flow.p2", "MM cancellation probability (zero: schedules persist)"),
     ("$p_3$", "auction_flow.p3", "New market taker arrival probability"),
     ("$p_4$", "auction_flow.p4", "Market taker cancellation probability (ruling D7)"),
     ("$\\lambda$", "reward.lambda_inv", "Inventory penalty"),
@@ -804,7 +890,7 @@ PARAM_SYMBOLS: list[tuple[str, Any, str]] = [
     ("$\\alpha$", "grid.alpha", "Tick size"),
     ("$\\beta$", lambda c: c.actions.auction_K_grid_max / c.actions.auction_K_grid_n, "Tick size of grid on $K^a$"),
     ("$\\mathcal{K}$", "actions.auction_K_grid_n", "Upper bound on $K^a/\\beta$"),
-    ("Slope indices", "actions.auction_K_multipliers", "Strategic auction slope subset"),
+    ("Slope indices", "actions.auction_K_multipliers", "Strategic auction slope grid"),
 ]
 
 ROUGH_HESTON_SYMBOLS: list[tuple[str, Any, str]] = [

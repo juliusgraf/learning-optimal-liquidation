@@ -13,23 +13,28 @@
 # Therefore the COMBINED step is scoped to a single master seed (read from each
 # run's seed.txt). Per-run outputs are still produced for every finished run.
 #
-# Usage: scripts/make_all_outputs.sh [--seed N]
+# Usage: scripts/make_all_outputs.sh [--seed N] [--require-complete]
 #   --seed N : master seed for the combined groups. Default: 42 if present,
 #              else the only seed present, else the smallest (with a warning).
+#   --require-complete : require all four algorithms (and all five historical
+#              tickers) at the selected seed before writing combined outputs.
 set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
 COMBINED_SEED=""
+COMBINED_SEED_EXPLICIT=0
+REQUIRE_COMPLETE=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --seed) COMBINED_SEED="${2:-}"; shift 2 ;;
-    --seed=*) COMBINED_SEED="${1#*=}"; shift ;;
+    --seed) COMBINED_SEED="${2:-}"; COMBINED_SEED_EXPLICIT=1; shift 2 ;;
+    --seed=*) COMBINED_SEED="${1#*=}"; COMBINED_SEED_EXPLICIT=1; shift ;;
+    --require-complete) REQUIRE_COMPLETE=1; shift ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
 
-RESULTS_ROOT="results/revision_v9"
+RESULTS_ROOT="results/revision_v10"
 if [[ ! -d "$RESULTS_ROOT" ]]; then
   echo "no $RESULTS_ROOT directory; run a run_*.sh script first" >&2
   exit 1
@@ -53,18 +58,25 @@ printf '  %s\n' "${finished[@]}"
 # -- per-run outputs (every finished run; no cross-run mixing here) -----------
 for rd in "${finished[@]}"; do
   echo "== per-run outputs: $rd =="
-  if [[ -f "$rd/eval/records.csv" ]]; then
-    [[ -f "$rd/eval/policy_difference_as.csv" ]]   || python3 -m lmm.experiments.policy_differences --run-dir "$rd" --benchmark as || true
-    [[ -f "$rd/eval/policy_difference_twap.csv" ]] || python3 -m lmm.experiments.policy_differences --run-dir "$rd" --benchmark twap || true
-  else
-    echo "  WARNING: no eval/records.csv in $rd (re-run its run_*.sh)" >&2
+  if [[ ! -f "$rd/eval/records.csv" ]]; then
+    echo "ERROR: no eval/records.csv in $rd (re-run its run_*.sh)" >&2
+    exit 1
   fi
+  if [[ ! -f "$rd/seed.txt" ]]; then
+    echo "ERROR: no seed.txt in $rd; provenance is incomplete" >&2
+    exit 1
+  fi
+  # Always rebuild derived paired differences. Evaluation may have been rerun
+  # in place, in which case a pre-existing CSV is not evidence of freshness.
+  python3 -m lmm.experiments.policy_differences --run-dir "$rd" --benchmark as
+  python3 -m lmm.experiments.policy_differences --run-dir "$rd" --benchmark twap
   python3 -m lmm.experiments.make_figures --run-dir "$rd"
   python3 -m lmm.experiments.make_tables  --run-dir "$rd"
 done
 
 # -- combined cross-algorithm outputs per setting (single seed, CRN-safe) -----
 echo "== combined cross-algorithm outputs per setting =="
+complete_settings=""
 for setting_dir in "$RESULTS_ROOT"/*/; do
   setting="$(basename "$setting_dir")"
   [[ "$setting" == "_combined" ]] && continue
@@ -108,13 +120,59 @@ for setting_dir in "$RESULTS_ROOT"/*/; do
   done
 
   if [[ ${#group[@]} -eq 0 ]]; then
-    echo "  setting=$setting: no runs at seed=$target (present:$(echo $uniq_seeds | tr '\n' ' ')); skipping combined" >&2
+    echo "  setting=$setting: no runs at seed=$target (present:$(echo $uniq_seeds | tr '\n' ' '))" >&2
+    if [[ "$COMBINED_SEED_EXPLICIT" -eq 1 || "$REQUIRE_COMPLETE" -eq 1 ]]; then
+      exit 1
+    fi
+    echo "  skipping combined output for this setting" >&2
     continue
+  fi
+
+  if [[ "$REQUIRE_COMPLETE" -eq 1 ]]; then
+    required=()
+    if [[ "$setting" == "synthetic_rough_heston" ]]; then
+      for algo in dqn ddpg td3 sac; do
+        required+=("${algo}_seed${target}")
+      done
+    elif [[ "$setting" == "historical_sp500_midquotes" ]]; then
+      for algo in dqn ddpg td3 sac; do
+        for ticker in MSFT JPM PG GOOGL CAT; do
+          required+=("${algo}_${ticker}_seed${target}")
+        done
+      done
+    fi
+    missing=()
+    for run_name in ${required[@]+"${required[@]}"}; do
+      run_path="${setting_dir}${run_name}"
+      if [[ ! -f "$run_path/checkpoints/best.pt" \
+            || ! -f "$run_path/eval/records.csv" \
+            || "$(run_seed "$run_path")" != "$target" ]]; then
+        missing+=("$run_name")
+      fi
+    done
+    if [[ ${#missing[@]} -gt 0 ]]; then
+      echo "ERROR: setting=$setting seed=$target lacks required publication runs:" >&2
+      printf '  %s\n' "${missing[@]}" >&2
+      exit 1
+    fi
+    if [[ "$setting" == "synthetic_rough_heston" \
+          || "$setting" == "historical_sp500_midquotes" ]]; then
+      complete_settings="$complete_settings $setting"
+    fi
   fi
   echo "  setting=$setting seed=$target (${#group[@]} runs)"
   [[ -n "$skipped" ]] && echo "    excluded from combined (other seeds):$skipped (pass --seed to choose)"
   python3 -m lmm.experiments.make_figures --run-dir "${group[@]}" --out "$RESULTS_ROOT/${setting}/_combined/figures"
   python3 -m lmm.experiments.make_tables  --run-dir "${group[@]}" --out "$RESULTS_ROOT/${setting}/_combined/tables"
 done
+
+if [[ "$REQUIRE_COMPLETE" -eq 1 ]]; then
+  for required_setting in synthetic_rough_heston historical_sp500_midquotes; do
+    case " $complete_settings " in
+      *" $required_setting "*) ;;
+      *) echo "ERROR: missing complete publication setting: $required_setting" >&2; exit 1 ;;
+    esac
+  done
+fi
 
 echo "== make_all_outputs complete =="

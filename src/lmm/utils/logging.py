@@ -1,6 +1,6 @@
 """Run-directory creation and experiment metadata dumping (fully functional).
 
-Every current run writes ``results/revision_v9/<experiment_name>/<run_name>/`` containing
+Every current run writes ``results/revision_v10/<experiment_name>/<run_name>/`` containing
 ``config_resolved.yaml``, ``seed.txt``, ``git_sha.txt``, ``metrics.csv``,
 ``eval/``, ``checkpoints/``, ``logs/run.log``, ``figures/``, ``tables/``
 (engineering conventions, CLAUDE.md). Figures and tables are always
@@ -86,6 +86,11 @@ def _git_sha() -> str:
 
 def write_run_metadata(paths: RunPaths, cfg: ExperimentConfig, master_seed: int) -> None:
     """Dump complete static provenance into the run directory."""
+    if cfg.experiment.master_seed != master_seed:
+        raise ValueError(
+            "resolved experiment.master_seed and the executed master seed disagree: "
+            f"{cfg.experiment.master_seed} != {master_seed}"
+        )
     save_resolved(cfg, paths.config_resolved)
     paths.seed_txt.write_text(f"{master_seed}\n")
     paths.git_sha_txt.write_text(f"{_git_sha()}\n")

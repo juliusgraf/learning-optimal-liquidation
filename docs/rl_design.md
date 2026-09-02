@@ -70,7 +70,7 @@ coordinate is set to zero while the network dimension remains 18.
 
 ## Discrete actions
 
-The canonical five-coordinate representation is `(v, delta, K, b, c)`.
+The canonical five-coordinate representation is `(v, delta, K, ell, c)`.
 
 CLOB actions consist of one canonical no-order action `(0,0)` and every
 integer `v=1..30`, `delta=0..12`, for 391 actions. The state mask enforces
@@ -78,28 +78,27 @@ integer `v=1..30`, `delta=0..12`, for 391 actions. The state mask enforces
 order lives only for the current realized interval and is removed before the
 next snapshot/carry-over.
 
-Auction actions use `beta=1` and slope indices `{1,2,4,8,16,32}`. The ambient
-manuscript coordinate is the absolute frozen-mid offset
-`b in [-B_max,B_max]=[-150,150]`, so
-`S_t^a=S_{tau_op}^{mid}+alpha*b_t^a`. The policy head remains compact by
-enumerating 21 local templates `ell in [-10,10]`. At decision time it resolves
+Auction actions use the full manuscript lattice `beta*{0,...,K_max}`, with
+`beta=1` and `K_max=32`, and the manuscript local action
+`ell in [-B_max,B_max]=[-10,10]`. At decision time the simulator derives
 
 ```text
 b_t = round_half_up((H_t^cl-S_{tau_op}^mid)/alpha) + ell_t,
 ```
 
-and masks a discrete template if the resulting absolute `b_t` is outside the
-ambient band. Thus the indicative price changes the numerical policy
-parameterization, not the definition of the executed manuscript action. The
-separate `B_inf=150` sets the exogenous quote bounds `M_1=-B_inf` and
-`M_2=B_inf`; it happens to equal `B_max` but has a distinct role. With
+and masks a local action if the resulting absolute `b_t` is outside the
+ambient band `[-B_inf,B_inf]=[-150,150]`. The
+same `B_inf=150` support sets the exogenous quote bounds `M_1=-B_inf` and
+`M_2=B_inf`; cross-configuration validation requires the two uses of `B_inf`
+to agree. `B_max=10` is the local manuscript-action half-width. With
 cancellation enabled the grid has
-`2 + 2*6*21 = 254` actions. Without cancellation it has
-`1 + 6*21 = 127`. Zero slope has zero offset. Cancellation removes every live
+`2 + 2*32*21 = 1,346` actions. Without cancellation it has
+`1 + 32*21 = 673`. Zero slope has `ell=0`. Cancellation removes every live
 strategic schedule submitted strictly before the current action; the new
-current action is never canceled by its own bit. In the headline
-`single_replace` class, a new positive-slope schedule must cancel a prior live
-schedule. Equal DQN Q-values choose the first action in lexicographic order.
+current action is never canceled by its own bit. Without cancellation, a new
+positive-slope action leaves every earlier schedule live; with cancellation,
+it first removes all earlier schedules and may then submit a replacement.
+Equal DQN Q-values choose the first action in lexicographic order.
 
 Auction inventory is not clipped or bounded by a hidden liquidation
 constraint. Two-sided learned schedules may buy. Clearing and accounting use
@@ -114,14 +113,14 @@ these proposals to the same market action semantics used by DQN:
 
 - CLOB volume/offset are half-up rounded, inventory-admissible, and canonical at
   zero volume;
-- auction slope/offset are half-up rounded, the nonnegative-reference condition
+- auction slope/local `ell` are half-up rounded, the nonnegative-reference condition
   is enforced, and the cancellation threshold is applied only when admissible.
 
 Consequently all four learned methods use the same 21 local indicative-centred
 integer templates, while every executed order still carries an absolute
-frozen-mid `b`. DQN uses six positive slope levels `{1,2,4,8,16,32}`; the
-continuous actors' projected support contains all 33 integer slope levels
-`0,...,32`. A continuous proposal is clipped to the nearest ambient boundary;
+frozen-mid `b`. DQN and the projected continuous actors share all 33 integer
+slope levels `0,...,32`; they differ in raw proposal parameterization, not
+executable slope support. A continuous proposal is clipped to the nearest ambient boundary;
 a discrete proposal outside that boundary is masked.
 
 Replay stores the committed normalized proposal, not a reconstructed market
@@ -138,7 +137,19 @@ replay warm-ups of 2,000 CLOB and 512 auction transitions. Phase-local target up
 that phase. Replay retains the next phase and admissibility mask so the CLOB to
 auction junction is explicit.
 
-DQN uses masked epsilon-greedy exploration, uniform over admissible actions.
+The environment therefore changes its exposed Gymnasium `action_space` at the
+CLOB-to-auction boundary. The repository's two-head episode loop and
+continuous adapter handle that transition explicitly. Generic Gymnasium
+wrappers that assume one stationary action space are not supported without an
+additional fixed-space wrapper.
+
+DQN uses masked epsilon-greedy exploration, uniform over admissible actions,
+with the same probability in both phases. The active linear schedule is
+`epsilon=1` for episodes 0--49, decays to `0.01` at episode 650, and remains
+there. For the auction head, all output weights start at zero, the canonical
+no-order bias starts at zero, and every other action bias starts at `-0.02` in
+replay-scaled reward units; this is an initialization prior, not an
+admissibility or safety constraint.
 DDPG uses one critic, TD3 two critics and delayed actor updates, and SAC twin
 critics plus entropy regularization. Their algorithm-specific hyperparameters
 are resolved from `configs/algo/*.yaml`; the environment/reward/normalization
@@ -164,11 +175,11 @@ r_t = phi_t - d_t*c_t - c_t * sum(phi_s for s in L_t).
 
 The subtraction uses each order's original signed credit, not a revaluation at
 the current indicative price. Cancellation occurs before the current schedule
-is inserted, so a replacement does not cancel itself. Under `single_replace`,
-a replacement of `s` by `t` therefore earns `phi_t-phi_s-d_t`. Pathwise over
-the undiscounted auction, the interim rewards telescope to the sum of `phi_s`
-for schedules still live at clearing, less all cancellation fees. Centering
-removes the policy-invariant initial inventory value incrementally, so it
+is inserted, so a replacement does not cancel itself. Multiple schedules may
+accumulate between cancellations. Pathwise over the undiscounted auction, each
+submitted schedule's credit is either retained if the schedule survives to
+clearing or exactly reversed by the first later cancel-all action, less all
+cancellation fees. Centering removes the policy-invariant initial inventory value incrementally, so it
 changes target scale but not complete-episode policy ordering. Validation and
 final evaluation instantiate a separate economic-only reward contract and
 record CLOB cash, terminal auction cash, cancellation fees, residual mark, and
@@ -201,11 +212,12 @@ shaping or clawback.
 The normalizer and benchmark calibration use training-only streams. Periodic
 validation replays the policy under the economic-only reward on a fixed
 validation seed set. A candidate becomes reportable only after the CLOB and
-auction learners reach `5,000` and `2,000` maturity-counted optimizer updates,
-respectively. For DQN, auction updates made before the full auction behavior
-policy unlocks at episode 200 are excluded from this count. Before both gates
-pass, validation scores are diagnostics: they neither create `best.pt` nor
-consume patience. The first eligible validation initializes the race, after
+auction learners reach `5,000` and `2,000` optimizer updates, respectively.
+The headline DQN exposes the complete admissible auction grid from episode
+zero and uses the same masked epsilon-greedy probability in both phases; there
+is no forced no-order curriculum. Before both gates pass, validation scores
+are diagnostics: they neither create `best.pt` nor consume patience. The first
+eligible validation initializes the race, after
 which ordinary joint-policy patience applies. The untrained policy's economic
 score is retained only as a safety floor: an eligible mature policy must beat
 it before `best.pt` is created. The best mature policy is saved separately for
@@ -236,7 +248,8 @@ The matched treatment set is:
 2. `H_cl` present, shaping absent;
 3. `H_cl` absent, shaping present;
 4. `H_cl` present, shaping present;
-5. no auction;
+5. no auction, with both the `H_cl` feature and all auction-derived shaping
+   disabled;
 6. no strategic cancellation.
 
 The primary information comparison uses the two shaping-off arms.

@@ -210,7 +210,9 @@ class FeatureExtractor:
         registry: dict[str, Callable] = {
             "time": lambda env: env.t,
             "inventory": lambda env: env.inventory,
-            "h_cl": lambda env: env.h_cl,
+            # The H-off treatments remove the signal from the environment's
+            # raw observation itself, not merely in an agent-side normalizer.
+            "h_cl": lambda env: env.h_cl if env.cfg.rl.h_cl_feature_enabled else 0.0,
             "s_mid": lambda env: env.s_mid,
             "decision_index": lambda env: env.decision_index,
             "depth_ask": lambda env: env.depth_ask,
