@@ -15,6 +15,7 @@ algo:
     loss: huber                 # SmoothL1
     grad_clip_norm: 1.0         # legacy convention
     hidden_layers: [128, 128]   # common capacity across both mid-price sources
+    action_embedding_dim: 32    # shared coordinate embedding for exact grid actions
     safe_auction_initialization: true
     target_update_interval: 1000  # hard-update cadence (ignored when soft_tau set)
     target_soft_tau: 0.0025     # slow Polyak tracking limits target-value drift

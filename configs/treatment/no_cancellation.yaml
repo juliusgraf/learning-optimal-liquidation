@@ -1,9 +1,11 @@
 # Matched no-cancellation sensitivity for every learned algorithm.
 #
-# DQN receives the genuine 673-action auction head. DDPG/TD3/SAC receive a
+# DQN receives the genuine 673-action auction grid. DDPG/TD3/SAC receive a
 # two-dimensional auction proposal (K, ell). The environment rejects c=1,
 # so benchmarks and direct action submissions cannot bypass the treatment.
 experiment:
-  ablation_label: H_on__shaping_on__auction_on__cancel_off
+  ablation_label: H_on__shaping_off__auction_on__cancel_off
 actions:
   auction_cancel_mode: never
+reward:
+  shaping_enabled: false

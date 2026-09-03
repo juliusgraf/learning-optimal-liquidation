@@ -3,7 +3,7 @@
 This repository implements the revised manuscript environment for the
 synthetic rough-Heston setting and the historical-midprice setting, with DQN
 and the DDPG/TD3/SAC continuous-action relaxations. Current artifacts use
-schema 11, are written below `results/revision_v11/`, and carry environment
+schema 12, are written below `results/revision_v12/`, and carry environment
 contract `unified-minute-auction-mdp-2026-09-02-v8`; checkpoints and results
 from earlier contracts are rejected.
 
@@ -62,7 +62,7 @@ space, cancellation/order semantics, reward, validation design, and
 algorithm-specific hyperparameters from `configs/base.yaml` and
 `configs/algo/*.yaml`. In particular, both use `lambda0=1`, `V_inf=2`,
 `rho_lob=0.96`, exogenous `L_max=200`, agent CLOB offset bound 12, and the
-same 1,346-action cancellation-enabled DQN auction head. The acceptance suite
+same 1,346-action cancellation-enabled DQN auction grid. The acceptance suite
 compares every shared resolved section for all four learners.
 
 The manuscript notation is used directly in the active action configuration.
@@ -128,18 +128,29 @@ enter the validation race only after both phase learners pass their configured
 optimizer-update maturity thresholds. The headline DQN exposes the complete
 auction grid from episode zero and uses the same masked epsilon-greedy schedule
 in both phases, so all eligible auction updates count normally. Early-stopping
-patience starts with the first eligible validation. The initial economic score is a
-non-reportable safety floor; if no mature candidate beats it, the run records
-selection failure instead of creating `best.pt`. Otherwise `best.pt` is
-selected on validation risk-adjusted PnL and evaluated on 100 held-out test
-episodes.
+patience starts with the first eligible validation. The initial economic score
+is a non-reportable diagnostic reference, not a selection threshold. The
+active configuration sets `checkpoint_require_initial_improvement=false`:
+every maturity-eligible validation can enter the race, and `best.pt` is the
+mature joint policy with the highest validation risk-adjusted PnL. It is
+evaluated on 100 held-out test episodes. A run can still fail closed if its
+episode budget never produces a maturity-eligible checkpoint.
 
-Normal training uses the manuscript-shaped reward with `q=1`, `lambda_inv=2`,
-and exact cancellation clawback: canceling an order reverses the fictive
-interim shaping credited when that order was submitted, in addition to the
-unchanged fee with `d=0.1`. Validation, checkpoint selection, and final
-learned/AS/TWAP comparisons all use the common economic-only reward. Centering
-subtracts the same policy-invariant initial-inventory value in both contracts.
+Headline training has shaping disabled and optimizes the same economic
+risk-adjusted PnL used for validation and final learned/AS/TWAP comparisons.
+Initial-inventory centering subtracts the policy-invariant constant `S0*I0`,
+so the complete headline training return equals `risk_adjusted_pnl` without
+changing policy rankings. The exact manuscript-shaped reward with `q=1` and
+cancellation clawback is retained only in the explicit `shaping_on` treatment
+arms.
+
+DQN still selects from the exact masked action grids, but its Q function does
+not give each of the 1,346 auction actions an unrelated output vector. A shared
+two-layer state trunk scores normalized action coordinates through a rank-32
+embedding. The replay update evaluates only its sampled action, while greedy
+and Double-DQN target selection enumerate the complete admissible grid. This
+coordinate-conditioned head shares evidence across nearby `(K,ell,c)` actions
+and is recorded in checkpoints as `coordinate_conditioned_bilinear_v1`.
 
 One synthetic run:
 
@@ -169,7 +180,7 @@ For isolated development or CI runs, set `LMM_RESULTS_ROOT` to an absolute
 scratch directory. Every launcher and report generator honors the override,
 and training records the same path in `config_resolved.yaml`, so discovery and
 provenance cannot disagree. Leave it unset for the canonical
-`results/revision_v11/` layout. For example:
+`results/revision_v12/` layout. For example:
 
 ```bash
 LMM_RESULTS_ROOT=/absolute/scratch/lmm-results \
@@ -191,11 +202,22 @@ scripts/run_synthetic_treatments.sh --seed 42
 scripts/run_synthetic_treatments.sh --smoke --seed 9001
 ```
 
-The fourth H/anchor-bundle by shaping cell (`H` on, shaping on) is exactly the canonical
+The remaining H/anchor-bundle by shaping cell (`H` on, shaping off) is exactly the canonical
 synthetic headline configuration. The treatment launcher therefore does not
 train it again: paired reporting reuses `synthetic_rough_heston/*_seed<N>` as
 that arm. Run the canonical synthetic launchers (or `reproduce_all.sh`) for the
 same seed before aggregating treatments.
+
+The two shaping-on arms intentionally test the exact `q=1` objective rather
+than treating it as equivalent to economic PnL. For an indicative-centred
+auction proposal, a positive slope with a negative local offset can receive a
+positive fictive submission credit independently of its eventual fill.
+Uncanceled schedules retain those credits and `c=0` permits several schedules
+to survive to clearing; clawback reverses only schedules that are actually
+canceled. The `q=1` terminal correction also removes negative purchase cash
+from the shaped terminal signal. A learner can therefore improve shaped return
+by stacking live schedules while worsening economic PnL. The paired shaping
+contrasts measure this objective mismatch; the headline is not exposed to it.
 
 The no-cancellation treatment gives DQN 673 auction actions; the enabled
 regime has 1,346. Continuous agents use two or three normalized auction
@@ -263,7 +285,7 @@ on minus off. Each evaluation episode is matched by environment
 seed before its difference is reduced to a master-seed mean; positive values
 favor the first-named condition. The summary `.tex`/`.csv` and auditable
 per-seed provenance CSV are written under
-`results/revision_v11/synthetic_rough_heston/_cross_treatment/tables/`.
+`results/revision_v12/synthetic_rough_heston/_cross_treatment/tables/`.
 
 Generated result artifacts are never copied into `paper/` automatically.
 Promotion into the manuscript artifact directory remains an explicit manual
@@ -274,7 +296,7 @@ review step.
 For a synthetic DQN run named `dqn_seed42`:
 
 ```bash
-RUN=results/revision_v11/synthetic_rough_heston/dqn_seed42
+RUN=results/revision_v12/synthetic_rough_heston/dqn_seed42
 
 python3 -m lmm.experiments.train \
   --config configs/base.yaml \
@@ -322,9 +344,10 @@ Primary evaluation fields are `pnl` and `risk_adjusted_pnl`. The latter is
 risk_adjusted_pnl = pnl - terminal_inventory_penalty
 ```
 
-where `pnl` already includes cancellation fees. Shaped training return and all
-shaping components are retained as diagnostics but never enter reported PnL or
-checkpoint selection. Historical tables additionally use
+where `pnl` already includes cancellation fees. Headline training return is
+the centered economic objective. Shaped return and its components are retained
+for the explicit shaping treatments as diagnostics but never enter reported
+PnL or checkpoint selection. Historical tables additionally use
 `risk_adjusted_pnl_bps`.
 
 The full field-level schema is in `docs/metrics_schema.md`.

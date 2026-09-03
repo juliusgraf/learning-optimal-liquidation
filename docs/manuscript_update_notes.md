@@ -56,13 +56,16 @@ the manuscript will need them before it describes the current code:
   schedules can accumulate when `c=0`; when `c=1`, all prior schedules are
   removed before the current replacement is inserted, so it survives.
 - State the reward split explicitly: the headline policy is trained with
-  shaping (`q=1`) and exact cancellation clawback, whereas validation,
-  checkpoint selection, and final learned/AS/TWAP comparisons use only the
-  economic objective. The centering adjustment is retained in both; over a
-  complete episode it is the policy-independent constant `-S_0 I_0`. A concise
-  notation is `J_ctr(pi)=J(pi)-S_0^mid I_0`, so the unshaped implementation has
-  `J_ctr(pi)=bar J_lambda(pi)`. Training logs expose the centered shaped return;
-  final tables report `bar J` and `bar J_lambda`, with the latter primary.
+  shaping disabled, on the same economic risk-adjusted PnL used for validation,
+  checkpoint selection, and final learned/AS/TWAP comparisons. The centering
+  adjustment is retained throughout; over a complete episode it is the
+  policy-independent constant `-S_0 I_0`. A concise notation is
+  `J_ctr(pi)=J(pi)-S_0^mid I_0`, so the headline implementation has
+  `J_ctr(pi)=bar J_lambda(pi)`. Final tables report `bar J` and
+  `bar J_lambda`, with the latter primary. The exact manuscript-shaped
+  objective with `q=1` and cancellation clawback is run only as the explicit
+  `shaping_on` treatment at each H/anchor level; its training return is retained
+  separately as a diagnostic.
 - State that the untrained policy and pre-maturity validations are diagnostics,
   not reportable candidates. Checkpoint eligibility requires at least 5,000
   CLOB and 2,000 auction optimizer updates. The headline DQN exposes the full
@@ -70,9 +73,17 @@ the manuscript will need them before it describes the current code:
   probability in both phases. Early-stopping patience starts at the first
   eligible validation, and the two
   phase networks are then selected jointly on economic validation performance.
-  The initial policy's score is retained only as a safety floor: if no mature
-  candidate beats it, report selection failure rather than the initial or a
-  collapsed mature policy.
+  The initial policy's score is retained only as a non-reportable diagnostic;
+  it is not a threshold that a mature checkpoint must beat. Every
+  maturity-eligible validation enters the selection race, and the best mature
+  economic score determines `best.pt`.
+- Describe the implemented DQN approximation accurately if network details are
+  included. It maximizes over the complete exact action lattice but uses a
+  coordinate-conditioned Q function: a two-layer state trunk and a shared
+  rank-32 action embedding score `(v,delta)` or `(K,ell,c)`. It does not learn
+  1,346 unrelated auction-output parameter vectors. This distinction matters
+  because it shares evidence across sparsely visited grid actions while
+  preserving masked Double-DQN selection on the exact grid.
 - Replace blanket claims of benchmark superiority with held-out paired,
   multi-seed evidence generated under the current environment contract.
 
@@ -102,9 +113,9 @@ inputs. Update the shared rows as follows:
 | auction slope index bound | 10 | 32 | full lattice is `{0,...,32}` for every learner |
 | DQN auction actions | absent/legacy | 1,346 with cancellation; 673 without | add computational row |
 | inventory penalty | 0.5 | 2.0 | replace |
-| wrong-side shaping `q` | 1 | 1 in headline training | evaluation turns shaping off, not `q` |
+| wrong-side shaping `q` | 1 | inactive in headline; 1 in `shaping_on` treatments | distinguish the treatment objective from headline economic training |
 | cancellation cost `d` | 0.1 | 0.1 | unchanged |
-| cancellation shaping clawback | absent/no clawback | exact reversal of canceled orders' original `phi_s` | add to headline reward definition |
+| cancellation shaping clawback | absent/no clawback | inactive in headline; exact reversal of canceled orders' original `phi_s` in `shaping_on` treatments | add to the treatment reward definition |
 | projected-price initialization `H_0` | absent | 100 | add |
 | projected-price smoothing `eta_H` | absent | 0.95 | add; code uses `H_i=(1-eta_H)H_{i-1}+eta_H tilde S_i` |
 | live-order mode | multiple schedules allowed | multiple schedules allowed | a positive action with `c=0` accumulates; `c=1` cancels all prior schedules before insertion |
@@ -142,15 +153,20 @@ as the entire ambient action set.
 
 The earlier bounded-grid diagnostics and pre-revision learned-policy results
 were produced under superseded action and reward contracts and are deliberately
-not retained here. Only revision-v11 publication artifacts may support an
+not retained here. Only revision-v12 publication artifacts may support an
 empirical statement.
 
-The headline reverses the exact fictive credit of every canceled schedule.
-Pathwise, the undiscounted auction sum therefore contains only credits of
-schedules still live at clearing, minus cancellation fees; repeated replacement
-cannot accumulate old credits. `q=1` neutralizes purchase-side terminal cash in
-the training target. An additional shaping weight would be a separate model
-parameter and must not be introduced silently.
+In each `shaping_on` treatment, cancellation reverses the exact fictive credit
+of every canceled schedule. Pathwise, the undiscounted auction sum therefore
+contains the credits of all schedules still live at clearing, minus
+cancellation fees. This does not remove the pathology: `c=0` can deliberately
+stack schedules, and every survivor retains a positive submission credit when
+`q=1` and its quote is below `H_s`, independently of realized fill. Moreover,
+`q=1` neutralizes purchase-side terminal cash in the shaped training target.
+The shaped treatment can therefore improve its training return while economic
+risk-adjusted PnL worsens. Present it as a distinct objective/treatment, not as
+an equivalent way to optimize the headline criterion. An additional shaping
+weight would be a separate model parameter and must not be introduced silently.
 
 In the AS calibration paragraph, replace `k=alpha K` by
 `k=gamma_m K` (or use a new symbol for the Pareto tail exponent). In
@@ -174,8 +190,10 @@ separate synthetic/historical columns. All four learners use `2x128` hidden
 layers and CLOB/auction replay warm-ups of `2,000`/`512`. DQN confirmation uses
 epsilon warm-up/decay `50/600`, the same masked epsilon-greedy probability in
 both phases from episode zero, and an 800-episode budget in both settings.
-Checkpoint maturity thresholds are `5,000/2,000` (CLOB/auction). The author has
+Its coordinate-conditioned action embedding has rank 32; action selection
+still enumerates the exact admissible lattice. Checkpoint maturity thresholds
+are `5,000/2,000` (CLOB/auction). The author has
 chosen to keep low-level safe auction-head initialization out of the
 manuscript; its exact DQN and continuous-actor specifications are documented in
 `docs/rl_design.md` and the active algorithm YAML files for reproduction.
-Report only results regenerated under the revision-v11 contract.
+Report only results regenerated under the revision-v12 contract.

@@ -31,7 +31,7 @@ def test_dqn_target_ignores_deprecated_row_discount():
     with __import__("torch").no_grad():
         for p in agent.q_target["clob"].parameters():
             p.zero_()
-        agent.q_target["clob"][-1].bias.fill_(2.0)
+        agent.q_target["clob"].value_head.bias.fill_(2.0)
     batch = ReplayBatch(
         obs=np.zeros((2, obs_dim), np.float32),
         action=np.zeros(2, np.int64),

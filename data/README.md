@@ -77,7 +77,7 @@ python3 -m lmm.experiments.diagnose_simulator \
   --config configs/base.yaml \
   --config configs/historical_sp500_midquotes.yaml \
   --episodes 20 --assert-ready \
-  --json-out results/revision_v11/_diagnostics/midquote_simulator_gate.json
+  --json-out results/revision_v12/_diagnostics/midquote_simulator_gate.json
 ```
 
 ## Data interpretation

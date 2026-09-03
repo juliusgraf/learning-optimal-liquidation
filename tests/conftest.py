@@ -73,7 +73,7 @@ def _upgrade_artifact_fixture(source: Path, target: Path, algo: str) -> Path:
     metadata_path.write_text(yaml.safe_dump(metadata, sort_keys=False))
     records.to_csv(records_path, index=False)
 
-    # Test-only migration of deliberately stale pre-v11 trace fixtures. The
+    # Test-only migration of deliberately stale pre-v12 trace fixtures. The
     # production reader remains fail-closed and requires explicit act_ell/b.
     traces_dir = target / "eval" / "traces"
     if traces_dir.exists():

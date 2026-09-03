@@ -54,7 +54,7 @@ __all__ = [
 ]
 
 
-ACTIVE_ARTIFACT_SCHEMA_VERSION = 11
+ACTIVE_ARTIFACT_SCHEMA_VERSION = 12
 
 
 class ConfigError(ValueError):
@@ -78,7 +78,7 @@ class ExperimentMeta:
     results_root: Path  # gitignored output root
     artifact_schema_version: int = ACTIVE_ARTIFACT_SCHEMA_VERSION
     seeds: tuple[int, ...] = (42,)
-    ablation_label: str = "H_on__shaping_on__auction_on"
+    ablation_label: str = "H_on__shaping_off__auction_on"
     auction_enabled: bool = True
 
 
@@ -263,10 +263,10 @@ class RewardParams:
 
     k_star: int  # k* in f_c; legacy kappa=0.1 <=> k*alpha=10 <=> k*=1000
     lambda_inv: float  # terminal inventory penalty lambda; shared => 2.0
-    q: float  # wrong-side shaping coefficient; manuscript headline => 1.0
+    q: float  # wrong-side shaping coefficient; q=1 in shaping-on treatments
     d: float  # cancellation cost unit d (cost d_t*c_t, D4); => 0.1
     shaping_enabled: bool  # common CLOB/interim/terminal shaping switch
-    clawback_shaping: bool  # exact cancellation reversal; headline baseline true
+    clawback_shaping: bool  # exact cancellation reversal when shaping is active
     numerical_guard: bool  # D8: optional far-out float guard, default OFF
     # |I_tau_cl| threshold when the guard is on — far outside the economic
     # range (|I| <= I0 + auction exposure ~ O(10^3)); binding is logged
@@ -320,9 +320,10 @@ class RLParams:
     # from episode zero, so every eligible auction update counts.
     checkpoint_min_clob_updates: int = 0
     checkpoint_min_auction_updates: int = 0
-    # The untrained policy is never a candidate, but its economic validation
-    # score can remain a safety floor that a mature candidate must exceed.
-    checkpoint_require_initial_improvement: bool = True
+    # The untrained policy is never a candidate. Its economic validation score
+    # is retained as a diagnostic comparator; an optional ablation may require
+    # a mature candidate to improve on it before being reportable.
+    checkpoint_require_initial_improvement: bool = False
     test_size: int = 100
     h_cl_feature_enabled: bool = True
 
@@ -627,6 +628,10 @@ def _migrate_legacy_schema(tree: dict[str, Any]) -> None:
 
     reward = tree.get("reward")
     if isinstance(reward, dict):
+        # Configs predating the explicit switch always used the shaped reward,
+        # so ``True`` is the only backward-compatible interpretation here.
+        # Every active schema-v12 stack is explicit (headline false; treatment
+        # overlays true), and therefore never relies on this legacy fallback.
         reward.setdefault("shaping_enabled", True)
         reward.setdefault("clawback_shaping", False)
 

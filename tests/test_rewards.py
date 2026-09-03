@@ -29,19 +29,19 @@ def test_config_carries_closed_form_constants(synthetic_cfg):
         D,
         2.0,
     )
-    assert r.shaping_enabled
+    assert not r.shaping_enabled
     assert r.clawback_shaping
     assert r.center_initial_inventory_value
 
 
 def test_phase_specific_shaping_switches_fall_back_to_shared_contract():
     baseline = load_synthetic_cfg()
-    assert baseline.reward.effective_clob_shaping is True
-    assert baseline.reward.effective_auction_shaping is True
+    assert baseline.reward.effective_clob_shaping is False
+    assert baseline.reward.effective_auction_shaping is False
 
-    unshaped = load_synthetic_cfg("reward.shaping_enabled=false")
-    assert unshaped.reward.effective_clob_shaping is False
-    assert unshaped.reward.effective_auction_shaping is False
+    shaped = load_synthetic_cfg("reward.shaping_enabled=true")
+    assert shaped.reward.effective_clob_shaping is True
+    assert shaped.reward.effective_auction_shaping is True
 
     split = load_synthetic_cfg(
         "reward.clob_shaping_enabled=false",
@@ -146,6 +146,7 @@ def test_auction_reward_subtracts_the_exact_signed_cancelled_shaping():
 
 def test_cancel_and_replace_clawback_telescopes_to_surviving_credit_and_fees():
     cfg = load_synthetic_cfg(
+        "reward.shaping_enabled=true",
         "reward.center_initial_inventory_value=false",
     )
     env = new_env(cfg)
@@ -178,6 +179,7 @@ def test_cancel_and_replace_clawback_telescopes_to_surviving_credit_and_fees():
 
 def test_cancel_all_claws_back_every_live_credit():
     cfg = load_synthetic_cfg(
+        "reward.shaping_enabled=true",
         "reward.center_initial_inventory_value=false",
     )
     env = new_env(cfg)

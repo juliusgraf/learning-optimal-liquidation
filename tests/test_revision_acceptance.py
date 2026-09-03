@@ -445,11 +445,9 @@ def test_dqn_action_counts_and_canonical_no_order_rules():
 
 def _constant_output(network, value: float) -> None:
     with torch.no_grad():
-        linear = [m for m in network.modules() if isinstance(m, torch.nn.Linear)]
-        for layer in linear:
-            layer.weight.zero_()
-            layer.bias.zero_()
-        linear[-1].bias.fill_(float(value))
+        for parameter in network.parameters():
+            parameter.zero_()
+        network.value_head.bias.fill_(float(value))
 
 
 def test_final_clob_transition_bootstraps_from_auction_target_network():

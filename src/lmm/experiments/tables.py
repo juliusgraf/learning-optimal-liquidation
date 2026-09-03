@@ -707,7 +707,7 @@ def build_eval_summary_multiseed(runs: list[RunInfo], *, rng: int = 0) -> Table:
         f"evaluation episodes per policy and seed). IQM of the per-seed mean "
         f"{outcome_caption} with percentile-bootstrap 95\\% CIs over seeds; "
         "policy-minus-benchmark intervals use paired seed-level differences. "
-        "Reported policy = best mature validation checkpoint above the initial economic safety floor.",
+        "Reported policy = best mature checkpoint on the fixed validation split.",
         label="tab:eval_summary_multiseed",
         row_label_header="Metric",
         section_breaks=section_breaks,
@@ -818,7 +818,7 @@ def build_historical_results_multiseed(
         f"the per-seed mean {outcome_caption}; aggregate rows pool all ticker$\\times$seed "
         "runs into an IQM with a bootstrap 95\\% CI. Policy-minus-benchmark "
         "intervals use paired seed-level differences, per ticker and pooled. "
-        "Best mature validation checkpoint above the initial economic safety floor.",
+        "Best mature checkpoint on the fixed validation split.",
         label=(
             "tab:historical_results_multiseed_bps"
             if normalized
@@ -884,7 +884,7 @@ def build_synthetic_treatment_contrasts(
             "bootstrap CI] of seed-level mean risk-adjusted PnL differences. "
             "The sign is first-named condition minus second-named condition, "
             "so a positive value favors the first-named condition. The headline "
-            "runs supply the H/anchor-on, shaping-on, auction-on baseline."
+            "runs supply the H/anchor-on, shaping-off, auction-on baseline."
         ),
         label="tab:synthetic_treatment_contrasts_multiseed",
         row_label_header="Contrast",
@@ -944,7 +944,11 @@ PARAM_SYMBOLS: list[tuple[str, Any, str]] = [
     ("$p_3$", "auction_flow.p3", "New market taker arrival probability"),
     ("$p_4$", "auction_flow.p4", "Market taker cancellation probability (ruling D7)"),
     ("$\\lambda$", "reward.lambda_inv", "Inventory penalty"),
-    ("$q$", "reward.q", "Wrong-side dealing penalty"),
+    (
+        "$q$",
+        "reward.q",
+        "Shaping-treatment wrong-side coefficient (inactive in headline)",
+    ),
     ("$k^\\star$", "reward.k_star", "Tolerance"),
     ("$d$", "reward.d", "Cancellation cost per unit"),
     ("$H_0$", "algo1.H0", "Initial projected clearing signal"),

@@ -17,10 +17,10 @@ experiment:
   episodes: 800      # matched confirmation budget across both price sources
   master_seed: 42    # legacy MASTER seed (main.py:1410); scheme rebuilt per D10
   seeds: [42]        # explicit seed list; multi-seed launchers override this list
-  ablation_label: H_on__shaping_on__auction_on
+  ablation_label: H_on__shaping_off__auction_on
   auction_enabled: true
-  results_root: results/revision_v11
-  artifact_schema_version: 11
+  results_root: results/revision_v12
+  artifact_schema_version: 12
 
 grid:
   tau_op: 120        # auction opens after 120 minutes (two hours)
@@ -78,7 +78,10 @@ reward:
   q: 1.0             # manuscript wrong-side shaping coefficient
   d: 0.1             # cancellation cost unit d (cost d_t*c_t, d_t = (t-n-1)d, D4);
                      # main.py:1418
-  shaping_enabled: true   # headline trains on the manuscript-shaped reward
+  # The exact manuscript-shaped objective is retained as an explicit treatment.
+  # It is not the headline objective: with persistent multi-order schedules its
+  # per-submission fictive credit can be farmed independently of realized fills.
+  shaping_enabled: false  # headline trains on the reported economic objective
   clawback_shaping: true  # reverse the exact fictive credit of canceled orders
   center_initial_inventory_value: true  # exact policy-invariant Bellman centering
   numerical_guard: false  # D8: optional far-out float guard, default OFF
@@ -89,8 +92,8 @@ reward:
 rl:
   chi: 1.0           # revised problem is undiscounted for every method
   discount_mode: undiscounted  # every nonterminal Bellman coefficient is one
-  checkpoint_metric: risk_adjusted_pnl   # Pi_lambda; shaped return trains but
-                                         # never selects the reported policy
+  checkpoint_metric: risk_adjusted_pnl   # Pi_lambda for headline and every
+                                         # treatment's checkpoint selection
   normalizer_fit_episodes: 32  # dedicated training-only random-policy paths;
                                # frozen before learning and saved in checkpoints
   validation_size: 100
@@ -98,7 +101,9 @@ rl:
   validation_patience_evals: 6
   checkpoint_min_clob_updates: 5000
   checkpoint_min_auction_updates: 2000
-  checkpoint_require_initial_improvement: true
+  # Initial networks remain a diagnostic comparator, not an outcome-dependent
+  # publication gate. Mature checkpoints are selected solely on validation Pi_lambda.
+  checkpoint_require_initial_improvement: false
   test_size: 100
   h_cl_feature_enabled: true
 

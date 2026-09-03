@@ -87,9 +87,9 @@ def test_config_binding_values_synthetic() -> None:
         cfg.rl.checkpoint_min_clob_updates,
         cfg.rl.checkpoint_min_auction_updates,
     ) == (5000, 2000)
-    assert cfg.rl.checkpoint_require_initial_improvement
+    assert not cfg.rl.checkpoint_require_initial_improvement
     assert cfg.reward.d == 0.1 and cfg.reward.lambda_inv == 2.0 and cfg.reward.q == 1.0
-    assert cfg.reward.shaping_enabled and cfg.reward.clawback_shaping
+    assert not cfg.reward.shaping_enabled and cfg.reward.clawback_shaping
     assert cfg.reward.k_star == 1000 and cfg.grid.alpha == 0.01  # kappa=0.1 <=> k*alpha=10
     assert cfg.reward.numerical_guard is False  # D8: default OFF
     assert cfg.clob_flow.lambda0 == 1.0 and cfg.experiment.episodes == 800
@@ -242,8 +242,8 @@ def test_config_rejects_incoherent_physical_clock() -> None:
 
 
 def test_config_rejects_old_or_future_artifact_schema_labels() -> None:
-    for schema in (10, 12):
-        with pytest.raises(ConfigError, match="active schema 11"):
+    for schema in (11, 13):
+        with pytest.raises(ConfigError, match="active schema 12"):
             _load_synthetic(
                 overrides=[f"experiment.artifact_schema_version={schema}"]
             )

@@ -913,3 +913,32 @@ the ambient boundary. `B_inf=150` independently defines exogenous bounds
 `M1=-B_inf`, `M2=B_inf`. Their equal numerical values do not identify their
 roles. DQN still has 254 templates with cancellation; all four learned methods
 share the same local offset parameterization.
+
+### F.7 Revision-v12 learning-pathology correction (2026-09-02)
+
+The revision-v11 confirmation runs exposed two distinct problems that
+supersede the checkpoint and DQN conclusions in F.5--F.6:
+
+- Exact `q=1` shaping is not policy-invariant when strategic auction schedules
+  persist. A positive-slope, below-indicative submission receives fictive
+  credit independently of eventual fill; `c=0` can stack surviving credits,
+  and clawback reverses only schedules actually canceled. The terminal
+  purchase correction can also neutralize negative auction cash. The active
+  headline therefore trains on centered economic risk-adjusted PnL, while the
+  exact shaped objective remains an explicit treatment whose economic effect
+  is measured rather than assumed beneficial.
+- A flat 1,346-output DQN auction head assigned unrelated output parameters to
+  sparsely visited structured actions. Revision v12 retains the exact grid and
+  masked Double-DQN maximization but scores normalized `(K,ell,c)` coordinates
+  with a shared rank-32 action embedding; the CLOB head uses the same design for
+  `(v,delta)`.
+- The initial network is retained as a non-reportable diagnostic, not an active
+  performance floor. In revision v11 its random CLOB component happened to be
+  economically strong, so an outcome-dependent floor rejected every mature
+  DQN checkpoint after training had completed. Phase-update maturity remains
+  mandatory, and `best.pt` is now the mature joint checkpoint maximizing fixed
+  validation risk-adjusted PnL.
+
+Revision-v11 outputs and flat-head checkpoints are not compatible with the
+revision-v12 artifact contract. Current details are authoritative in
+`docs/rl_design.md`, `docs/metrics_schema.md`, and `REPRODUCING.md`.

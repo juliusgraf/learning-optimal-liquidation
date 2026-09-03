@@ -1,7 +1,7 @@
 # Revised artifact and metrics schema
 
 All current confirmation runs live under
-`results/revision_v11/<experiment_name>/<run_name>/`. Readers require both the
+`results/revision_v12/<experiment_name>/<run_name>/`. Readers require both the
 current `artifact_schema_version` and the exact environment contract identifier
 stored in checkpoints and evaluation metadata. Missing or mismatched values are
 fatal; the pipeline does not load old checkpoints or result directories.
@@ -44,7 +44,7 @@ training metrics and evaluation records:
 | `auction_shaping_clawback` | signed cumulative shaping originally credited to canceled schedules and subtracted from reward |
 | `auction_terminal_shaping` | terminal purchase-side shaping, applied once to aggregate cash |
 | `reward_baseline_adjustment` | optional policy-invariant subtraction of initial inventory value from the training reward |
-| `training_return` / `return_undisc` | undiscounted reward for that environment (shaped in training; economic-only in validation/final evaluation) |
+| `training_return` / `return_undisc` | undiscounted resolved reward (centered economic in headline training; shaped in `shaping_on` treatment training; economic-only in validation/final evaluation) |
 | `pnl` | marked-to-market PnL, including cancellation fees |
 | `risk_adjusted_pnl` | `pnl - inventory_penalty` (`Pi_lambda`) |
 
@@ -105,11 +105,15 @@ it contains:
 - `wall_clock_s`, the only intentionally nondeterministic column.
 
 The initial untrained policy and every pre-maturity validation are diagnostic
-only. `best_selection.yaml` records the required and observed phase counts and
-the initial-policy economic safety floor; early-stopping patience starts only
-after the first eligible validation. `best_mature.pt` remains diagnostic. If
-no mature candidate beats the floor, `selection_failure.yaml` is written and
-no reportable `best.pt` is created.
+only. `best_selection.yaml` records the required and observed phase counts,
+the initial-policy validation score, and whether improvement over that score
+was required. In the active configuration that requirement is false: every
+mature validation is reportable, irrespective of the initial score.
+Early-stopping patience starts only after the first eligible validation, and
+`best_mature.pt` remains diagnostic. `selection_failure.yaml` is written only
+when the run never reaches checkpoint maturity (or when a noncanonical overlay
+explicitly reenables the initial-improvement gate and no mature candidate
+passes it).
 
 Every nonterminal replay row has Bellman coefficient one. Rewards are stored at
 the common `1e-3` scale for all four learners and are never clipped.
@@ -164,9 +168,10 @@ seeds. These are fixed-policy cumulative differences, not regret.
 
 ## Tables and figures
 
-Single-setting tables use risk-adjusted PnL as the primary outcome and retain
-the shaped return in training metrics only as a diagnostic. Evaluation records
-use the economic-only replay contract. Cross-seed synthetic comparisons report an
+Single-setting tables use risk-adjusted PnL as the primary outcome. Headline
+training return is centered economic risk-adjusted PnL; the explicit shaping
+treatments retain shaped return in training metrics as a diagnostic.
+Evaluation records use the economic-only replay contract. Cross-seed synthetic comparisons report an
 IQM and bootstrap interval over per-seed means; policy-vs-benchmark intervals
 are computed from paired per-seed differences.
 

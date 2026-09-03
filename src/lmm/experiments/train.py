@@ -1,6 +1,6 @@
 """Train any agent on any setting from config (Phase 4).
 
-Writes the configured results root (currently results/revision_v11) with config_resolved.yaml,
+Writes the configured results root (currently results/revision_v12) with config_resolved.yaml,
 seed.txt, git_sha.txt, metrics.csv (per-episode), checkpoints/, logs/run.log
 (engineering conventions, CLAUDE.md). Figures/tables are produced separately
 by make_figures.py / make_tables.py from these saved outputs.
@@ -615,20 +615,25 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                     "seed_stream": "env_eval",
                     "candidate": "initial_untrained_policy",
                     "reportable": False,
-                    "economic_safety_floor": reference_validation_score,
+                    "economic_reference_score": reference_validation_score,
+                    "used_as_reportability_floor": bool(
+                        cfg.rl.checkpoint_require_initial_improvement
+                    ),
                     "eligibility": initial_eligibility,
                 },
                 sort_keys=False,
             )
         )
         logger.info(
-            "initial diagnostic validation %s %.6f (non-reportable safety floor)",
+            "initial diagnostic validation %s %.6f (non-reportable comparator; "
+            "improvement gate=%s)",
             checkpoint_metric,
             initial_validation["checkpoint_score"],
+            cfg.rl.checkpoint_require_initial_improvement,
         )
 
     if reference_validation_score is None:
-        raise AssertionError("initial economic safety reference was not initialized")
+        raise AssertionError("initial economic diagnostic reference was not initialized")
 
     new_csv = start_episode == 0 or not paths.metrics_csv.exists()
     csv_file = paths.metrics_csv.open("w" if new_csv else "a", newline="")
@@ -754,13 +759,15 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             if eval_checkpoint_eligible:
                 logger.info(
                     "episode %d: mature validation %s %.6f (best mature %.6f; "
-                    "safety floor %.6f; reportable=%s); economic return %.4f; "
+                    "initial diagnostic %.6f; improvement gate=%s; "
+                    "reportable=%s); economic return %.4f; "
                     "maturity updates=%s",
                     episode,
                     checkpoint_metric,
                     eval_checkpoint_score,
                     best_mature_validation_score,
                     reference_validation_score,
+                    cfg.rl.checkpoint_require_initial_improvement,
                     eval_checkpoint_reportable,
                     eval_return_mean,
                     eligibility["observed_updates"],
@@ -878,8 +885,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 )
             else:
                 checkpoint_failure = (
-                    "no mature checkpoint beat the non-reportable initial "
-                    f"economic safety floor: best_mature="
+                    "no mature checkpoint passed the configured initial-policy "
+                    f"improvement gate: best_mature="
                     f"{best_mature_validation_score:.12g}, "
                     f"initial={reference_validation_score:.12g}"
                 )
@@ -925,13 +932,18 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         if training_episode_seeds
         else start_episode
     )
-    logger.info(
-        "done: %d episodes completed; final checkpoint at %s",
-        completed_episodes,
-        paths.checkpoints,
-    )
     if checkpoint_failure is not None:
+        logger.error(
+            "training completed after %d episodes, but checkpoint selection failed: %s",
+            completed_episodes,
+            checkpoint_failure,
+        )
         raise RuntimeError(checkpoint_failure)
+    logger.info(
+        "done: %d episodes completed; reportable checkpoint at %s",
+        completed_episodes,
+        paths.checkpoints / "best.pt",
+    )
     return 0
 
 

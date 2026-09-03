@@ -121,11 +121,11 @@ def test_metadata_schema_mismatch_is_rejected_by_readers(fixture_run_dir, tmp_pa
     metadata["artifact_schema_version"] = 9
     metadata_path.write_text(yaml.safe_dump(metadata, sort_keys=False))
 
-    with pytest.raises(ValueError, match="active schema 11"):
+    with pytest.raises(ValueError, match="active schema 12"):
         make_tables.main(
             ["--run-dir", str(fixture_run_dir), "--out", str(tmp_path / "out")]
         )
-    with pytest.raises(SystemExit, match="active schema 11"):
+    with pytest.raises(SystemExit, match="active schema 12"):
         policy_differences.main(
             ["--run-dir", str(fixture_run_dir), "--benchmark", "as"]
         )

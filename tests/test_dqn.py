@@ -19,7 +19,7 @@ from helpers import load_dqn_cfg, new_env
 from lmm.agents.base import Transition
 from lmm.agents.dqn import DQNAgent
 from lmm.env.features import FeatureNormalizer
-from lmm.rl.networks import mlp
+from lmm.rl.networks import StructuredDiscreteQ, mlp
 from lmm.rl.replay import ReplayBatch, ReplayBuffer
 from lmm.rl.schedules import LinearEpsilonSchedule
 from lmm.utils.seeding import seed_everything
@@ -37,15 +37,20 @@ def make_agent(cfg, master_seed: int = 1234) -> DQNAgent:
     return DQNAgent(cfg, seeds)
 
 
-def set_constant_net(net: nn.Sequential, bias: np.ndarray) -> None:
-    """Zero all weights/biases and set the output bias, so the net computes
-    Q(x, a) = bias[a] for EVERY x (hand-computable Bellman targets)."""
-    with torch.no_grad():
-        linears = [m for m in net.modules() if isinstance(m, nn.Linear)]
-        for m in linears:
-            m.weight.zero_()
-            m.bias.zero_()
-        linears[-1].bias.copy_(torch.as_tensor(bias, dtype=torch.float32))
+class ConstantQ(nn.Module):
+    """Architecture-independent Q table for hand-computed target tests."""
+
+    def __init__(self, values: np.ndarray) -> None:
+        super().__init__()
+        self.register_buffer("values", torch.as_tensor(values, dtype=torch.float32))
+
+    def forward(
+        self, obs: torch.Tensor, action_indices: torch.Tensor | None = None
+    ) -> torch.Tensor:
+        values = self.values.unsqueeze(0).expand(obs.shape[0], -1)
+        if action_indices is None:
+            return values
+        return values.gather(1, action_indices.unsqueeze(1)).squeeze(1)
 
 
 # -- networks -----------------------------------------------------------------
@@ -70,6 +75,75 @@ def test_no_cancel_config_builds_673_output_auction_head():
     x = torch.zeros(3, len(cfg.features.auction))
     assert len(agent.auction_grid) == 673
     assert agent.q["auction"](x).shape == (3, 673)
+
+
+def test_structured_q_uses_exact_normalized_grid_coordinates(dqn_cfg):
+    agent = make_agent(dqn_cfg)
+    clob = agent.q["clob"]
+    auction = agent.q["auction"]
+    assert isinstance(clob, StructuredDiscreteQ)
+    assert isinstance(auction, StructuredDiscreteQ)
+    assert clob.action_coordinates.shape == (len(agent.clob_grid), 2)
+    assert auction.action_coordinates.shape == (len(agent.auction_grid), 3)
+
+    c_last = agent.clob_grid.actions[-1]
+    np.testing.assert_allclose(
+        clob.action_coordinates[-1].cpu().numpy(),
+        [c_last.volume / dqn_cfg.actions.V_max, c_last.delta / dqn_cfg.actions.L_max],
+    )
+    a_last = agent.auction_grid.actions[-1]
+    np.testing.assert_allclose(
+        auction.action_coordinates[-1].cpu().numpy(),
+        [
+            a_last.K_a / (dqn_cfg.actions.beta * dqn_cfg.actions.K_max),
+            a_last.ell / dqn_cfg.actions.B_max,
+            a_last.cancel,
+        ],
+    )
+    assert torch.all(clob.action_coordinates.abs() <= 1.0)
+    assert torch.all(auction.action_coordinates.abs() <= 1.0)
+
+
+def test_safe_auction_initialization_is_exact_and_trainable(dqn_cfg):
+    agent = make_agent(dqn_cfg)
+    network = agent.q["auction"]
+    obs = torch.randn(4, len(dqn_cfg.features.auction))
+    q = network(obs)
+    torch.testing.assert_close(q[:, 0], torch.zeros(4))
+    torch.testing.assert_close(
+        q[:, 1:],
+        torch.full_like(q[:, 1:], -agent.hp.safe_auction_noop_margin),
+    )
+    assert network.nonnoop_prior.requires_grad
+    network.zero_grad()
+    # A positive Bellman error on a non-noop must immediately push against the
+    # prior; it is an initialization, not a permanent action penalty.
+    nonnoop = torch.ones(obs.shape[0], dtype=torch.int64)
+    (-network(obs, nonnoop).mean()).backward()
+    assert network.nonnoop_prior.grad is not None
+    assert network.nonnoop_prior.grad.item() < 0.0
+
+
+def test_structured_q_selected_path_matches_full_grid_and_shares_parameters(dqn_cfg):
+    agent = make_agent(dqn_cfg)
+    network = agent.q["clob"]
+    obs = torch.randn(5, len(dqn_cfg.features.clob))
+    actions = torch.tensor([0, 1, 2, 14, 390])
+    full = network(obs)
+    selected = network(obs, actions)
+    torch.testing.assert_close(selected, full.gather(1, actions[:, None]).squeeze(1))
+
+    # There must be no trainable lookup/output table with one row per action.
+    assert not any(
+        parameter.ndim > 0 and parameter.shape[0] == len(agent.clob_grid)
+        for parameter in network.parameters()
+    )
+    network.zero_grad()
+    selected.sum().backward()
+    assert any(
+        parameter.grad is not None and bool(torch.any(parameter.grad != 0))
+        for parameter in network.action_encoder.parameters()
+    )
 
 
 # -- schedule -------------------------------------------------------------------
@@ -247,8 +321,8 @@ def test_bellman_targets_hand_computed():
     n_clob, n_auc = len(agent.clob_grid), len(agent.auction_grid)
     bias_clob = np.linspace(-1.0, 1.0, n_clob)
     bias_auc = np.linspace(2.0, -2.0, n_auc)  # max at index 0, min at the end
-    set_constant_net(agent.q_target["clob"], bias_clob)
-    set_constant_net(agent.q_target["auction"], bias_auc)
+    agent.q_target["clob"] = ConstantQ(bias_clob)
+    agent.q_target["auction"] = ConstantQ(bias_auc)
 
     clob_dim, auc_dim = len(dqn_cfg.features.clob), len(dqn_cfg.features.auction)
     mask_all_clob = np.ones(n_clob, dtype=bool)
@@ -282,7 +356,7 @@ def test_bellman_targets_auction_phase():
     agent = make_agent(dqn_cfg)
     n_auc = len(agent.auction_grid)
     bias_auc = np.arange(n_auc, dtype=float) / n_auc
-    set_constant_net(agent.q_target["auction"], bias_auc)
+    agent.q_target["auction"] = ConstantQ(bias_auc)
     auc_dim = len(dqn_cfg.features.auction)
     mask = np.zeros(n_auc, dtype=bool)
     mask[10] = mask[20] = True
@@ -333,8 +407,8 @@ def test_double_q_bellman_targets():
     target_bias = np.zeros(n_clob)
     target_bias[A] = 1.0
     target_bias[B] = 9.0  # max_a' Q_target = B (the vanilla bootstrap)
-    set_constant_net(agent.q["clob"], online_bias)
-    set_constant_net(agent.q_target["clob"], target_bias)
+    agent.q["clob"] = ConstantQ(online_bias)
+    agent.q_target["clob"] = ConstantQ(target_bias)
     clob_dim = len(dqn_cfg.features.clob)
     batch = _hand_batch(
         clob_dim, clob_dim, n_clob,
@@ -381,7 +455,7 @@ def test_greedy_argmax_respects_mask(dqn_cfg):
     legal_idx = next(i for i in range(n_auc) if agent.auction_grid.decode(i).cancel == 0)
     bias[cancel_idx] = 10.0  # global argmax is a cancel action
     bias[legal_idx] = 5.0
-    set_constant_net(agent.q["auction"], bias)
+    agent.q["auction"] = ConstantQ(bias)
     mask = agent.auction_grid.mask(cancel_admissible=False)
     a = agent.act(
         np.zeros(len(dqn_cfg.features.auction), dtype=np.float32),
@@ -398,7 +472,7 @@ def test_greedy_ties_use_first_lexicographic_action(dqn_cfg):
     tied = (7, 19)
     bias = np.zeros(n_clob)
     bias[list(tied)] = 5.0
-    set_constant_net(agent.q["clob"], bias)
+    agent.q["clob"] = ConstantQ(bias)
     mask = np.zeros(n_clob, dtype=bool)
     mask[list(tied)] = True
     chosen = agent.act(
@@ -467,6 +541,48 @@ def test_checkpoint_round_trip(dqn_cfg, tmp_path):
     acts_a = [agent.act(obs, mask, "clob") for _ in range(20)]
     acts_b = [restored.act(obs, mask, "clob") for _ in range(20)]
     assert acts_a == acts_b
+
+
+def test_checkpoint_rejects_pre_structured_q_architecture(dqn_cfg, tmp_path):
+    agent = make_agent(dqn_cfg)
+    agent.set_feature_normalizer(
+        FeatureNormalizer(dqn_cfg.grid.tau_cl).fit(
+            np.vstack([np.zeros(18), np.ones(18)])
+        )
+    )
+    current = tmp_path / "current.pt"
+    legacy = tmp_path / "legacy.pt"
+    agent.save(current)
+    state = torch.load(current, weights_only=False)
+    state.pop("q_architecture")
+    torch.save(state, legacy)
+    with pytest.raises(ValueError, match="DQN architecture mismatch"):
+        agent.load(legacy)
+
+
+@pytest.mark.parametrize(
+    "override",
+    (
+        "actions.beta=2.0",  # same tensor shapes, different auction slopes
+        "reward.shaping_enabled=true",
+        "algo.hyperparams.lr=0.0002",
+    ),
+)
+def test_checkpoint_rejects_semantically_different_current_config(
+    dqn_cfg, tmp_path, override
+):
+    agent = make_agent(dqn_cfg)
+    agent.set_feature_normalizer(
+        FeatureNormalizer(dqn_cfg.grid.tau_cl).fit(
+            np.vstack([np.zeros(18), np.ones(18)])
+        )
+    )
+    path = tmp_path / "contract.pt"
+    agent.save(path)
+
+    incompatible = make_agent(load_dqn_cfg(override))
+    with pytest.raises(ValueError, match="configuration contract mismatch"):
+        incompatible.load(path)
 
 
 # -- convergence smoke (deterministic bandit through the full update path) ------------

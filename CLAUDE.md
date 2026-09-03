@@ -43,8 +43,10 @@ not implementation specifications.
 - `actions.auction_anchor` is `indicative` exactly when `H_cl` is observed and
   `frozen_mid` in H-off treatments, so masks, projection, and execution cannot
   leak the ablated indicative signal.
-- Training uses the configured shaped reward. Validation, checkpoint
-  selection, final evaluation, and AS/TWAP comparisons use economic
+- Training uses the reward selected by the resolved configuration: the
+  headline uses centered economic risk-adjusted PnL, while exact manuscript
+  shaping is confined to explicit treatment overlays. Validation, checkpoint
+  selection, final evaluation, and AS/TWAP comparisons always use economic
   risk-adjusted PnL. Initial-inventory centering is policy invariant and must
   never enter reported PnL twice.
 - PnL fields never include shaping. Clearing and accounting use actual signed

@@ -176,7 +176,9 @@ def _train(tmp_path, run_name: str) -> str:
 
 
 @pytest.mark.slow
-def test_mature_policy_below_initial_floor_is_not_reported(tmp_path, monkeypatch):
+def test_optional_initial_improvement_gate_rejects_worse_mature_policy(
+    tmp_path, monkeypatch
+):
     scores = iter((10.0, -5.0, -5.0))
 
     def fixed_eval(*_args, **_kwargs):
@@ -202,9 +204,10 @@ def test_mature_policy_below_initial_floor_is_not_reported(tmp_path, monkeypatch
         "-o", "rl.validation_patience_evals=10",
         "-o", "rl.checkpoint_min_clob_updates=0",
         "-o", "rl.checkpoint_min_auction_updates=0",
+        "-o", "rl.checkpoint_require_initial_improvement=true",
         "-o", "algo.hyperparams.checkpoint_interval_episodes=10",
     ]
-    with pytest.raises(RuntimeError, match="no mature checkpoint beat"):
+    with pytest.raises(RuntimeError, match="initial-policy improvement gate"):
         train_mod.main(argv)
     checkpoints = (
         tmp_path / "synthetic_rough_heston" / "selection_failure" / "checkpoints"
@@ -212,6 +215,50 @@ def test_mature_policy_below_initial_floor_is_not_reported(tmp_path, monkeypatch
     assert not (checkpoints / "best.pt").exists()
     assert (checkpoints / "best_mature.pt").exists()
     assert (checkpoints / "selection_failure.yaml").exists()
+
+
+@pytest.mark.slow
+def test_default_selection_reports_best_mature_policy_even_below_initial_diagnostic(
+    tmp_path, monkeypatch
+):
+    scores = iter((10.0, -5.0))
+
+    def fixed_eval(*_args, **_kwargs):
+        score = next(scores)
+        return {
+            "return_mean": score,
+            "pnl_mean": score,
+            "risk_adjusted_pnl_mean": score,
+            "checkpoint_score": score,
+        }
+
+    monkeypatch.setattr(train_mod, "_run_eval", fixed_eval)
+    argv = [
+        "--config", "configs/base.yaml",
+        "--config", "configs/synthetic_rough_heston.yaml",
+        "--config", "configs/algo/dqn.yaml",
+        "--run-name", "diagnostic_not_gate",
+        "-o", f"experiment.results_root={tmp_path}",
+        "-o", "experiment.episodes=1",
+        "-o", "rl.normalizer_fit_episodes=1",
+        "-o", "rl.validation_frequency_episodes=1",
+        "-o", "rl.validation_size=1",
+        "-o", "rl.validation_patience_evals=10",
+        "-o", "rl.checkpoint_min_clob_updates=0",
+        "-o", "rl.checkpoint_min_auction_updates=0",
+        "-o", "algo.hyperparams.checkpoint_interval_episodes=10",
+    ]
+    assert train_mod.main(argv) == 0
+    checkpoints = (
+        tmp_path / "synthetic_rough_heston" / "diagnostic_not_gate" / "checkpoints"
+    )
+    selection = yaml.safe_load((checkpoints / "best_selection.yaml").read_text())
+    assert (checkpoints / "best.pt").exists()
+    assert selection["value"] == -5.0
+    assert not selection["economic_safety"]["require_improvement_over_initial"]
+    assert not selection["economic_safety"]["candidate_beats_initial"]
+    assert selection["economic_safety"]["reportable"]
+    assert not (checkpoints / "selection_failure.yaml").exists()
 
 
 @pytest.mark.slow

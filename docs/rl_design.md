@@ -1,8 +1,10 @@
 # Revised RL design
 
-This document records the implemented learning contract. The revised
-manuscript is authoritative for the model; this file explains how its state,
-actions, chronology, rewards, and evaluation criteria reach the learners.
+This document records the implemented learning contract. The resolved active
+configuration is authoritative for experiment selection; the manuscript gives
+the mathematical model, and `manuscript_update_notes.md` records any
+author-facing changes still needed. This file explains how state, actions,
+chronology, rewards, and evaluation criteria reach the learners.
 
 ## Physical clock
 
@@ -148,10 +150,33 @@ additional fixed-space wrapper.
 DQN uses masked epsilon-greedy exploration, uniform over admissible actions,
 with the same probability in both phases. The active linear schedule is
 `epsilon=1` for episodes 0--49, decays to `0.01` at episode 650, and remains
-there. For the auction head, all output weights start at zero, the canonical
-no-order bias starts at zero, and every other action bias starts at `-0.02` in
-replay-scaled reward units; this is an initialization prior, not an
-admissibility or safety constraint.
+there. Each phase uses a coordinate-conditioned Q network rather than one
+independent output parameter vector per discrete action. The normalized CLOB
+coordinates are `(v/V_max,delta/L_max)` and the normalized auction coordinates
+are `(K/(beta*K_max),ell/B_max,c)`. A two-layer state trunk produces a scalar
+value and a rank-32 query; a shared two-layer action encoder produces the
+rank-32 action embedding. The score is
+
+```text
+Q(s,a) = V(s) + <query(s), embedding(a)>/sqrt(32)
+         + w_prior * 1{a is not the canonical no-op}.
+```
+
+Greedy selection and masked Double-DQN targets evaluate the complete exact
+grid. Replay updates evaluate only the sampled action, avoiding an unnecessary
+batch-by-grid tensor. This architecture shares statistical evidence across
+the structured coordinates of the 1,346-action auction lattice without
+relaxing or coarsening that lattice. Checkpoints record architecture identifier
+`coordinate_conditioned_bilinear_v1` and reject checkpoints from the earlier
+independent-output head. They also validate the simulator, reward, action-grid,
+feature, Bellman, and DQN-hyperparameter contract, so a same-shaped tensor
+checkpoint cannot be loaded under different economic or action semantics.
+
+For the auction network, the state value/query heads start at zero and the
+trainable non-no-op coefficient starts at `-0.02` in replay-scaled reward
+units. The canonical no-order action is therefore the unique initial greedy
+auction action. This is an initialization prior, not an admissibility or
+safety constraint, and gradient updates can reverse it.
 For exact reproduction, DDPG, TD3, and SAC likewise initialize their auction
 actors at the projected no-order action `(K,ell,c)=(0,0,0)`: the auction output
 weights are zero and the output biases are the inverse-`tanh` coordinates that
@@ -166,9 +191,17 @@ contract is shared.
 
 ## Reward and accounting separation
 
-Headline training uses the manuscript's three-regime shaped reward with
-`q=1`, `lambda_inv=2`, `d=0.1`, and exact cancellation clawback. For an auction
-order submitted at decision `s`, define
+Headline training has shaping disabled. With `lambda_inv=2` and cancellation
+fee parameter `d=0.1`, it uses actual CLOB execution cash, actual rationed
+auction cash, the residual inventory mark, cancellation fees, and the terminal
+inventory penalty. Initial-inventory centering removes the policy-invariant
+constant `S0*I0` incrementally. Thus the complete headline training return,
+periodic validation return, and final evaluation return all equal
+`risk_adjusted_pnl` to numerical tolerance.
+
+The exact manuscript three-regime shaped reward is retained in the two
+explicit `shaping_on` treatments with `q=1` and exact cancellation clawback.
+For an auction order submitted at decision `s`, define
 
 ```text
 x_s   = K_s * H_s * (H_s - S_s)
@@ -188,11 +221,10 @@ is inserted, so a replacement does not cancel itself. Multiple schedules may
 accumulate between cancellations. Pathwise over the undiscounted auction, each
 submitted schedule's credit is either retained if the schedule survives to
 clearing or exactly reversed by the first later cancel-all action, less all
-cancellation fees. Centering removes the policy-invariant initial inventory value incrementally, so it
-changes target scale but not complete-episode policy ordering. Validation and
-final evaluation instantiate a separate economic-only reward contract and
-record CLOB cash, terminal auction cash, cancellation fees, residual mark, and
-the inventory penalty.
+cancellation fees. Centering remains the same policy-invariant adjustment in
+these treatments. Validation and final evaluation always instantiate a
+separate economic-only reward contract and record CLOB cash, terminal auction
+cash, cancellation fees, residual mark, and the inventory penalty.
 
 Primary policy selection and comparison use:
 
@@ -206,15 +238,19 @@ No shaping term enters either field. With centering in the economic validation
 and test environments, the episode return equals `risk_adjusted_pnl` to
 numerical tolerance.
 
-The shaped objective is not the economic objective. Clawback removes the
-specific repeated-replacement accumulation: with `q=1`, every `phi_s` is
-nonnegative and a replacement earns only the increment in surviving fictive
-value, less its fee. It does not alter the fact that `q=1` neutralizes
-purchase-side auction cash in the terminal training signal. Economic
-validation ranks eligible checkpoints, but the untrained policy and
-pre-maturity policies are diagnostic references only. Benchmark-superiority
-claims still require held-out confirmation and are not implied by enabling
-shaping or clawback.
+The shaped objective is not the economic objective. With `q=1`,
+`phi_s=max(x_s,0)`. Under the indicative-centred local grid, any positive-slope
+proposal below `H_s` receives positive fictive credit at submission regardless
+of whether it later fills. Because `c=0` leaves earlier schedules live, a
+policy can stack such schedules and retain every credit through clearing.
+Clawback prevents canceled schedules from retaining their original credits;
+it cannot reverse credits for schedules deliberately left live. The `q=1`
+terminal correction also neutralizes negative purchase-side auction cash in
+the shaped training signal. Consequently the shaped treatment can reward live
+order accumulation and purchases while economic risk-adjusted PnL deteriorates.
+This is an objective mismatch, not a centering or evaluation-accounting error.
+Economic validation still ranks eligible checkpoints, and benchmark claims
+require held-out confirmation.
 
 ## Validation, testing, and comparison
 
@@ -231,13 +267,15 @@ is no forced no-order curriculum. Before both gates pass, validation scores
 are diagnostics: they neither create `best.pt` nor consume patience. The first
 eligible validation initializes the race, after
 which ordinary joint-policy patience applies. The untrained policy's economic
-score is retained only as a safety floor: an eligible mature policy must beat
-it before `best.pt` is created. The best mature policy is saved separately for
-diagnosis; if no mature policy beats the floor, the run fails selection rather
-than reporting either the untrained or collapsed policy. Among reportable
-candidates, `best.pt` maximizes mean `risk_adjusted_pnl`. Final evaluation uses
-the same economic-only contract on a separate fixed test seed set and defaults
-to `best.pt`.
+score is saved only as a diagnostic reference and is never eligible for
+selection. The active configuration sets
+`checkpoint_require_initial_improvement=false`, so every mature validation is
+reportable even when it scores below that initial reference. `best.pt`
+maximizes mean `risk_adjusted_pnl` among mature candidates; `best_mature.pt`
+is retained as redundant diagnostic provenance. A run fails selection only if
+its budget never reaches the phase-maturity requirements. Final evaluation
+uses the same economic-only contract on a separate fixed test seed set and
+defaults to `best.pt`.
 
 The two phase networks are not checkpointed independently. The CLOB Bellman
 target bootstraps from the auction network at the junction, while the auction
@@ -260,12 +298,15 @@ The matched treatment set is:
 2. observed `H_cl` feature and H-centred action anchor present, shaping absent;
 3. observed `H_cl` feature and H-centred action anchor absent, shaping present
    (so the H-derived reward channel intentionally remains);
-4. observed `H_cl` feature and H-centred action anchor present, shaping present
-   (the canonical synthetic headline runs are
-   reused for this cell rather than retrained under an ablation alias);
+4. observed `H_cl` feature and H-centred action anchor present, shaping present;
 5. no auction, with both the `H_cl` feature and all auction-derived shaping
    disabled;
-6. no strategic cancellation.
+6. observed `H_cl`, H-centred action anchor, shaping absent, and no strategic
+   cancellation.
+
+The canonical synthetic headline runs are reused for cell 2 rather than
+retrained under an ablation alias. Cell 4 is the explicit
+`ablation_h_on_shaping_on` treatment.
 
 The primary information comparison uses the two shaping-off arms. The paired
 cross-treatment report additionally gives the H/anchor bundle effect at both

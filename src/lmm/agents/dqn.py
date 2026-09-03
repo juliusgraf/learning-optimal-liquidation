@@ -25,7 +25,7 @@ Section 4):
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Optional
 
@@ -42,7 +42,7 @@ from lmm.agents.base import (
 )
 from lmm.config import ExperimentConfig, build_hyperparams
 from lmm.env.action_spaces import AuctionActionGrid, ClobActionGrid
-from lmm.rl.networks import ACTIVATIONS, mlp
+from lmm.rl.networks import ACTIVATIONS, StructuredDiscreteQ
 from lmm.rl.replay import ReplayBatch, ReplayBuffer
 from lmm.rl.schedules import LinearEpsilonSchedule
 from lmm.utils.seeding import SeedBundle
@@ -74,6 +74,7 @@ class DQNHyperparams:
     checkpoint_interval_episodes: int
     activation: str
     device: str
+    action_embedding_dim: int
     # Double-DQN (van Hasselt et al. 2016): select a' with the ONLINE net,
     # evaluate it with the TARGET net, decoupling action selection from
     # evaluation to curb the max-bootstrap overestimation that destabilises
@@ -115,6 +116,8 @@ class DQNAgent(Agent):
             raise ValueError("safe_auction_noop_margin must be nonnegative")
         if self.hp.auction_learning_start_episode < 0:
             raise ValueError("auction_learning_start_episode must be nonnegative")
+        if self.hp.action_embedding_dim <= 0:
+            raise ValueError("action_embedding_dim must be positive")
         self.artifact_schema_version = int(cfg.experiment.artifact_schema_version)
         self.chi = BELLMAN_FACTOR  # public compatibility; intentionally ignores cfg.rl.chi
         if not np.isclose(self.hp.reward_scale, REWARD_SCALE, rtol=0.0, atol=1e-15):
@@ -135,18 +138,54 @@ class DQNAgent(Agent):
         act_cls = ACTIVATIONS[self.hp.activation]
         hidden = self.hp.hidden_layers
 
-        def make_pair(phase: str) -> tuple[nn.Sequential, nn.Sequential]:
-            q = mlp(self._obs_dim[phase], hidden, self._n_actions[phase], act_cls).to(self.device)
-            if phase == "auction" and self.hp.safe_auction_initialization:
-                head = q[-1]
-                if not isinstance(head, nn.Linear):
-                    raise AssertionError("DQN output head must be linear")
-                with torch.no_grad():
-                    head.weight.zero_()
-                    head.bias.fill_(-self.hp.safe_auction_noop_margin)
-                    # Index zero is manuscript (K,ell,c)=(0,0,0).
-                    head.bias[0] = 0.0
-            tgt = mlp(self._obs_dim[phase], hidden, self._n_actions[phase], act_cls).to(self.device)
+        action_coordinates = {
+            "clob": np.asarray(
+                [
+                    (
+                        float(a.volume) / float(max(1, cfg.actions.V_max)),
+                        float(a.delta) / float(max(1, cfg.actions.L_max)),
+                    )
+                    for a in self.clob_grid.actions
+                ],
+                dtype=np.float32,
+            ),
+            "auction": np.asarray(
+                [
+                    (
+                        float(a.K_a) / float(cfg.actions.beta * cfg.actions.K_max),
+                        float(a.ell) / float(max(1, cfg.actions.B_max)),
+                        float(a.cancel),
+                    )
+                    for a in self.auction_grid.actions
+                ],
+                dtype=np.float32,
+            ),
+        }
+
+        def make_pair(phase: str) -> tuple[StructuredDiscreteQ, StructuredDiscreteQ]:
+            safe_margin = (
+                self.hp.safe_auction_noop_margin
+                if phase == "auction" and self.hp.safe_auction_initialization
+                else None
+            )
+            q = StructuredDiscreteQ(
+                self._obs_dim[phase],
+                hidden,
+                action_coordinates[phase],
+                self.hp.action_embedding_dim,
+                act_cls,
+                noop_index=0,
+                initial_noop_margin=safe_margin,
+            ).to(self.device)
+            tgt = StructuredDiscreteQ(
+                self._obs_dim[phase],
+                hidden,
+                action_coordinates[phase],
+                self.hp.action_embedding_dim,
+                act_cls,
+                noop_index=0,
+                initial_noop_margin=safe_margin,
+            ).to(self.device)
             tgt.load_state_dict(q.state_dict())
             for p in tgt.parameters():
                 p.requires_grad_(False)
@@ -394,7 +433,7 @@ class DQNAgent(Agent):
         y = self.compute_targets(phase, batch)
         obs = torch.as_tensor(batch.obs, dtype=torch.float32, device=self.device)
         actions = torch.as_tensor(batch.action, dtype=torch.int64, device=self.device)
-        q_pred = self.q[phase](obs).gather(1, actions.unsqueeze(1)).squeeze(1)
+        q_pred = self.q[phase](obs, actions)
         loss = self._loss_fn(q_pred, y)
         self.optim[phase].zero_grad()
         loss.backward()
@@ -420,6 +459,43 @@ class DQNAgent(Agent):
 
     # -- checkpointing (resumable; D10) -------------------------------------------
 
+    def _checkpoint_contract(self) -> dict[str, object]:
+        """Configuration that gives saved Q values their exact semantics.
+
+        Tensor shapes alone cannot distinguish, for example, two auction
+        grids with the same number of entries but different slope units. The
+        publication entry points already compare resolved configs; retaining
+        this contract in the agent checkpoint makes direct API use fail closed
+        as well. ``device`` is excluded so a checkpoint remains portable.
+        """
+        hyperparams = {
+            key: value
+            for key, value in self.hp.__dict__.items()
+            if key != "device"
+        }
+        return {
+            "algorithm": "dqn",
+            # Operational identity (run name/path, seeds, episode budget and
+            # validation cadence) is deliberately excluded. Everything that
+            # changes trajectories, observations, rewards, or Bellman values
+            # is included, including the shaped-vs-economic objective switch.
+            "auction_enabled": bool(self.cfg.experiment.auction_enabled),
+            "grid": asdict(self.cfg.grid),
+            "clob_flow": asdict(self.cfg.clob_flow),
+            "auction_flow": asdict(self.cfg.auction_flow),
+            "midprice": asdict(self.cfg.midprice),
+            "algo1": asdict(self.cfg.algo1),
+            "reward": asdict(self.cfg.reward),
+            "bellman": {
+                "chi": float(self.cfg.rl.chi),
+                "discount_mode": self.cfg.rl.discount_mode,
+            },
+            "actions": asdict(self.cfg.actions),
+            "features": asdict(self.cfg.features),
+            "h_cl_feature_enabled": bool(self.cfg.rl.h_cl_feature_enabled),
+            "hyperparams_except_device": hyperparams,
+        }
+
     def save(self, path: str | Path, *, include_replay: bool = False) -> None:
         """Full checkpoint: networks, targets, optimizers, counters, RNG
         states (exploration numpy + torch global), optionally the replay
@@ -428,6 +504,8 @@ class DQNAgent(Agent):
         state = {
             "artifact_schema_version": self.artifact_schema_version,
             "environment_contract": ENVIRONMENT_CONTRACT,
+            "q_architecture": StructuredDiscreteQ.ARCHITECTURE,
+            "dqn_contract": self._checkpoint_contract(),
             "feature_normalizer": self._feature_normalizer_state(),
             "hyperparams": self.hp.__dict__,
             "episode": self._episode,
@@ -463,6 +541,16 @@ class DQNAgent(Agent):
             raise ValueError(
                 "checkpoint environment contract mismatch; old auction/grid "
                 "checkpoints cannot be loaded by the revised pipeline"
+            )
+        if state.get("q_architecture") != StructuredDiscreteQ.ARCHITECTURE:
+            raise ValueError(
+                "checkpoint DQN architecture mismatch; this checkpoint predates "
+                "the action-coordinate-conditioned Q network"
+            )
+        if state.get("dqn_contract") != self._checkpoint_contract():
+            raise ValueError(
+                "checkpoint DQN configuration contract mismatch; simulator, "
+                "reward, action, feature, or hyperparameter semantics differ"
             )
         if state.get("feature_normalizer") is None:
             raise ValueError(

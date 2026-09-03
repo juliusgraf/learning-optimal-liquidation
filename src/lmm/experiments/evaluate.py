@@ -190,8 +190,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--checkpoint",
         default="best",
         help="checkpoint to evaluate (without .pt). Default 'best' = the best "
-        "mature validation snapshot above the initial economic safety floor "
-        "(selected on the env_eval "
+        "reportable mature validation snapshot (selected on the env_eval "
         "stream, disjoint from the env_final_eval test seeds). Pass 'final' "
         "for the last-episode checkpoint.",
     )
@@ -245,8 +244,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             raise ValueError("best.pt provenance does not establish phase maturity")
         if not bool(selection.get("economic_safety", {}).get("reportable", False)):
             raise ValueError(
-                "best.pt provenance does not establish improvement over the "
-                "configured economic safety floor"
+                "best.pt provenance does not establish reportability under the "
+                "resolved checkpoint-selection rules"
             )
 
     # Disjoint final-eval seed stream (D10); the SAME list for every policy

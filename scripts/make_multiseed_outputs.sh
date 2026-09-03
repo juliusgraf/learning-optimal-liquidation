@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Cross-seed aggregation: build the IQM/bootstrap-CI tables + figure from runs
 # spanning several master seeds, per setting, into
-# results/revision_v11/<setting>/_multiseed/.
+# results/revision_v12/<setting>/_multiseed/.
 # Reads each run's seed from seed.txt and includes only the requested seeds.
 #
 # Usage: scripts/make_multiseed_outputs.sh [--seeds "42 7 99 123 2024"]
@@ -69,7 +69,7 @@ if [[ "$PUBLICATION" -eq 1 ]]; then
   fi
 fi
 
-RESULTS_ROOT="${LMM_RESULTS_ROOT:-results/revision_v11}"
+RESULTS_ROOT="${LMM_RESULTS_ROOT:-results/revision_v12}"
 [[ -d "$RESULTS_ROOT" ]] || { echo "no $RESULTS_ROOT directory" >&2; exit 1; }
 aggregates_written=0
 complete_settings=""

@@ -1,6 +1,6 @@
 """Run-directory creation and experiment metadata dumping (fully functional).
 
-Every current run writes ``results/revision_v11/<experiment_name>/<run_name>/`` containing
+Every current run writes ``results/revision_v12/<experiment_name>/<run_name>/`` containing
 ``config_resolved.yaml``, ``seed.txt``, ``git_sha.txt``, ``metrics.csv``,
 ``eval/``, ``checkpoints/``, ``logs/run.log``, ``figures/``, ``tables/``
 (engineering conventions, CLAUDE.md). Figures and tables are always
