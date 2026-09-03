@@ -383,11 +383,6 @@ INPUT ./results/tables_params/params_generative.tex
 INPUT ./results/tables_params/params_generative.tex
 INPUT ./results/tables_params/params_generative.tex
 INPUT results/tables_params/params_generative.tex
-INPUT ./results/plots_syn/benchmark_anatomy.png
-INPUT ./results/plots_syn/benchmark_anatomy.png
-INPUT ./results/plots_syn/benchmark_anatomy.png
-INPUT ./results/plots_syn/benchmark_anatomy.png
-INPUT ./results/plots_syn/benchmark_anatomy.png
 INPUT ./main.bbl
 INPUT ./main.bbl
 INPUT main.bbl

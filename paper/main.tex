@@ -21,7 +21,7 @@
 \date{
   UC Berkeley, Department of Industrial Engineering and Operations Research
   \\[1em]
-  August 31, 2026
+  \today
 }
 
 \begin{document}
@@ -149,7 +149,7 @@ The ordering of moves immediately before clearing is a maintained stylization of
 
 At each $t_j\in\{t_{n+1},\dots,t_m\}$ the agent controls $K_{t_j}^a \geqslant  0$ and $S_{t_j}^a\in\alpha\mathbb N$ so that $\Sigma_{t_j}(p)$ represents net supply, that is the number of shares the agent is willing to sell at price $p$. If $\Sigma_{t_j}(p)\leqslant 0$ the agent is willing to buy at price $p$ or below and conversely if $\Sigma_{t_j}(p)\geqslant  0$ the agent is willing to sell at price $p$ or above. Allowing both signs enlarges the auction control set beyond monotone liquidation. The objective nevertheless remains end-of-day inventory reduction, enforced through the terminal inventory penalty.\vspace{0.5em}
 
-At any auction decision, we allow the agent to cancel her past bids at cost $d_j = (j-n-1)d$ at time $t_j$ for $j \in \{n+1,\ldots, m\}$ and $d>0$. The agent can cancel if and only if at least one prior strategic schedule is live, and if doing so, removes every prior live schedule. Let $c_{t_j} \in \{0,1\}$ where $c_{t_j} = 1$ if and only if, at time $t_j$, the agent cancels all orders submitted prior to time $t_j$. In particular, at the opening of the auction, we set $c_{t_{n+1}} = 0$. We track these actions through a variable $\theta_{t_j}$, with $\theta_{t_n} = \mathbf{0}$ and $\theta_{t_{n+1}} = \mathbf 0$, where $\mathbf 0\in \mathbb{R}^{h}$ is the $m-n$-vector with 0 components. We recursively define $\theta_{t_j} =  \theta_{t_{j-1}}\vee  c_{t_{j-1}}\sum_{k=1}^{j-n-2}\mathbf{e}_{k}$ for $j \in \llbracket n+2,m+1\rrbracket$ where $\mathbf{e}_{k} = (\delta_{i,k})_{1 \leqslant i \leqslant m-n}\in \mathbb{R}^{m-n}$. By definition, $\theta_{t_j}^{(s)}$ indicates whether the order submitted at time $t_{n+s}$ for $s \in \{1,\ldots,j-n-2\}$ has been canceled prior to time $t_j$. More precisely, \(\theta_t^{(s)}=1\) if and only if the positive-slope schedule submitted in slot \(s\) has already been canceled, and \(\theta_t^{(s)}=0\) if that slot contained no order. Therefore, each schedule can be canceled at most once.
+At any auction decision, we allow the agent to cancel her past bids at cost $d_j = (j-n-1)d$ at time $t_j$ for $j \in \{n+1,\ldots, m\}$ and $d>0$. The agent can cancel if and only if at least one prior strategic schedule is live, and if doing so, removes every prior live schedule. Let $c_{t_j} \in \{0,1\}$ where $c_{t_j} = 1$ if and only if, at time $t_j$, the agent cancels all orders submitted prior to time $t_j$. In particular, at the opening of the auction, we set $c_{t_{n+1}} = 0$. We track these actions through a variable $\theta_{t_j}$, with $\theta_{t_n} = \mathbf{0}$ and $\theta_{t_{n+1}} = \mathbf 0$, where $\mathbf 0\in \mathbb{R}^{h}$ is the $m-n$-vector with 0 components. We recursively define $\theta_{t_j} =  \theta_{t_{j-1}}\vee  c_{t_{j-1}}\sum_{k=1}^{j-n-2}\mathbf{e}_{k}$ for $j \in \llbracket n+2,m+1\rrbracket$ where $\mathbf{e}_{k} = (\delta_{i,k})_{1 \leqslant i \leqslant m-n}\in \mathbb{R}^{m-n}$. By definition, $\theta_{t_j}^{(s)}$ indicates whether the order submitted at time $t_{n+s}$ for $s \in \{1,\ldots,j-n-2\}$ has been canceled prior to time $t_j$. More precisely, $\theta_t^{(s)}=1$ if and only if the positive-slope schedule submitted in slot $s$ has already been canceled, and $\theta_t^{(s)}=0$ if that slot contained no order. Therefore, each schedule can be canceled at most once.
 
 \begin{remark}
     In this formulation, the cancellation penalty $d_jc_{t_j}$ scales linearly with the time index $j$. We interpret this cost not as a strictly cumulative fee on historical orders -- which formally could be subjected to redundant cancellations --  but rather as a structural mechanism by the exchange to penalize ``illusory liquidity'': it is an economic modeling device designed to discourage repeated provision and withdrawal of liquidity. The ``fictive'' auction reward introduced below is instead an algorithmic shaping term. It is not an exchange rebate and is not included in the economic PnL criterion.
@@ -371,7 +371,7 @@ We view such actions as part of the ambient action set
 \]
 where $V_\text{max}, L_\text{max}, B_\text{max}, K_\text{max} \in \mathbb{N}^\star$ are numerical bounds defining the finite action grid.\vspace{0.5em}
 
-Recalling that on the limit order book the market maker is liquidating his inventory, hence submits a volume $A_t^1 \leqslant I_t = X_t^1$, at a price $S_t^\mathrm{mid}+\alpha A_t^2 \geqslant S_t^\mathrm{mid}$. At an auction decision, \(c_t=1\) is admissible if and only if at least one prior positive-slope strategic schedule is live. It cancels every such schedule submitted strictly before \(t\) and the current schedule is inserted afterward. As \(\theta_t^{(s)}=1\) if and only if the positive-slope schedule submitted in slot \(s\) has already been canceled (with \(\theta_t^{(s)}=0\) if that slot contained no order), we obtain the admissibility condition $A_t^5 = c_t \leqslant \max_{1\leqslant i \leqslant t-\tau^\op}(1-\theta_t^{(i)}) = :C_t$ with the convention that $\max\emptyset = 0$ (for $t\leqslant \tau^\op$).
+Recalling that on the limit order book the market maker is liquidating his inventory, hence submits a volume $A_t^1 \leqslant I_t = X_t^1$, at a price $S_t^\mathrm{mid}+\alpha A_t^2 \geqslant S_t^\mathrm{mid}$. At an auction decision, $c_t=1$ is admissible if and only if at least one prior positive-slope strategic schedule is live. It cancels every such schedule submitted strictly before $t$ and the current schedule is inserted afterward. As $\theta_t^{(s)}=1$ if and only if the positive-slope schedule submitted in slot $s$ has already been canceled (with $\theta_t^{(s)}=0$ if that slot contained no order), we obtain the admissibility condition $A_t^5 = c_t \leqslant \max_{1\leqslant i \leqslant t-\tau^\op}(1-\theta_t^{(i)}) = :C_t$ with the convention that $\max\emptyset = 0$ (for $t\leqslant \tau^\op$).
 \begin{definition}[Admissible actions]
     Given an observed state $y \in \mathcal{Y}$, the set $\operatorname{Adm}(y)$ of admissible actions is defined as
     \begin{align*}
@@ -452,8 +452,16 @@ In this section, we explain the numerical methods used to approximately solve $(
 \label{subsec:dqn}
 
 We remind that $\mathcal Y=\varphi(\mathcal X)$ is the feature space used by the
-learning algorithms. We consider the online episodic RL setting. In this setting, the agent executes the process sequentially for $E$ episodes and we denote the total number of episode samples $N_s = \sum_{e=0}^{E-1}(m_e+1)$. We index training episodes by $e=0,\ldots,E-1$. We consider an episodic, undiscounted, finite-horizon control problem. The transition law and conditional expected rewards of the simulator are not assumed known. We will therefore use a model-free method to train an approximately optimized feature-based policy $\hat\pi$ maximizing $J$. We approximate the action-value function by a neural network $Q_\theta(y,a)$ for some weight $\theta \in \mathbb{R}^q$, where $q \geqslant  1$. Our setting is however organized in two phases. For $y\in \mathcal{Y}$, let $t(y)$ be the time coordinate of $y$ and $\kappa(y) = c \mathbf{1}_{\{t(y)<\tau^\op\}} + a\mathbf{1}_{\{t(y)\geqslant\tau^\op\}}$. We define a separate neural network for each phase:
-\[\forall (y,a)\in \mathcal{Y}\times \mathcal{A},\quad Q_{\theta}(y,a) = Q_\phi(y,a) \mathbf{1}_{\{t(y)<\tau^\op\}}+Q_\psi(y,a) \mathbf{1}_{\{t(y)\geqslant \tau^\op\}}\] where $\theta = (\phi,\psi)$ and $\phi\in \mathbb{R}^{q_1},\psi \in \mathbb{R}^{q_2}$ and $q_1 + q_2 = q$. The terminal Q-function is given by the reward $G(X_{\tau^\cl})$ and we do not need to define a neural network. We train by Q-learning with experience replay and target networks (DQN, \cite{mnih2015human}) using the Double-DQN target of \cite{van2016deep}, and ensuring junction at $t=\tau^\op$ when the phase switch occurs. Note that the $\varepsilon$-greedy training policy is stochastic, while the reported greedy evaluation policy is deterministic after applying solving ties by the first action in lexicographic grid order. For DQN, we use the same masked exploration schedule $(\varepsilon_e)_{e\geqslant 0}=1$ in both phases, given by
+learning algorithms. We consider the online episodic RL setting. In this setting, the agent executes the process sequentially for $E$ episodes and we denote the total number of episode samples $N_s = \sum_{e=0}^{E-1}(m_e+1)$. We index training episodes by $e=0,\ldots,E-1$. We consider an episodic, undiscounted, finite-horizon control problem. The transition law and conditional expected rewards of the simulator are not assumed known. We will therefore use a model-free method to train an approximately optimized feature-based policy $\hat\pi$ maximizing $J$.
+%We approximate the action-value function by a neural network $Q_\theta(y,a)$ for some weight $\theta \in \mathbb{R}^q$, where $q \geqslant  1$. Our setting is however organized in two phases. For $y\in \mathcal{Y}$, let $t(y)$ be the time coordinate of $y$ and $\kappa(y) = c \mathbf{1}_{\{t(y)<\tau^\op\}} + a\mathbf{1}_{\{t(y)\geqslant\tau^\op\}}$. We define a separate neural network for each phase:
+%\[\forall (y,a)\in \mathcal{Y}\times \mathcal{A},\quad Q_{\theta}(y,a) = Q_\phi(y,a) \mathbf{1}_{\{t(y)<\tau^\op\}}+Q_\psi(y,a) \mathbf{1}_{\{t(y)\geqslant \tau^\op\}}\] where $\theta = (\phi,\psi)$ and $\phi\in \mathbb{R}^{q_1},\psi \in \mathbb{R}^{q_2}$ and $q_1 + q_2 = q$.
+We approximate the action-value function by a neural network $Q_\theta(y,a)$ for some weight $\theta \in \mathbb{R}^q$, where $q \geqslant  1$. For each phase $\kappa\in\{c,a\}$, we use a separate coordinate-conditioned action-value network $Q_{\theta_\kappa}$, for which we quickly want to specify the considered architecture. Let $z_\kappa(a)$ denote the normalized coordinates of action $a$. A phase-specific state trunk, consisting of two ReLU hidden layers, maps the feature vector $y$ to a scalar $V_{\theta_\kappa}(y)$ (that is the state-only component of the network) and a query vector $u_{\theta_\kappa}(y)\in\mathbb{R}^{r}$ for $r\geqslant 1$. We then use a phase-specific action encoder, whose parameters are shared across all actions in that phase, to map $z_\kappa(a)$ to
+$e_{\theta_\kappa}(a)\in\mathbb{R}^{r}$. We finally consider
+\[ Q_{\theta_\kappa}(y,a) = V_{\theta_\kappa}(y) + \frac{\left\langle u_{\theta_\kappa}(y),e_{\theta_\kappa}(a)\right\rangle}{\sqrt{r}} + \omega_\kappa \mathbf{1}_{\{a\neq 0\}},\]
+where $\omega_\kappa$ is a learned scalar shared by all nonzero actions. This parameterization shares statistical information across actions having similar coordinates instead of assigning an unrelated output vector to every grid point, as it is the case for vanilla DQN architectures. For $y\in \mathcal{Y}$, let $t(y)$ be the time coordinate of $y$. To summarize, we define a separate neural network for each phase:
+\[\forall (y,a)\in \mathcal{Y}\times \mathcal{A},\quad Q_\theta(y,a) = Q_{\theta_c}(y,a)\mathbf{1}_{\{t(y)<\tau^\op\}} + Q_{\theta_a}(y,a)\mathbf{1}_{\{t(y)\geq\tau^\op\}}.\]
+
+The terminal Q-function is given by the reward $G(X_{\tau^\cl})$ and we do not need to define a neural network. We train by Q-learning with experience replay and target networks (DQN, \cite{mnih2015human}) using the Double-DQN target of \cite{van2016deep}, and ensuring junction at $t=\tau^\op$ when the phase switch occurs. Note that the $\varepsilon$-greedy training policy is stochastic, while the reported greedy evaluation policy is deterministic after applying solving ties by the first action in lexicographic grid order. For DQN, we use the same masked exploration schedule $(\varepsilon_e)_{e\geqslant 0}$ in both phases, given by
 \[\varepsilon_e =\left\{\begin{array}{ll}
     1 & \text{if } 0\leqslant e<50 \\
     1-0.99(e-50)/600 & \text{if } 50 \leqslant e \leqslant 650 \\
@@ -472,7 +480,7 @@ $\tau_{\mathrm{targ}}$, exploration schedule
 $(\varepsilon_e)_{e\geqslant0}$
 
 \STATE Initialize
-$\theta_c=\phi$, $\theta_a=\psi$,
+$\theta_c$, $\theta_a$,
 $\theta_c^-=\theta_c$, $\theta_a^-=\theta_a$,
 and empty buffers $\mathcal D_c,\mathcal D_a$
 
@@ -545,7 +553,7 @@ and empty buffers $\mathcal D_c,\mathcal D_a$
 \RETURN $\hat\pi(y)
 \in
 \arg\max_{a\in\operatorname{Adm}(y)}
-Q_{\theta_{\kappa(y)}}(y,a)$ for $y\in\mathcal Y$
+Q_{\theta_{\kappa(y)}}(y,a)$ for $y\in\mathcal Y$ where $\kappa(y) = c \mathbf{1}_{\{t(y)<\tau^\op\}} + a\mathbf{1}_{\{t(y)\geqslant\tau^\op\}}$
 \end{algorithmic}
 \end{algorithm}
 
@@ -572,6 +580,7 @@ We consider three off-policy actor-critic algorithms: Deep Deterministic Policy 
   Gradient-norm clip                   & \multicolumn{4}{c}{$1.0$} \\
   Reward scale $c_r$                   & \multicolumn{4}{c}{$10^{-3}$} \\
   Gradient steps per env.\ step        & \multicolumn{4}{c}{$1$} \\
+  Embedding rank $r$ & \multicolumn{4}{c}{$32$} \\
   \midrule
   \multicolumn{5}{l}{\emph{Learning rates}}\\
   Critic & $1.5\times10^{-4}$ & $3\times10^{-4}$ & $3\times10^{-4}$ & $3\times10^{-4}$ \\
@@ -778,16 +787,6 @@ The proposal variables and their marks are sampled independently. The accepted b
 
 \input{results/tables_params/params_generative}
 
-\subsection{Benchmark Simulations}\label{sec:bnechmarksimu}
-We start by simulating the strategies for the Benchmarks in Figure \ref{fig:benchmark-anatomy}, which corresponds to the synthetic setting. On the top left, we show the evolution of the inventories for both AS and TWAP, on the top right we simulate the continuous phase limit price, on the bottom left the volume submitted during the continuous phase, and on the bottom right we show the slope $K_t$ during the auction. Note that the TWAP fails to liquidate all the inventory before the auction starts unlike the AS strategy explaining the difference of order executed in the auction between these two benchmarks.
-
-\begin{figure}[ht]
-    \centering
-    \includegraphics[trim={0 0 0 0.5cm}, clip, width=0.7\linewidth]{results/plots_syn/benchmark_anatomy.png}
-\caption{Benchmark strategies on one evaluation episode (AS and TWAP) in the synthetic setting for fixed seed}
-    \label{fig:benchmark-anatomy}
-\end{figure}
-
 \subsection{Rough Heston Model for the Mid Price: Generative Data Approach}
 \label{sub:rough}
 In this section, we generate data from the rough-Heston model.
@@ -812,11 +811,11 @@ At time $t_k$, the midprice revealed to the trading environment is $S_{t_k}^{\ma
 
 Now, one may notice that the AS stylized reference benchmark assumes that $\mathrm{d}S_t = \sigma \mathrm{d}B_t$, instead of the rough Heston model. In this sense, the goal of the numerical simulation is to compare how our deep reinforcement learning policies performs against a stylized reference benchmark, without claiming optimality of this benchmark. The benchmark is deliberately stylized and is not optimal for the simulated rough-Heston environment; it is therefore interpreted as a reference policy rather than as an oracle comparator.\vspace{0.5em}
 
-As $\sigma$ drops out of the risk-neutral $\gamma\to0$ policy used here, we omit its calibration. From \cite{avellaneda2008high}, we have $A = \lambda_0/\gamma_m$ and $k = \gamma_m \hat{K}$. Note that $A$ is per minute. Here, $\hat{K}$ is the proportionality constant in the empirical relationship $\hat{K}\Delta p = \ln(Q)$, where $\Delta p$ is the move in price when a market order of size $Q$ arrives. We did a least squares regression to determine $\hat{K}$, by attempting 5{,}000 simulated samples of the limit order book and market orders $Q \sim \mathrm{Pareto}(v_m,\gamma_m)$. Attempts that empty the ask book or do not move its best price are discarded before fitting \(\ln Q=\hat K\Delta p\) through the origin.
+As $\sigma$ drops out of the risk-neutral $\gamma\to0$ policy used here, we omit its calibration. From \cite{avellaneda2008high}, we have $A = \lambda_0/\gamma_m$ and $k = \gamma_m \hat{K}$. Note that $A$ is per minute. Here, $\hat{K}$ is the proportionality constant in the empirical relationship $\hat{K}\Delta p = \ln(Q)$, where $\Delta p$ is the move in price when a market order of size $Q$ arrives. We did a least squares regression to determine $\hat{K}$, by attempting 5{,}000 simulated samples of the limit order book and market orders $Q \sim \mathrm{Pareto}(v_m,\gamma_m)$. Attempts that empty the ask book or do not move its best price are discarded before fitting $\hat K\Delta p=\ln Q$ through the origin.
 
 \subsection{Numerical Results}
 
-Let \(R\) be the uncentered shaped episodic payoff and \(J(\pi)=\mathbb E_\pi[R]\). Training exposes \(R-S_0^{mid}I_0\). Separately, let \(\Pi\) denote sampled marked-to-market PnL and \(\Pi_\lambda=\Pi-\lambda I_{\tau^{cl}}^2\), so \(\bar J(\pi)=\mathbb E_\pi[\Pi]\) and \(\bar J_\lambda(\pi)=\mathbb E_\pi[\Pi_\lambda]\). Under unshaped evaluation, centered environment return equals \(\Pi_\lambda\) pathwise.
+For the headline runs, training uses the centered unshaped episodic return, which equals sampled $\Pi_\lambda$ pathwise. The $q=1$ shaped objective $J$ is used only in the two shaping-on treatments. Validation, checkpoint selection, and final comparisons always use sampled $\Pi_\lambda$, estimating $\bar J_\lambda(\pi)$.
 
 \label{sub:historical}
 
