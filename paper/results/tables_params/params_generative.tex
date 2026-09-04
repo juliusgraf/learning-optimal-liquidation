@@ -1,4 +1,4 @@
-\begin{table}[H]
+\begin{table}[ht!]
 \centering
 \begin{tabular}{lcc}
 \toprule
@@ -13,7 +13,7 @@ $\gamma_m$ & 2.5 & Pareto distribution shape parameter \\
 $V_\infty$ & 2 & Beta distribution scaling parameter \\
 $\beta_a$ & 2 & First Beta distribution shape parameter \\
 $\beta_b$ & 5 & Second Beta distribution shape parameter \\
-$\rho$ & 0.96 & Limit order book volume decay parameter \\
+$\rho_{\text{lob}}$ & 0.96 & Limit order book volume decay parameter \\
 $V$ & 30 & Exogenous market/taker-order volume cap \\
 $V_\text{max}$ & 30 & Strategic CLOB submitted-volume cap \\
 $L_\infty$ & 200 & Maximum LOB depth \\
@@ -29,7 +29,7 @@ $p_3$ & 0.3 & New market taker arrival probability \\
 $p_4$ & 0.05 & Market taker cancellation probability \\
 $\lambda$ & 2 & Inventory penalty \\
 $q$ & 1 & Wrong-side dealing penalty \\
-$k^*$ & 1000 & Tolerance \\
+$k^\star$ & 1000 & Tolerance \\
 $d$ & 0.1 & Cancellation cost per unit \\
 $\alpha$ & 0.01 & Tick size \\
 $\beta$ & 1 & Tick size of grid on $K^a$ \\
@@ -38,6 +38,6 @@ $H_0$ & 100 & Initial projected clearing signal \\
 $\eta_H$ & 0.95 & Update weight in Algorithm \ref{alg:hyp_clearing_price}\\
 \bottomrule
 \end{tabular}
-\caption{Generative stochastic market model parameters}
+\caption{Shared simulator, action-grid and reward parameters (identical in both settings)}
 \label{tab:params_generative}
 \end{table}
