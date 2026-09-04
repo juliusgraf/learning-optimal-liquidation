@@ -1,13 +1,12 @@
 """Frozen-policy evaluation with common random numbers (Phase 4).
 
 Evaluates the checkpointed learned policy, its untrained "initial" diagnostic,
-and the AS/TWAP benchmarks on the SAME seed set (CRN: identical env seed for every policy
-within an episode; fixes AUDIT N10), under ONE reward definition and one
-bounded executable action envelope for all policies. The primary economic
-outcome is liquidation P&L less cancellation costs and the terminal inventory
-penalty. Undiscounted and discounted shaped returns are retained as learning
-diagnostics; the latter is also consumed by
-paired fixed-policy economic comparisons.
+and the AS/TWAP benchmarks on the same seed set (CRN: identical environment
+seed for every policy within an episode) under the common economic-only reward.
+Learned policies use the configured bounded action lattice; the benchmarks use
+their documented external capped one-sided auction schedule. The primary
+outcome, including for paired fixed-policy comparisons, is marked-to-market PnL
+less cancellation costs and the terminal inventory penalty.
 
 The eval seed stream is the dedicated ``env_final_eval`` component of the
 run's seed bundle — disjoint from the training and periodic-eval streams by

@@ -143,7 +143,7 @@ def fig_training_diagnostics(run_dir: Path, out: Path) -> None:
             sub = df[["episode", col]].dropna()
             if not sub.empty:
                 ax.plot(sub["episode"], sub[col], label=name)
-    ax.set(xlabel="Episode", ylabel="Huber loss", title="Training loss")
+    ax.set(xlabel="Episode", ylabel="Critic loss", title="Training loss")
     ax.legend()
 
     ax = axes[1]

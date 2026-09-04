@@ -354,10 +354,10 @@ The full field-level schema is in `docs/metrics_schema.md`.
 
 ## Compile the manuscript
 
-The two generated inputs currently referenced by `paper/main.tex` are tracked
-under `paper/results/`, so compilation does not depend on a local experiment
-output tree. With a TeX distribution providing `latexmk` and the packages
-listed in `paper/packages.tex`, build from a clean checkout with:
+The generated parameter-table input currently referenced by `paper/main.tex`
+is tracked under `paper/results/`, so compilation does not depend on a local
+experiment output tree. With a TeX distribution providing `latexmk` and the
+packages listed in `paper/packages.tex`, build from a clean checkout with:
 
 ```bash
 latexmk -cd -pdf -interaction=nonstopmode -halt-on-error paper/main.tex

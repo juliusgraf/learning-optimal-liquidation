@@ -1,8 +1,9 @@
 """Acceptance checklist for the revised auction/CLOB simulator.
 
-These tests follow Section 17 of ``paper/main.tex``.  They intentionally test
-observable contracts at subsystem boundaries instead of preserving legacy
-implementation details from the pre-revision simulator.
+These tests cover the active executable contract summarized in
+``REPRODUCING.md`` and ``docs/rl_design.md``. They intentionally test observable
+contracts at subsystem boundaries instead of preserving legacy implementation
+details from the pre-revision simulator.
 """
 
 from __future__ import annotations

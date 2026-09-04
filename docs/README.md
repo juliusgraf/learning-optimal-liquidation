@@ -6,9 +6,6 @@
   continuous-proposal methods and their relationship to executable actions.
 - `metrics_schema.md` is the field-level schema for training and evaluation
   artifacts.
-- `manuscript_update_notes.md` is an advisory author checklist. It is not an
-  executable source of truth and may contain items the author has already
-  applied.
 
 Active numerical values come from `configs/base.yaml` plus setting, learner,
 and treatment overlays. Reports under `audit/` characterize superseded code.

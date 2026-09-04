@@ -2,9 +2,8 @@
 
 This document records the implemented learning contract. The resolved active
 configuration is authoritative for experiment selection; the manuscript gives
-the mathematical model, and `manuscript_update_notes.md` records any
-author-facing changes still needed. This file explains how state, actions,
-chronology, rewards, and evaluation criteria reach the learners.
+the mathematical model. This file explains how state, actions, chronology,
+rewards, and evaluation criteria reach the learners.
 
 ## Physical clock
 

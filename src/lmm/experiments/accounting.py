@@ -1,10 +1,11 @@
 """Economic episode accounting, separate from the shaped RL reward.
 
-The learner optimizes the three-regime reward in :mod:`lmm.env.rewards`.
-Policy comparison uses risk-adjusted marked-to-market PnL: full-session PnL
-less the stipulated terminal inventory penalty. PnL already includes actual
-cancellation fees. Positive signed quantity is a sale and negative signed
-quantity is a purchase.
+The resolved training reward may be the headline centered economic objective
+or the three-regime shaped treatment objective in :mod:`lmm.env.rewards`.
+Policy comparison always uses risk-adjusted marked-to-market PnL: full-session
+PnL less the stipulated terminal inventory penalty. PnL already includes
+actual cancellation fees. Positive signed quantity is a sale and negative
+signed quantity is a purchase.
 
 Residual inventory is *deemed liquidated* at the frozen auction-open mid.  The
 reference is exogenous to the agent's auction orders, unlike the clearing
