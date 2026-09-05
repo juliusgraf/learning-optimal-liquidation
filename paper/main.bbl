@@ -106,11 +106,6 @@ Songzi Du and Haoxiang Zhu.
 \newblock Welfare and optimal trading frequency in dynamic double auctions.
 \newblock Technical report, National Bureau of Economic Research, 2014.
 
-\bibitem{duffie2017size}
-Darrell Duffie and Haoxiang Zhu.
-\newblock Size discovery.
-\newblock {\em The Review of Financial Studies}, 30(4):1095--1150, 2017.
-
 \bibitem{fan2020theoretical}
 Jianqing Fan, Zhaoran Wang, Yuchen Xie, and Zhuoran Yang.
 \newblock A theoretical analysis of deep {Q}-learning.
@@ -210,11 +205,6 @@ Laura Leal, Mathieu Lauri{\`e}re, and C-A Lehalle.
 Timothy~P. Lillicrap, Jonathan~J. Hunt, Alexander Pritzel, Nicolas Heess, Tom Erez, Yuval Tassa, David Silver, and Daan Wierstra.
 \newblock Continuous control with deep reinforcement learning, 2015.
 
-\bibitem{madhavan1992trading}
-Ananth Madhavan.
-\newblock Trading mechanisms in securities markets.
-\newblock {\em the Journal of Finance}, 47(2):607--641, 1992.
-
 \bibitem{madhavan2000price}
 Ananth Madhavan and Venkatesh Panchapagesan.
 \newblock Price discovery in auction markets: A look inside the black box.
@@ -239,11 +229,6 @@ Paul Milgrom.
 Paul Milgrom.
 \newblock Auction market design: Recent innovations.
 \newblock {\em Annual Review of Economics}, 11(1):383--405, 2019.
-
-\bibitem{milgrom1985economics}
-Paul~R Milgrom.
-\newblock The economics of competitive bidding: a selective survey.
-\newblock {\em Social goals and social organization: Essays in memory of Elisha Pazner}, pages 261--292, 1985.
 
 \bibitem{milgrom2004putting}
 Paul~Robert Milgrom.
