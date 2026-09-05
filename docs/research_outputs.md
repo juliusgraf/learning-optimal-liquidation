@@ -12,12 +12,17 @@ After reviewing/committing the changes and leaving the tree clean, run:
 cd /Users/juliusgraf/Learning-Market-Making
 source .venv/bin/activate
 unset LMM_RESULTS_ROOT
-scripts/run_multiseed.sh --jobs 5 --threads-per-job 2
+scripts/run_multiseed.sh --jobs 10 --threads-per-job 1
 ```
 
 Use the normal `results/revision_v17` namespace; unset `LMM_RESULTS_ROOT` first
-if your shell has a development override. Five workers each have two numerical
-threads. Lower `--jobs` for less peak memory. Keep the commit/configuration
+if your shell has a development override. Ten workers each have one numerical
+thread, a starting point for the current 15-core Apple M5 Pro with 24 GB RAM.
+The queue assigns individual experiments across all seeds, algorithms, tickers
+and treatments; a worker immediately takes another experiment when it finishes.
+`--jobs` is no longer capped by the five master seeds. Lower it to eight if other
+applications need resources. More workers are supported but do not guarantee
+more throughput once CPU or memory bandwidth is saturated. Keep the commit/configuration
 unchanged during the experiment. No API credentials or new quote download are
 needed: historical runs consume the frozen repository inputs.
 
@@ -33,7 +38,8 @@ Seeds are 42, 7, 99, 123, 2024; tickers are MSFT, JPM, PG, GOOGL and CAT.
 Each run has an 800-episode maximum, 100-path validation every 100 episodes,
 and 100 test episodes. Early stopping can end training sooner. Initial
 validation, feature fitting and benchmark calibration are additional work.
-There is no defensible wall-time estimate from the short smoke tests.
+The short queue smoke checks verify scheduling and complete output generation;
+they do not establish steady-state speedup for 800-episode training.
 
 The headline supplies the H-on/shaping-on factorial cell, so it is not trained
 twice. Representation controls remain optional development experiments, outside
@@ -46,8 +52,28 @@ exact configuration and completion-manifest validation. Partial, drifted or
 nonreportable runs stop the pipeline with their path. Retain/move a partial
 run for diagnosis and restart the command; there is no automatic partial
 checkpoint resume. A failed training seed is not dropped or replaced by a
-hand-picked seed. If any run has no mature checkpoint improving on its initial
+hand-picked seed. Failures stop new dispatch; already running jobs finish.
+Ctrl-C terminates active worker process groups. A kernel lock prevents two
+launchers writing the same results root, including during final reporting. If any run has no mature checkpoint improving on its initial
 economic validation, the full publication report will not be generated.
+
+## Local concurrency check
+
+The queue was checked on the current 15-core/24-GB Mac using the same 56-job
+smoke matrix with four training episodes per job and three evaluation episodes:
+
+| Resource configuration | Training/evaluation queue | Through final report |
+|---|---:|---:|
+| 5 workers × 2 threads | 117 seconds | 122 seconds |
+| 10 workers × 1 thread | 68 seconds | 73 seconds |
+
+This single short comparison was about 40% shorter with ten workers. It includes
+startup, small replay buffers and output overhead, so it is not a measured
+speedup for 800-episode training. Both matrices completed, and all 112 completion
+manifests remained valid after reporting. Queue tests cover more than five
+simultaneous jobs, immediate refill, failed-job dispatch stoppage, interruption
+cleanup, exclusive results-root locking, and one final report. Evidence is in
+`docs/verification_outputs/queue_verification.json`.
 
 ## What to open
 
@@ -157,9 +183,19 @@ Each contains resolved configuration/seed/commit/runtime provenance,
 `metrics.csv`, normalizer and split-seed state, `checkpoints/best.pt` with
 selection sidecars, initial/final checkpoints, `eval/records.csv`, economic
 metadata, traces/action/forecast diagnostics, paired reference differences,
-and `pipeline_complete.json`. Training progress is in the console and the run's
-log file. Periodic replay-heavy resume snapshots are suppressed by the full
+and `pipeline_complete.json`. The launcher console shows starts/completions. Detailed training progress is
+in each run's `logs/run.log`. `_orchestration/status.json` records queued,
+active, completed and failed job identities, elapsed time and the concurrency
+limit; `_orchestration/<block>__<algo>_seed<seed>.log` captures each full pipeline.
+The results-root lock file may remain after completion; kernel locking, not
+its mere existence, determines whether another launcher is active. Periodic replay-heavy resume snapshots are suppressed by the full
 launcher; selected and final policies remain available.
+
+Inspect the full 220-job command plan without training (works before committing):
+
+```bash
+scripts/run_multiseed.sh --jobs 10 --threads-per-job 1 --dry-run
+```
 
 Regenerate the focused report, without training:
 

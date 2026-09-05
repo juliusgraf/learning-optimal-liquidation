@@ -49,7 +49,7 @@ verified provenance sidecar, so the historical simulator does not require API
 credentials after checkout. See `REPRODUCING.md` for the complete workflow.
 
 After committing the reviewed changes and leaving the tree clean, launch the
-220-run publication matrix with `scripts/run_multiseed.sh --jobs 5 --threads-per-job 2`
+220-run publication matrix with `scripts/run_multiseed.sh --jobs 10 --threads-per-job 1`
 from the activated environment. The resulting report is
 `results/revision_v17/_publication/index.html`: four focused figures, three
 tables, and seed-level audit records. The [output guide](docs/research_outputs.md)

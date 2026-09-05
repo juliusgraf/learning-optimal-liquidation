@@ -20,6 +20,9 @@ def _child_calls(tmp_path: Path, script: str, *args: str) -> list[str]:
         'printf \'%s\\n\' "$*" >> "$PIPELINE_CALL_LOG"\n'
     )
     fake_bash.chmod(0o755)
+    fake_python = fake_bin / "python3"
+    fake_python.write_text(fake_bash.read_text())
+    fake_python.chmod(0o755)
     fake_git = fake_bin / "git"
     fake_git.write_text("#!/bin/sh\nexit 0\n")
     fake_git.chmod(0o755)
@@ -68,7 +71,7 @@ def test_run_multiseed_requires_complete_publication_matrix(tmp_path):
         tmp_path, "run_multiseed.sh", "--seeds", "9001 9002", "--smoke"
     )
     assert calls[-1].endswith(
-        "make_multiseed_outputs.sh --seeds 9001 9002 --require-complete"
+        "--seeds 9001 9002 --jobs 1 --threads-per-job 2 --smoke"
     )
 
 
@@ -82,21 +85,15 @@ def test_run_multiseed_forwards_symbol_to_aggregate_validation(tmp_path):
         "--smoke",
     )
     assert calls[-1].endswith(
-        "make_multiseed_outputs.sh --seeds 9001 9002 --require-complete --symbol MSFT"
+        "--seeds 9001 9002 --jobs 1 --threads-per-job 2 --smoke --symbol MSFT"
     )
 
 
 def test_run_multiseed_default_is_full_five_seed_treatment_publication(tmp_path):
     calls = _child_calls(tmp_path, "run_multiseed.sh")
-    reproduce = [call for call in calls if "reproduce_all.sh" in call]
-    treatments = [call for call in calls if "run_synthetic_treatments.sh" in call]
-    assert len(reproduce) == len(treatments) == 5
-    assert all("--skip-output-generation" in call for call in reproduce)
-    assert all("--skip-completed" in call for call in treatments)
-    assert calls[-1].endswith(
-        "make_multiseed_outputs.sh --seeds 42 7 99 123 2024 "
-        "--require-complete --publication"
-    )
+    assert len(calls) == 1
+    assert "lmm.experiments.run_matrix" in calls[0]
+    assert calls[0].endswith("--seeds 42 7 99 123 2024 --jobs 1 --threads-per-job 2")
 
 
 def test_run_multiseed_parallel_workers_leave_shared_outputs_serial(tmp_path):
@@ -109,20 +106,15 @@ def test_run_multiseed_parallel_workers_leave_shared_outputs_serial(tmp_path):
         "--threads-per-job=1",
         "--smoke",
     )
-    shared = [call for call in calls if "make_multiseed_outputs.sh" in call]
-    assert len(shared) == 1
-    assert not any("make_all_outputs.sh" in call for call in calls)
-    assert calls.index(shared[0]) > max(
-        i
-        for i, call in enumerate(calls)
-        if "reproduce_all.sh" in call or "run_synthetic_treatments.sh" in call
-    )
+    assert len(calls) == 1
+    assert "lmm.experiments.run_matrix" in calls[0]
+    assert calls[0].endswith("--seeds 9001 9002 --jobs 2 --threads-per-job 1 --smoke")
 
 
 def test_multiseed_smoke_defaults_to_disjoint_nonpublication_seeds(tmp_path):
     calls = _child_calls(tmp_path, "run_multiseed.sh", "--smoke")
     assert calls[-1].endswith(
-        "make_multiseed_outputs.sh --seeds 9001 9002 --require-complete"
+        "--seeds 9001 9002 --jobs 1 --threads-per-job 2 --smoke"
     )
 
 

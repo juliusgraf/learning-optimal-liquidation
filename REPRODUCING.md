@@ -261,14 +261,21 @@ The canonical five-seed publication command covers the headline, historical,
 and complete synthetic treatment matrix, then generates the focused report:
 
 ```bash
-scripts/run_multiseed.sh --jobs 5 --threads-per-job 2
+scripts/run_multiseed.sh --jobs 10 --threads-per-job 1
 ```
 
-On a 15-core host, five workers with two numerical-library/Torch intra-op
-threads and one Torch inter-op thread each leave some headroom. The launcher
-also caps Apple Accelerate/vecLib and NumExpr, preventing hidden oversubscription;
-the effective settings are saved in `runtime_versions.json`. Lower `--jobs` if memory is tighter. Workers write distinct run
-directories. Report generation runs once, serially, after every worker finishes. A small development check
+On the current 15-core Apple M5 Pro with 24 GB RAM, start with ten workers
+and one numerical-library/Torch intra-op thread per worker. Jobs are individual
+experiments from the complete 220-run matrix, rather than one long worker per
+master seed. The queue continuously refills idle slots and works with more
+than five workers. It caps Apple Accelerate/vecLib, BLAS and NumExpr as well as
+Torch; effective settings are saved in each `runtime_versions.json`. Lower
+`--jobs` if other applications need memory or CPU. The number of workers changes
+scheduling, not the seed set, training budget or configurations. Report generation
+runs once after every experiment succeeds, under the same results-root lock.
+Queue progress is in `_orchestration/status.json`; each job has a separate
+console log there, and training still writes its own `logs/run.log`.
+A small development check
 can use `--smoke --jobs 2`, which defaults to the deliberately nonpublication
 seeds `9001 9002`; smoke artifacts are explicitly rejected by publication
 mode. The launcher rejects canonical publication seed names in smoke mode so a
@@ -276,7 +283,8 @@ development artifact cannot block the later full run at the same path.
 
 Full publication mode also requires a clean Git worktree: `git_sha.txt` records
 the exact commit, not an uncommitted patch. The long launcher is safely
-restartable across already finished runs. A run is skipped only when its saved
+restartable across already finished runs. A failed job stops new dispatch while
+already active jobs finish; a second launcher on the same root is rejected. A run is skipped only when its saved
 resolved config exactly matches the current command, its complete evaluation
 uses `best.pt`, and `pipeline_complete.json` cryptographically binds the
 resolved config, seed, Git SHA, runtime and split-seed provenance, training
