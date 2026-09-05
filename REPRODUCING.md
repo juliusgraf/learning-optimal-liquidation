@@ -363,6 +363,13 @@ packages listed in `paper/packages.tex`, build from a clean checkout with:
 latexmk -cd -pdf -interaction=nonstopmode -halt-on-error paper/main.tex
 ```
 
+LaTeX build intermediates are ignored by Git. To remove them while keeping
+the compiled PDF, run:
+
+```bash
+latexmk -cd -c paper/main.tex
+```
+
 Publication figures and tables should still be regenerated after the final
 experiments. Keeping the currently referenced inputs tracked guarantees build
 completeness; it does not promote an old smoke or pre-revision artifact to a

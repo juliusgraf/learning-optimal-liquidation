@@ -10,10 +10,26 @@ __pycache__/
 /results/
 *.egg-info/
 .pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
 build/
+dist/
+.DS_Store
 # Ad-hoc loader outputs and cache; the canonical frozen dataset is tracked.
 data/*.csv
 data/*.meta.json
 !data/historical_sp500_midquotes_1m.csv
 !data/historical_sp500_midquotes_1m.csv.meta.json
 .cache/
+
+# LaTeX build intermediates; keep the manuscript PDF and figure/table inputs.
+/paper/*.aux
+/paper/*.bbl
+/paper/*.blg
+/paper/*.fdb_latexmk
+/paper/*.fls
+/paper/*.log
+/paper/*.out
+/paper/*.synctex.gz
+/paper/*.toc
