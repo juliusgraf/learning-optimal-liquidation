@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Regenerate every figure and table from the saved outputs of all FINISHED runs
+# Generate a focused single-seed development report. --diagnostics enables
+# the comprehensive legacy figures/tables from all FINISHED runs
 # (those with a reportable checkpoints/best.pt). Backfills paired-difference CSVs if missing, produces
 # per-run figures/tables, then the cross-algorithm combined figures/tables per
 # setting under results/<setting>/_combined/. Does NOT train.
@@ -15,7 +16,7 @@
 # that seed too; multiseed publication summaries do not need hundreds of
 # duplicate per-run plots.
 #
-# Usage: scripts/make_all_outputs.sh [--seed N] [--require-complete]
+# Usage: scripts/make_all_outputs.sh [--seed N] [--require-complete] [--diagnostics]
 #   --seed N : master seed for per-run and combined outputs. By default,
 #              per-run outputs cover every finished run; combined groups use
 #              42 if present, else the only seed present, else the smallest.
@@ -30,16 +31,21 @@ mkdir -p "$MPLCONFIGDIR"
 COMBINED_SEED=""
 COMBINED_SEED_EXPLICIT=0
 REQUIRE_COMPLETE=0
+DIAGNOSTICS=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --seed) COMBINED_SEED="${2:-}"; COMBINED_SEED_EXPLICIT=1; shift 2 ;;
     --seed=*) COMBINED_SEED="${1#*=}"; COMBINED_SEED_EXPLICIT=1; shift ;;
     --require-complete) REQUIRE_COMPLETE=1; shift ;;
+    --diagnostics) DIAGNOSTICS=1; shift ;;
+    -h|--help)
+      echo "usage: $0 [--seed N] [--require-complete] [--diagnostics]"
+      exit 0 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
 
-RESULTS_ROOT="${LMM_RESULTS_ROOT:-results/revision_v12}"
+RESULTS_ROOT="${LMM_RESULTS_ROOT:-results/revision_v17}"
 if [[ ! -d "$RESULTS_ROOT" ]]; then
   echo "no $RESULTS_ROOT directory; run a run_*.sh script first" >&2
   exit 1
@@ -70,6 +76,19 @@ if [[ "$COMBINED_SEED_EXPLICIT" -eq 1 ]]; then
   fi
 fi
 printf '  %s\n' "${finished[@]}"
+
+if [[ "$DIAGNOSTICS" -eq 0 ]]; then
+  if [[ -z "$COMBINED_SEED" ]]; then
+    COMBINED_SEED="$(for rd in "${finished[@]}"; do run_seed "$rd"; echo; done | sort -un | head -1)"
+    for rd in "${finished[@]}"; do
+      [[ "$(run_seed "$rd")" == "42" ]] && COMBINED_SEED=42
+    done
+  fi
+  REPORT_ARGS=(--root "$RESULTS_ROOT" --seeds "$COMBINED_SEED")
+  [[ "$REQUIRE_COMPLETE" -eq 1 ]] && REPORT_ARGS+=(--require-complete)
+  python3 -m lmm.experiments.make_report "${REPORT_ARGS[@]}"
+  exit 0
+fi
 
 # -- per-run outputs (selected finished runs; no cross-run mixing here) -------
 for rd in "${finished[@]}"; do

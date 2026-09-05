@@ -1,0 +1,10 @@
+[
+  {
+    "run": "ddpg_asinh",
+    "normalizer_training_state_bit_identical": true
+  },
+  {
+    "run": "ddpg_asinh_history",
+    "normalizer_training_state_bit_identical": true
+  }
+]

@@ -18,7 +18,7 @@ cd "$REPO_ROOT"
 # A scratch/CI caller may isolate artifacts without editing the publication
 # configuration.  The same value is also forwarded into the resolved config
 # below, so the launcher's filesystem path and train.py's path cannot diverge.
-RESULTS_ROOT="${LMM_RESULTS_ROOT:-results/revision_v12}"
+RESULTS_ROOT="${LMM_RESULTS_ROOT:-results/revision_v17}"
 
 # Keep Matplotlib's font/config cache reusable across the many short reporting
 # processes launched by a full matrix.  This also makes the pipeline work when

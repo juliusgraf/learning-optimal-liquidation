@@ -1,0 +1,4 @@
+# Shared ordinary MLP capacity for all four methods; native SB3 updates.
+algo:
+  hyperparams:
+    hidden_layers: [256, 256]

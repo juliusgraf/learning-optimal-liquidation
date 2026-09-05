@@ -1,0 +1,5 @@
+# Normalize replay rewards to one basis point of initial notional:
+# S0*I0*1e-4 = 2 in revised_objective.yaml. All algorithms use the same units.
+algo:
+  hyperparams:
+    reward_scale: 0.5

@@ -109,8 +109,9 @@ def test_run_multiseed_parallel_workers_leave_shared_outputs_serial(tmp_path):
         "--threads-per-job=1",
         "--smoke",
     )
-    shared = [call for call in calls if "make_all_outputs.sh" in call]
+    shared = [call for call in calls if "make_multiseed_outputs.sh" in call]
     assert len(shared) == 1
+    assert not any("make_all_outputs.sh" in call for call in calls)
     assert calls.index(shared[0]) > max(
         i
         for i, call in enumerate(calls)
@@ -148,14 +149,13 @@ def test_reproduce_all_can_defer_shared_output_generation(tmp_path):
     assert not any("make_all_outputs.sh" in call for call in calls)
 
 
-def test_treatment_launcher_reuses_unshaped_headline_instead_of_retraining_alias():
+def test_treatment_launcher_reuses_shaped_headline_instead_of_retraining_alias():
     script = (REPO / "scripts" / "run_synthetic_treatments.sh").read_text()
     arms = script.split("ARMS=(", 1)[1].split(")", 1)[0]
-    assert "ablation_h_on_shaping_off" not in arms
-    assert "ablation_h_on_shaping_on" in arms
+    assert "ablation_h_on_shaping_on" not in arms
+    assert "ablation_h_on_shaping_off" in arms
     assert "canonical synthetic headline" in script
-    assert not (REPO / "configs/treatment/ablation_h_on_shaping_off.yaml").exists()
-    assert (REPO / "configs/treatment/ablation_h_on_shaping_on.yaml").exists()
+    assert (REPO / "configs/treatment/ablation_h_on_shaping_off.yaml").exists()
 
 
 def test_full_publication_rejects_noncanonical_seed_subset():

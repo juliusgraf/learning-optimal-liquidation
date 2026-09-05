@@ -443,7 +443,7 @@ class MarketMakingEnv(gymnasium.Env):
             self.cfg.reward.effective_auction_shaping and not external
         )
         interim_shaping = (
-            auction_fictive_reward(K_a, s_a, h_used, self.cfg.reward.q)
+            self.cfg.reward.auction_shaping_weight * auction_fictive_reward(K_a, s_a, h_used, self.cfg.reward.q)
             if shaping_active
             else 0.0
         )
@@ -457,6 +457,7 @@ class MarketMakingEnv(gymnasium.Env):
             shaping_enabled=self.cfg.reward.effective_auction_shaping,
             external_policy=external,
             cancelled_interim_shaping=clawback,
+            shaping_weight=self.cfg.reward.auction_shaping_weight,
         )
 
         if cancel == 1:
@@ -593,12 +594,13 @@ class MarketMakingEnv(gymnasium.Env):
             self.cfg.reward.q,
             shaping_enabled=self.cfg.reward.effective_auction_shaping,
             external_policy=external_policy,
+            shaping_weight=self.cfg.reward.auction_shaping_weight,
         )
         auction_cash = result.tick_price * z
         residual_mark = self._frozen_mid * i_final
         terminal_penalty = self.cfg.reward.lambda_inv * i_final**2
         terminal_shaping = (
-            f_a(auction_cash, self.cfg.reward.q)
+            self.cfg.reward.auction_shaping_weight * f_a(auction_cash, self.cfg.reward.q)
             if self.cfg.reward.effective_auction_shaping and not external_policy
             else 0.0
         )

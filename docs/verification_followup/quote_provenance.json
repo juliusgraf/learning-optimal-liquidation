@@ -1,0 +1,17 @@
+{
+  "source": "data/historical_sp500_midquotes_1m.csv.meta.json",
+  "sha256": "67ff4981deeb2ea8b216ec9600dc5a1e08cea46a531f4f5def00fec0d8a43baa",
+  "dates": [
+    "2026-08-03",
+    "2026-08-04",
+    "2026-08-05",
+    "2026-08-06",
+    "2026-08-07",
+    "2026-08-10",
+    "2026-08-11",
+    "2026-08-12",
+    "2026-08-13",
+    "2026-08-14"
+  ],
+  "statistic": "median across training-session median selected-quote spreads"
+}

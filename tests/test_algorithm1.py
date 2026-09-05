@@ -12,7 +12,7 @@ from lmm.market.clob import BookSnapshot
 
 @pytest.fixture(scope="module")
 def cfg():
-    return load_synthetic_cfg()
+    return load_synthetic_cfg("grid.alpha=0.01")  # fixed 10,000-tick examples below
 
 
 def snap(k_mid, ask=(), bid=(), *, agent_level=None, agent_remaining=0.0):

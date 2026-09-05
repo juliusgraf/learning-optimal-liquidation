@@ -98,3 +98,14 @@ python3 -m lmm.experiments.diagnose_simulator \
 
 Order flow, CLOB depth, auction proposals, clearing, and allocation remain
 synthetic, as required by the manuscript.
+# Quote-size label erratum (September 2026)
+
+The frozen August 2026 SIP sidecar's `*_size_round_lots` names and
+`quote_size_unit` label are incorrect. The stored numbers are **shares**:
+Alpaca changed CTA/UTP quote-size display on November 3, 2025. Do not multiply
+these values by a round-lot size. The original CSV, sidecar and raw archives
+are preserved for provenance; midpoint calculations and all learning results
+are unaffected. See [Alpaca's dated announcement](https://docs.alpaca.markets/us/v1.1/changelog/marketdata-bid-and-ask-size-display-change)
+and [the training-only audit](../docs/verification_v16/quote_calibration_provenance.json).
+Future regeneration uses schema 4, neutral provider-unit field names and
+date/feed-specific units; it omits aggregate size medians across mixed units.

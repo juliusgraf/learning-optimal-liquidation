@@ -13,6 +13,11 @@ configuration; only the exogenous mid-price source changes. Historical runs
 replay frozen SIP midquotes while order flow, books, auction updates, clearing,
 and allocation remain simulated.
 
+The [current repair report](docs/model_refinement_v17.md) documents the
+author-approved shaping correction, calibration, learning checks and auction
+diagnostics. The market remains stylized; the development results do not
+establish universal benchmark superiority or empirical auction calibration.
+
 ## Sources of truth
 
 - `paper/main.tex` defines the mathematical model.
@@ -42,3 +47,17 @@ pytest -q -m 'not network and not slow'
 The repository includes the frozen processed historical artifact and its
 verified provenance sidecar, so the historical simulator does not require API
 credentials after checkout. See `REPRODUCING.md` for the complete workflow.
+
+After committing the reviewed changes and leaving the tree clean, launch the
+220-run publication matrix with `scripts/run_multiseed.sh --jobs 5 --threads-per-job 2`
+from the activated environment. The resulting report is
+`results/revision_v17/_publication/index.html`: four focused figures, three
+tables, and seed-level audit records. The [output guide](docs/research_outputs.md)
+explains the statistical protocol, file locations, regeneration and exact
+unapplied manuscript inclusion instructions. Comprehensive diagnostics are
+available separately with `--diagnostics`.
+
+The protected TeX sources are unchanged. The [exact review patch](docs/manuscript_recommendations_v17.patch)
+aligns them with weighted shaped J for headline training and economic
+risk-adjusted PnL for validation and evaluation. Earlier reports are retained
+as development history.

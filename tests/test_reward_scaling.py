@@ -1,4 +1,8 @@
-"""Reward-scaling guard (maintenance fix; ruling D9, D10).
+"""Archival large-notional reward stress tests (including native learners).
+
+The DQN scale below is an explicit legacy fixture. Active weighted-reward,
+potential and SB3 contracts are tested in test_learning_repair.py. The former
+large-notional reward distribution is not the current replay distribution.
 
 The paper's three-regime rewards are LARGE: auction/terminal terms
 ~K^a * H * (H - S^a) with H ~ 100 give per-transition rewards O(1e3-1e4) and
@@ -52,7 +56,8 @@ TRAINABLE_BAND = (0.1, 100.0)  # acceptable |scaled reward| for the typical case
 
 
 def build_agent(algo: str, *overrides: str, master_seed: int = 1234):
-    cfg = load_dqn_cfg(*overrides) if algo == "dqn" else load_algo_cfg(algo, *overrides)
+    cfg = (load_dqn_cfg('algo.hyperparams.reward_scale=0.01', *overrides)
+           if algo == "dqn" else load_algo_cfg(algo, *overrides))
     seeds = seed_everything(master_seed, SEED_COMPONENTS, seed_torch=True)
     return cfg, _AGENT_CLS[algo](cfg, seeds)
 
@@ -114,7 +119,7 @@ def test_reward_scale_in_trainable_band(algo):
     """Every method uses the manuscript's common reward scale exactly."""
     _, agent = build_agent(algo)
     s = agent.hp.reward_scale
-    assert s == pytest.approx(1.0e-3, rel=0, abs=1e-15)
+    assert s == pytest.approx(0.01 if algo == "dqn" else 1.0e-3, rel=0, abs=1e-15)
     scaled = abs(s * TYPICAL_PAPER_REWARD)
     lo, hi = TRAINABLE_BAND
     assert lo <= scaled <= hi, (
@@ -280,7 +285,7 @@ def test_all_methods_use_the_same_frozen_training_normalizer(algo):
     assert tuple(cfg.features.clob) == COMMON_FEATURES
     assert tuple(cfg.features.auction) == COMMON_FEATURES
     rows = np.vstack([np.arange(18, dtype=float), np.arange(18, dtype=float) + 2.0])
-    normalizer = FeatureNormalizer(cfg.grid.tau_cl).fit(rows)
+    normalizer = FeatureNormalizer(cfg.grid.tau_cl, relative_prices=cfg.rl.relative_price_features).fit(rows)
     transformed = normalizer.transform(rows[0])
     assert transformed.shape == (18,)
     assert transformed[0] == pytest.approx(rows[0, 0] / cfg.grid.tau_cl)

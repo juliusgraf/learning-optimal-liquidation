@@ -36,7 +36,6 @@ import torch.nn as nn
 from lmm.agents.base import (
     BELLMAN_FACTOR,
     ENVIRONMENT_CONTRACT,
-    REWARD_SCALE,
     Agent,
     Transition,
 )
@@ -44,7 +43,7 @@ from lmm.config import ExperimentConfig, build_hyperparams
 from lmm.env.action_spaces import AuctionActionGrid, ClobActionGrid
 from lmm.rl.networks import ACTIVATIONS, StructuredDiscreteQ
 from lmm.rl.replay import ReplayBatch, ReplayBuffer
-from lmm.rl.schedules import LinearEpsilonSchedule
+from lmm.rl.schedules import LinearEpsilonSchedule, learning_rate_factor, learning_conditioning_contract
 from lmm.utils.seeding import SeedBundle
 
 __all__ = ["DQNAgent", "DQNHyperparams"]
@@ -100,6 +99,11 @@ class DQNHyperparams:
     # those transitions.  At the boundary the complete admissible auction
     # action/cancellation set is unlocked.
     auction_learning_start_episode: int = 0
+    # False-only compatibility fields for bounded development checkpoints.
+    # The active implementation retains the original structured architecture.
+    fixed_action_features: bool = False
+    layer_norm: bool = False
+    dueling: bool = False
 
 
 class DQNAgent(Agent):
@@ -110,6 +114,8 @@ class DQNAgent(Agent):
             raise ValueError("DQNAgent requires algo.name == 'dqn' in the config")
         self.cfg = cfg
         self.hp: DQNHyperparams = build_hyperparams(DQNHyperparams, cfg.algo.hyperparams)
+        if self.hp.fixed_action_features or self.hp.layer_norm or self.hp.dueling:
+            raise ValueError("retired development architectures are not supported")
         if not 0.0 <= self.hp.epsilon_auction_scale <= 1.0:
             raise ValueError("epsilon_auction_scale must lie in [0,1]")
         if self.hp.safe_auction_noop_margin < 0.0:
@@ -120,10 +126,8 @@ class DQNAgent(Agent):
             raise ValueError("action_embedding_dim must be positive")
         self.artifact_schema_version = int(cfg.experiment.artifact_schema_version)
         self.chi = BELLMAN_FACTOR  # public compatibility; intentionally ignores cfg.rl.chi
-        if not np.isclose(self.hp.reward_scale, REWARD_SCALE, rtol=0.0, atol=1e-15):
-            raise ValueError(
-                f"revised DQN requires reward_scale={REWARD_SCALE:g}, got {self.hp.reward_scale:g}"
-            )
+        if not np.isfinite(self.hp.reward_scale) or self.hp.reward_scale <= 0:
+            raise ValueError("DQN reward_scale must be finite and positive")
         if self.hp.update_every != 1 or self.hp.updates_per_env_step != 1:
             raise ValueError("revised DQN performs exactly one eligible update per environment step")
         self.device = torch.device(self.hp.device)
@@ -436,12 +440,15 @@ class DQNAgent(Agent):
         q_pred = self.q[phase](obs, actions)
         loss = self._loss_fn(q_pred, y)
         self.optim[phase].zero_grad()
+        for group in self.optim[phase].param_groups:
+            group['lr'] = self.hp.lr * learning_rate_factor(self.cfg.rl, self._episode)
         loss.backward()
         grad_norm = nn.utils.clip_grad_norm_(self.q[phase].parameters(), self.hp.grad_clip_norm)
         self.optim[phase].step()
         td = (q_pred - y).detach()
         return {
             "loss": float(loss.item()),
+            "learning_rate": self.optim[phase].param_groups[0]['lr'],
             "grad_norm": float(grad_norm.item()),
             "td_abs_mean": float(td.abs().mean().item()),
             "td_abs_max": float(td.abs().max().item()),
@@ -493,6 +500,9 @@ class DQNAgent(Agent):
             "actions": asdict(self.cfg.actions),
             "features": asdict(self.cfg.features),
             "h_cl_feature_enabled": bool(self.cfg.rl.h_cl_feature_enabled),
+            "relative_price_features": self.cfg.rl.relative_price_features,
+            "n_step": self.cfg.rl.n_step,
+            **learning_conditioning_contract(self.cfg.rl),
             "hyperparams_except_device": hyperparams,
         }
 
@@ -547,7 +557,10 @@ class DQNAgent(Agent):
                 "checkpoint DQN architecture mismatch; this checkpoint predates "
                 "the action-coordinate-conditioned Q network"
             )
-        if state.get("dqn_contract") != self._checkpoint_contract():
+        contract = state.get("dqn_contract")
+        if isinstance(contract, dict) and isinstance(contract.get('reward'), dict):
+            contract['reward'].setdefault('auction_shaping_weight', 1.0)
+        if contract != self._checkpoint_contract():
             raise ValueError(
                 "checkpoint DQN configuration contract mismatch; simulator, "
                 "reward, action, feature, or hyperparameter semantics differ"

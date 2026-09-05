@@ -4,9 +4,7 @@ experiment:
   ablation_label: H_off__shaping_on__auction_on
 rl:
   h_cl_feature_enabled: false
-  checkpoint_require_initial_improvement: false
 actions:
   auction_anchor: frozen_mid
 reward:
   shaping_enabled: true
-  q: 1.0

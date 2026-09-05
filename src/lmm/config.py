@@ -54,7 +54,7 @@ __all__ = [
 ]
 
 
-ACTIVE_ARTIFACT_SCHEMA_VERSION = 12
+ACTIVE_ARTIFACT_SCHEMA_VERSION = 15
 
 
 class ConfigError(ValueError):
@@ -78,7 +78,7 @@ class ExperimentMeta:
     results_root: Path  # gitignored output root
     artifact_schema_version: int = ACTIVE_ARTIFACT_SCHEMA_VERSION
     seeds: tuple[int, ...] = (42,)
-    ablation_label: str = "H_on__shaping_off__auction_on"
+    ablation_label: str = "H_on__shaping_on__auction_on"
     auction_enabled: bool = True
 
 
@@ -263,7 +263,7 @@ class RewardParams:
 
     k_star: int  # k* in f_c; legacy kappa=0.1 <=> k*alpha=10 <=> k*=1000
     lambda_inv: float  # terminal inventory penalty lambda; shared => 2.0
-    q: float  # wrong-side shaping coefficient; q=1 in shaping-on treatments
+    q: float  # purchase shaping attenuation; shared reference preference q=0
     d: float  # cancellation cost unit d (cost d_t*c_t, D4); => 0.1
     shaping_enabled: bool  # common CLOB/interim/terminal shaping switch
     clawback_shaping: bool  # exact cancellation reversal when shaping is active
@@ -282,6 +282,12 @@ class RewardParams:
     # S_mid_0*I_0, so action rankings and the manuscript objective are
     # unchanged while Bellman targets operate on PnL-scale differences.
     center_initial_inventory_value: bool = False
+    # Training-only telescoping control variate. It preserves J up to the
+    # fixed initial potential and never changes reported reward/accounting.
+    learning_potential: bool = False
+    # Default preserves the manuscript exactly. Values below one are an
+    # explicitly labeled alternative objective, never an implicit repair.
+    auction_shaping_weight: float = 1.0
 
     @property
     def effective_clob_shaping(self) -> bool:
@@ -305,6 +311,18 @@ class RLParams:
     """Learning and validation-objective constants shared by all algorithms."""
 
     chi: float  # revised finite-horizon Bellman factor; must equal one
+    relative_price_features: bool = False
+    n_step: int = 1
+    learning_credit_baseline: bool = False
+    learning_clob_inventory_potential: bool = False
+    auction_exposure_features: bool = False
+    phase_normalization: bool = False
+    auction_inventory_asinh: bool = False
+    market_return_control_variate: bool = False
+    structured_warmup_episodes: int = 0
+    market_control_reference: str = 'linear'
+    learning_rate_half_life_episodes: float = 0.0
+    learning_rate_min_fraction: float = 0.1
     discount_mode: str = "undiscounted"
     # Periodic validation selects best.pt on Pi_lambda, never shaped return.
     checkpoint_metric: str = "risk_adjusted_pnl"
@@ -419,6 +437,7 @@ class AlgoConfig:
 
     name: str  # "dqn" | "ddpg" | "td3" | "sac"
     hyperparams: dict[str, Any] = field(default_factory=dict)
+    backend: str = "native"
 
 
 @dataclass(frozen=True)
@@ -455,6 +474,7 @@ def economic_evaluation_config(cfg: ExperimentConfig) -> ExperimentConfig:
             clob_shaping_enabled=False,
             auction_shaping_enabled=False,
             clawback_shaping=False,
+            learning_potential=False,
         ),
     )
 
@@ -785,6 +805,27 @@ def _validate_experiment_config(cfg: ExperimentConfig) -> ExperimentConfig:
     """Enforce cross-field contracts that a dataclass alone cannot express."""
     if cfg.experiment.episodes <= 0:
         raise ConfigError("experiment.episodes must be positive")
+    if cfg.rl.n_step < 1:
+        raise ConfigError("rl.n_step must be positive")
+    if cfg.rl.auction_exposure_features and not cfg.rl.relative_price_features:
+        raise ConfigError('auction exposure coordinates require relative prices')
+    if cfg.rl.auction_inventory_asinh and not cfg.rl.auction_exposure_features:
+        raise ConfigError('auction inventory asinh requires auction exposure coordinates')
+    if cfg.rl.structured_warmup_episodes < 0:
+        raise ConfigError('structured_warmup_episodes must be nonnegative')
+    if cfg.rl.market_control_reference not in ('linear','calibration'):
+        raise ConfigError('market_control_reference must be linear or calibration')
+    if not 0 <= cfg.reward.auction_shaping_weight <= 1:
+        raise ConfigError("auction_shaping_weight must be in [0,1]")
+    if (not math.isfinite(cfg.rl.learning_rate_half_life_episodes)
+            or cfg.rl.learning_rate_half_life_episodes < 0
+            or not 0 < cfg.rl.learning_rate_min_fraction <= 1):
+        raise ConfigError("learning-rate half life must be nonnegative and minimum fraction in (0,1]")
+    if cfg.algo is not None:
+        if cfg.algo.backend not in ("native", "sb3"):
+            raise ConfigError("algo.backend must be native or sb3")
+        if cfg.algo.backend == "sb3" and cfg.algo.name not in ("ddpg", "td3", "sac"):
+            raise ConfigError("the SB3 backend supports ddpg, td3 and sac")
     if not cfg.experiment.seeds or len(set(cfg.experiment.seeds)) != len(
         cfg.experiment.seeds
     ):

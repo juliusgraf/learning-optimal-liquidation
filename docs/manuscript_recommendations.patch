@@ -1,0 +1,172 @@
+--- a/paper/main.tex
++++ b/paper/main.tex
+@@ -447,12 +447,53 @@
+ \end{array}\right..
+ \end{align*}
+ 
+-Without reward shaping or initial-inventory centering, $J(\pi)=\bar J_\lambda(\pi)+S_0^{\mathrm{mid}}I_0$. The unshaped training criterion and the reported risk-adjusted economic criterion differ only by a constant, which unifies the base training objective with the economic objective. For precision, by the unshaped specification, we mean that the CLOB multiplier is set identically equal to one, the entire interim auction term $K_t^aH_t^\cl(H_t^\cl-S_t^a) + f^a\left(K_t^aH_t^\cl(H_t^\cl-S_t^a)\right)$ is omitted, and the terminal $f^a$ term is set to zero.\vspace{0.5em}
++Without reward shaping or initial-inventory centering, $J(\pi)=\bar J_\lambda(\pi)+S_0^{\mathrm{mid}}I_0$. The unshaped training criterion and the reported risk-adjusted economic criterion differ only by a constant. Headline runs train on the shaped criterion $J$; the unshaped criterion defines a treatment. Validation, checkpoint selection and all final policy comparisons use $\bar J_\lambda$. For precision, by the unshaped specification, we mean that the CLOB multiplier is set identically equal to one, the entire interim auction term $K_t^aH_t^\cl(H_t^\cl-S_t^a) + f^a\left(K_t^aH_t^\cl(H_t^\cl-S_t^a)\right)$ is omitted, and the terminal $f^a$ term is set to zero.\vspace{0.5em}
++
++The revised numerical calibration is a stylized larger-tick regime, with
++$\alpha=0.05$, $\beta=0.002$, $\lambda=0.5$, $q=0$ and $k^\star=100000$.
++Thus the per-schedule slope cap is $\beta K_{\max}=0.064$ while all 33 slope
++levels remain available. The CLOB multiplier and signed interim auction
++shaping remain active; $q=0$ removes the purchase-side subsidy. These values
++are shared by both price sources and all methods. Historical experiments
++remain historical midprice replay within this stylized market, not a
++calibration of exchange spreads or auction depth. The references retain their
++stated formulas, including the same numerical slope cap. No superiority claim
++follows from changing the calibration; comparisons require paired evaluation.
+ 
+ \section{Learning Algorithms}
+ \label{sec:learning}
+ 
+-In this section, we explain the numerical methods used to approximately solve $(\bar{\mathbf{P}}_\lambda)$ and $(\mathbf{P})$ in the shaped specification.
++In this section, we explain the numerical methods used to approximately solve $(\mathbf{P})$ in the headline shaped specification and $(\bar{\mathbf{P}}_\lambda)$ in the shaping-off treatment.
++
++\paragraph{Numerical conditioning and replay.}
++We retain the common 18-coordinate observation. Before fitting training-only
++normalization statistics, we replace $H$ by $H-S^{\mathrm{mid}}$ and each
++slope-weighted quote $W$ by $W-S^{\mathrm{mid}}G$, retaining the original
++midprice and slopes. These are deterministic changes of coordinates. The
++normalizer uses 16 training paths spanning cancellation, persistent schedules,
++no-order auction behavior and large opening inventory, and is frozen thereafter.
++After initial-inventory centering, let $r_i$ denote the complete immediate
++reward, including the terminal component on the final step. Replay uses
++$\widetilde r_i=r_i+\Phi(y_{i+1})-\Phi(y_i)$, with
++$\Phi(\mathrm{terminal})=0$. During the CLOB phase,
++$\Phi(y)=(S^{\mathrm{mid}}-S_0^{\mathrm{mid}})I$.
++During the auction, write $G_a,W_a,G_e,W_e$ for the observed own and exogenous
++slope and slope-weighted-quote sums and $D$ for observed buy-minus-sell taker
++volume. Set
++\[
++\Delta=\frac{W_a-S^{\mathrm{mid}}G_a+W_e-S^{\mathrm{mid}}G_e+D}{G_a+G_e},
++\qquad \widehat Z=G_a\Delta-(W_a-S^{\mathrm{mid}}G_a),
++\]
++and $\Phi(y)=(S^{\mathrm{mid}}-S_0^{\mathrm{mid}})I+
++\Delta\widehat Z-\lambda(I-\widehat Z)^2$.
++This observable continuous-root estimate is a control variate; settlement still
++uses the actual tick-price pro-rata allocation. The potential telescopes, so
++it leaves the complete shaped return unchanged when $\Phi(y_0)=0$.
++DQN uses five-step replay targets that stop accumulating at phase boundaries
++and terminal states; the three library methods retain one-step replay. The
++DQN targets use sampled behavior continuations, without importance-sampling
++correction; thus they are an off-policy approximation, not an exact policy
++evaluation identity. Replay scaling never enters reported PnL.
+ 
+ \subsection{Deep Q-Network}
+ \label{subsec:dqn}
+@@ -469,11 +510,11 @@
+ 
+ The terminal Q-function is given by the reward $G(X_{\tau^\cl})$ and we do not need to define a neural network. We train by Q-learning with experience replay and target networks (DQN, \cite{mnih2015human}) using the Double-DQN target of \cite{van2016deep}, and ensuring junction at $t=\tau^\op$ when the phase switch occurs. Note that the $\varepsilon$-greedy training policy is stochastic, while the reported greedy evaluation policy is deterministic after applying solving ties by the first action in lexicographic grid order. For DQN, we use the same masked exploration schedule $(\varepsilon_e)_{e\geqslant 0}$ in both phases, given by
+ \[\varepsilon_e =\left\{\begin{array}{ll}
+-    1 & \text{if } 0\leqslant e<50 \\
+-    1-0.99(e-50)/600 & \text{if } 50 \leqslant e \leqslant 650 \\
+-    0.01 & \text{if } e>650
++    1 & \text{if } 0\leqslant e<5 \\
++    1-0.95(e-5)/90 & \text{if } 5 \leqslant e \leqslant 95 \\
++    0.05 & \text{if } e>95
+ \end{array} \right..\]
+-Conditional on exploration, an action is drawn uniformly from $\operatorname{Adm}(y)$. In the final evaluation we use $\varepsilon=0$. For the auction network, the value and query heads are initialized to zero and $\omega_a=-0.02$ in replay reward units, so the canonical no-order action initially has value zero and every other action has value $-0.02$. The scalar $\omega_a$ and all network weights remain trainable; this is an initialization prior rather than an admissibility constraint.
++Conditional on exploration, an action is drawn uniformly from $\operatorname{Adm}(y)$. In the final evaluation we use $\varepsilon=0$. Both phase networks use the default PyTorch linear-layer initialization, with $\omega_\kappa=0$ initially and no imposed no-order preference. All network weights and $\omega_\kappa$ remain trainable.
+ 
+ \begin{algorithm}[ht!]
+ \caption{Double DQN with phase-specific networks}
+@@ -515,8 +556,18 @@
+         $y_{i+1}\gets\varphi(X_{t_{i+1}})$;
+         otherwise set $y_{i+1}\gets\varnothing$
+ 
+-        \STATE Store $(y_i,a_i,c_rr_i,y_{i+1},
+-        \eta_i,c_rg_i)$ in $\mathcal D_{\kappa_i}$
++        \STATE For DQN, accumulate up to five realized transitions, stopping
++        at the next phase boundary or terminal state. Flush shorter pending
++        tails at a boundary. For each matured row beginning at $i$ and ending
++        at $i+L_i$, let $\eta_i$ indicate that its end is terminal and set
++        $g_i=\eta_i G(X_{\tau^\cl})$.
++        \STATE Let $R_i$ be the sum of the conditioned immediate rewards
++        over this row, including $g_i$ if terminal, and set
++        $y_i'=y_{i+L_i}$. Store
++        $(y_i,a_i,c_r(R_i-g_i),y_i',\eta_i,c_rg_i)$ in
++        $\mathcal D_{\kappa_i}$. Thus the target below includes the terminal
++        component exactly once. Permit at most one optimizer update per
++        realized step, and only when at least one row matures.
+ 
+         \IF{$|\mathcal D_{\kappa_i}|\geqslant  N_w^{\kappa_i}$}
+             \STATE Sample $\mathcal B=
+@@ -545,7 +596,7 @@
+             \ell\left(
+             Q_{\theta_{\kappa_i}}(y_j,a_j)-Y_j
+             \right)$
+-            where $\ell$ is the Huber loss
++            where $\ell(x)=x^2$
+ 
+             \STATE Update $\theta_{\kappa_i}^-
+             \gets
+@@ -569,7 +620,7 @@
+ $v=\min\{\lfloor I_t\rfloor,V_{\max},\lfloor (u_1+1)V_{\max}/2+1/2\rfloor\}$ and $\delta=\lfloor (u_2+1)L_{\max}/2+1/2\rfloor$, with $\delta=0$ when $v=0$. In the auction, $K^a=\beta\lfloor (u_1+1)K_{\max}/2+1/2\rfloor$, $\ell=\lfloor B_{\max}u_2+1/2\rfloor$ and $c=\mathbf1_{\{u_3\geqslant0\}}C(X_t)$.
+ The local offset is clipped to its state-dependent admissible interval; if that interval is empty the slope is set to zero. Zero slope uses the canonical offset zero. \vspace{0.5em}
+ 
+-We consider three off-policy actor-critic algorithms: Deep Deterministic Policy Gradient (DDPG), Twin Delayed DDPG (TD3), and Soft Actor-Critic (SAC), see respectively \cite{lillicrap2020continuous}, \cite{fujimoto2018addressing}, and \cite{haarnoja2018soft}. DDPG uses a deterministic actor with exploration noise. TD3 adds twin critics, target-policy smoothing, and delayed actor updates. Finally, SAC uses a stochastic actor and entropy regularization. These methods are natural continuous-control counterparts to Q-learning. and they all learn both the critic $Q_\theta$. DDPG and TD3 learn deterministic phase-specific actors $\mu_\omega \colon y\in \mathcal{Y}\longmapsto \mu_\omega(y)\in \mathcal U_{\kappa(y)}$ with weights $\omega \in \mathbb{R}^l$ with $l\geqslant 1$, such that $\Gamma_y(\mu_\omega(y)) \in \mathrm{Adm}(y)$. SAC instead learns a stochastic policy $\pi_\omega(\cdot\mid y) \in \mathcal{P}(\mathcal U_{\kappa(y)})$, and not a point map. The main difference with DQN is that the maximization over actions in the Bellman target is no longer computed by enumerating all admissible actions. Instead, the next action is produced by a learned policy. We refer to \cite{achiam2018spinningup} for details on each of DDPG, TD3 and SAC and summarized in the following parameter table used for all numerical simulations. Each actor–critic method uses separate phase-specific actors, critics, target networks and replay buffers, and uses the auction critic for the continuation target at the phase boundary. The deterministic auction actors and the mean of the SAC auction policy are initialized at the normalized proposal $(-1+0.25/K_{\max},0,-0.5)$, which projects to the canonical no-order action. SAC's initial pre-squash log standard deviation is $-2.5$ in each auction coordinate. SAC is evaluated using its deterministic mean proposal, while its training policy remains stochastic.
++We consider three off-policy actor-critic algorithms: Deep Deterministic Policy Gradient (DDPG), Twin Delayed DDPG (TD3), and Soft Actor-Critic (SAC), see respectively \cite{lillicrap2020continuous}, \cite{fujimoto2018addressing}, and \cite{haarnoja2018soft}. DDPG uses a deterministic actor with exploration noise. TD3 adds twin critics, target-policy smoothing, and delayed actor updates. Finally, SAC uses a stochastic actor and entropy regularization. These methods are natural continuous-control counterparts to Q-learning. and they all learn both the critic $Q_\theta$. DDPG and TD3 learn deterministic phase-specific actors $\mu_\omega \colon y\in \mathcal{Y}\longmapsto \mu_\omega(y)\in \mathcal U_{\kappa(y)}$ with weights $\omega \in \mathbb{R}^l$ with $l\geqslant 1$, such that $\Gamma_y(\mu_\omega(y)) \in \mathrm{Adm}(y)$. SAC instead learns a stochastic policy $\pi_\omega(\cdot\mid y) \in \mathcal{P}(\mathcal U_{\kappa(y)})$, and not a point map. The main difference with DQN is that the maximization over actions in the Bellman target is no longer computed by enumerating all admissible actions. Instead, the next action is produced by a learned policy. We refer to \cite{achiam2018spinningup} for details on each of DDPG, TD3 and SAC and summarized in the following parameter table used for all numerical simulations. Each actor–critic method uses separate phase-specific actors, critics, target networks and replay buffers, and uses the auction critic for the continuation target at the phase boundary. DDPG, TD3 and SAC use Stable-Baselines3 version 2.7.1 with its default network initialization, without a special auction no-order prior. Before each phase replay warm-up is reached, proposals are sampled uniformly from the normalized proposal box. A replay adapter supplies the auction continuation value for CLOB boundary transitions; losses, optimizer steps and target updates use the library implementations. Actor and critic optimizer hooks apply the common gradient-norm bound of 1 immediately before each library step. SAC uses automatic entropy adjustment initialized at $\alpha_{\mathrm{ent}}=10^{-3}$ in replay reward units. SAC is evaluated using its deterministic mean proposal, while its training policy remains stochastic.
+ 
+   \begin{table}[ht!]
+   \centering
+@@ -581,29 +632,30 @@
+   \midrule
+   \multicolumn{5}{l}{\emph{Shared}}\\
+   Replay capacity $M$             & \multicolumn{4}{c}{$50{,}000$} \\
+-  Warm-up sizes $N_w^c$/$N_w^a$       & \multicolumn{4}{c}{$2{,}000/512$ (CLOB/Auction)} \\
++  Warm-up sizes $N_w^c$/$N_w^a$       & \multicolumn{4}{c}{$512/256$ (CLOB/Auction)} \\
+   Minibatch size $B$                   & \multicolumn{4}{c}{$128$} \\
+   Optimizer                            & \multicolumn{4}{c}{Adam} \\
+-  Hidden layers (ReLU)                 & \multicolumn{4}{c}{$2\times 128$} \\
++  Hidden layers (ReLU)                 & \multicolumn{4}{c}{$2\times 64$} \\
+   Gradient-norm clip                   & \multicolumn{4}{c}{$1.0$} \\
+-  Reward scale $c_r$                   & \multicolumn{4}{c}{$10^{-3}$} \\
++  Reward scale $c_r$                   & \multicolumn{4}{c}{$10^{-2}$} \\
+   Gradient steps per env.\ step        & \multicolumn{4}{c}{$1$} \\
++  Replay horizon & $5$ & $1$ & $1$ & $1$ \\
+   DQN action-embedding rank $r$ & $32$ & -- & -- & -- \\
+   \midrule
+   \multicolumn{5}{l}{\emph{Learning rates}}\\
+   Critic & $1.5\times10^{-4}$ & $3\times10^{-4}$ & $3\times10^{-4}$ & $3\times10^{-4}$ \\
+-  Actor               & -                    & $1\times10^{-4}$ & $3\times10^{-4}$ & $3\times10^{-4}$ \\
++  Actor               & -                    & $3\times10^{-4}$ & $3\times10^{-4}$ & $3\times10^{-4}$ \\
+   Temperature      & -                    & -                  & -                  & $3\times10^{-4}$ \\
+   \midrule
+   \multicolumn{5}{l}{\emph{Critics and target networks}}\\
+-  Critic loss                          & Huber    & MSE      & MSE      & MSE \\
++  Critic loss                          & MSE    & MSE      & MSE      & MSE \\
+   Number of critics                    & $1$      & $1$      & $2$      & $2$ \\
+-  Polyak coefficient $\tau_{\mathrm{targ}}$ & $0.0025$ & $0.0025$ & $0.005$ & $0.005$ \\
++  Polyak coefficient $\tau_{\mathrm{targ}}$ & $0.005$ & $0.0025$ & $0.005$ & $0.005$ \\
+   \midrule
+   \multicolumn{5}{l}{\emph{Exploration}}\\
+   Behaviour policy                     & $\varepsilon$-greedy & Gaussian & Gaussian & Stochastic \\
+-  Range & $1 \to 0.01$ & - & - & - \\
+-  Warm-up/decay-end (episode) & $50 / 650$  & - & - & - \\
++  Range & $1 \to 0.05$ & - & - & - \\
++  Warm-up/decay-end (episode) & $5 / 95$  & - & - & - \\
+   Action-noise std & -     & $0.1$ & $0.1$ & - \\
+   Target entropy    & -      & -  & -  & $-2$/$-3$ \\
+   \midrule
+--- a/paper/results/tables_params/params_generative.tex
++++ b/paper/results/tables_params/params_generative.tex
+@@ -27,12 +27,12 @@
+ $p_1$ & 1 & One market-maker arrival proposal per auction minute; acceptance is validity-screened \\
+ $p_3$ & 0.3 & Per-side, per-minute market-taker arrival proposal probability \\
+ $p_4$ & 0.05 & Per-side, per-minute active-market-order cancellation proposal probability \\
+-$\lambda$ & 2 & Inventory penalty \\
+-$q$ & 1 & Shaping-treatment purchase-side coefficient; inactive in headline runs \\
+-$k^\star$ & 1000 & CLOB shaping tolerance; inactive in headline runs \\
++$\lambda$ & 0.5 & Inventory penalty \\
++$q$ & 0 & Purchase-side subsidy disabled; other headline shaping remains active \\
++$k^\star$ & 100000 & Active headline CLOB shaping tolerance \\
+ $d$ & 0.1 & Cancellation-fee increment, $d_j=(j-n-1)d$ \\
+-$\alpha$ & 0.01 & Tick size \\
+-$\beta$ & 1 & Tick size of grid on $K^a$ \\
++$\alpha$ & 0.05 & Tick size \\
++$\beta$ & 0.002 & Tick size of grid on $K^a$ \\
+ $K_\text{max}$ & 32 & Full slope-index lattice bound (zero included) \\
+ $H_0$ & 100 & Initial projected clearing signal \\
+ $\eta_H$ & 0.95 & Update weight in Algorithm \ref{alg:hyp_clearing_price}\\

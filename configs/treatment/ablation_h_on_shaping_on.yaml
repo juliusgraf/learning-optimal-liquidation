@@ -1,14 +1,8 @@
 # Matched 2x2 arm: projected-clearing information present, shaping present.
-#
-# This deliberately preserves the manuscript's exact shaped objective as a
-# treatment. With persistent multi-order schedules it need not share the
-# economic optimum, so reportability depends on maturity and economic
-# validation ranking, not improvement over the untrained diagnostic policy.
+# Alias of the active headline; the treatment launcher reuses its artifacts.
 experiment:
   ablation_label: H_on__shaping_on__auction_on
 rl:
   h_cl_feature_enabled: true
-  checkpoint_require_initial_improvement: false
 reward:
   shaping_enabled: true
-  q: 1.0

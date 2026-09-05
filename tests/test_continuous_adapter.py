@@ -282,7 +282,7 @@ def test_discrete_and_continuous_agents_share_full_slope_and_local_offset_grids(
     )
     dqn_slopes = sorted({a.K_a for a in raw.auction_grid.actions})
     assert dqn_offsets == list(range(-10, 11))
-    assert dqn_slopes == [float(k) for k in range(33)]
+    assert dqn_slopes == [cfg.actions.beta * k for k in range(33)]
 
     env = ContinuousActionAdapter(new_env(cfg))
     drive_to_auction(env)
@@ -301,7 +301,7 @@ def test_discrete_and_continuous_agents_share_full_slope_and_local_offset_grids(
         }
     )
     assert continuous_offsets == list(range(-10, 11))
-    assert continuous_slopes == [float(k) for k in range(33)]
+    assert continuous_slopes == [cfg.actions.beta * k for k in range(33)]
 
 
 def test_no_cancel_treatment_uses_two_dimensional_auction_proposal():

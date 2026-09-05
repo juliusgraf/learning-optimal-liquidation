@@ -1,0 +1,18 @@
+{
+  "interpretation": "dimensional diagnostics, not estimates of exchange liquidity",
+  "model_tick_bps": 1.0,
+  "model_best_quoted_spread_bps": 2.0,
+  "clob_zero_reward_gap": 100.0,
+  "clob_penalty_per_unit_price_gap_at_S0": 1.0,
+  "purchase_subsidy_per_unit_at_S0": 0.0,
+  "auction_fictive_sale_credit_per_unit_at_S0": 0.01,
+  "auction_local_excess_sale_stationary_point": 0.5,
+  "inventory_penalty_one_unit_in_ticks": 1.0,
+  "auction_slope_quantum": 0.25,
+  "auction_slope_max_per_schedule": 8.0,
+  "nominal_min_slope_one_tick_quantity": 0.0025,
+  "nominal_max_schedule_local_quantity": 0.8,
+  "nominal_max_schedule_fraction_of_initial_inventory": 0.008,
+  "nominal_all_slots_local_quantity": 24.0,
+  "expected_clob_buy_volume_unconditional": 397.2458785093636
+}

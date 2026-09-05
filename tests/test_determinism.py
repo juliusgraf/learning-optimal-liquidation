@@ -36,7 +36,7 @@ while True:
         volume = float(min(5, max(0, math.floor(env.inventory))))
         a = ClobAction(volume, 2 if volume else 0)
     else:
-        a = AuctionAction(2.0, 2, int(env.cancel_admissible))
+        a = AuctionAction(2.0 * env.cfg.actions.beta, 2, int(env.cancel_admissible))
     obs, r, term, _, info = env.step(a)
     h.update(obs.tobytes())
     h.update(np.float64(r).tobytes())
@@ -87,7 +87,7 @@ def test_reset_seed_reproducible_in_process(synthetic_cfg):
                 volume = float(min(5, max(0, math.floor(env.inventory))))
                 a = ClobAction(volume, 2 if volume else 0)
             else:
-                a = AuctionAction(2.0, 2, int(env.cancel_admissible))
+                a = AuctionAction(2.0 * env.cfg.actions.beta, 2, int(env.cancel_admissible))
             _, r, term, _, _ = env.step(a)
             rewards.append(r)
             if term:

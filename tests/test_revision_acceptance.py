@@ -401,7 +401,7 @@ def test_lagged_indicative_price_and_strict_before_agent_cancellation():
     assert opening_h == last_clob["H_next"] == last_clob["H_used"]
 
     env._generator.auction_flow.inject_market_maker(20.0, env.s_mid + 1.0)
-    _, _, _, _, info = env.step(AuctionAction(2.0, 0, 0))
+    _, _, _, _, info = env.step(AuctionAction(2.0 * env.cfg.actions.beta, 0, 0))
     assert info["H_used"] == opening_h
     assert env.h_cl == info["H_next"]
     assert info["H_next"] != opening_h
@@ -508,9 +508,9 @@ def test_one_update_opportunity_and_common_unclipped_scaled_reward(algo):
             next_mask=mask,
         )
     )
-    assert agent.hp.reward_scale == REWARD_SCALE
+    assert agent.hp.reward_scale == cfg.algo.hyperparams["reward_scale"]
     assert agent.replay["clob"]._reward[0] == pytest.approx(
-        raw_reward * REWARD_SCALE, rel=1e-6
+        raw_reward * agent.hp.reward_scale, rel=1e-6
     )
     assert agent.update("clob").get("n_grad_steps_clob") == 1.0
     assert agent.update("clob") == {}
@@ -563,6 +563,7 @@ def test_terminal_prorata_balances_and_environment_uses_actual_fill(monkeypatch)
 
 def test_auction_has_no_inventory_bound_or_terminal_clipping():
     cfg = load_synthetic_cfg(
+        "actions.beta=1.0",  # exercise a large admissible fill deliberately
         "grid.tau_op=3",
         "grid.tau_cl=4",
         "grid.h=1",

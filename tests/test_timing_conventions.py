@@ -11,6 +11,7 @@ from lmm.env.action_spaces import AuctionAction, ClobAction
 
 def quiet_cfg(*overrides):
     return load_synthetic_cfg(
+        "actions.beta=1.0",  # deliberately large schedules make chronology visible
         "auction_flow.p1=0.0",
         "auction_flow.p2=0.0",
         "auction_flow.p3=0.0",
@@ -117,7 +118,7 @@ def test_h_cache_chain_across_phase_boundary_and_terminal(synthetic_cfg):
             volume = float(min(5, int(env.inventory)))
             action = ClobAction(volume, 2 if volume else 0)
         else:
-            action = AuctionAction(2.0, 2, int(env.cancel_admissible))
+            action = AuctionAction(2.0 * env.cfg.actions.beta, 2, int(env.cancel_admissible))
         _, _, done, _, info = env.step(action)
         assert info["H_used"] == previous
         previous = info["H_next"]

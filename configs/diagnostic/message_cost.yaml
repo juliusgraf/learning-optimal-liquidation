@@ -1,0 +1,5 @@
+# A small positive cost increment per cancellation minute; maximum .029,
+# instead of 2.9, model price units. A stylized messaging cost, not an
+# assertion that ordinary exchange cancellations incur this fee schedule.
+reward:
+  d: 0.001

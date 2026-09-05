@@ -296,8 +296,8 @@ def aggregate_quote_midpoints(
             "median_spread": float(np.median(spread)),
             "median_spread_bps": float(np.median(spread_bps)),
             "p95_spread_bps": float(np.quantile(spread_bps, 0.95)),
-            "median_bid_size_round_lots": float(np.median(chosen["bid_size"])),
-            "median_ask_size_round_lots": float(np.median(chosen["ask_size"])),
+            "median_bid_size_provider_units": float(np.median(chosen["bid_size"])),
+            "median_ask_size_provider_units": float(np.median(chosen["ask_size"])),
         }
     out.index.name = "Datetime"
     return out, diagnostics
@@ -345,21 +345,37 @@ def _read_event_archive(path: str | Path) -> dict[str, list[dict[str, Any]]]:
     return events
 
 
+def quote_size_unit(feed: str, start_date: str, end_date: str) -> str:
+    """Alpaca CTA/UTP size display changed on 2025-11-03; never multiply sizes.
+
+    Source: https://docs.alpaca.markets/us/v1.1/changelog/marketdata-bid-and-ask-size-display-change
+    The dated SIP change does not establish the units of another feed.
+    """
+    if feed != 'sip':
+        return 'provider-native units (feed-specific; not converted)'
+    if end_date < '2025-11-03':
+        return 'round lots (provider bs/as fields)'
+    if start_date >= '2025-11-03':
+        return 'shares (provider bs/as fields)'
+    return 'mixed: round lots before 2025-11-03; shares from 2025-11-03'
+
+
 def _quality_summary(
     records: Sequence[Mapping[str, Any]], tickers: Sequence[str]
-) -> dict[str, dict[str, float]]:
+) -> dict[str, dict[str, float | None]]:
     fields = (
         "median_spread_bps",
         "p95_spread_bps",
-        "median_bid_size_round_lots",
-        "median_ask_size_round_lots",
+        "median_bid_size_provider_units",
+        "median_ask_size_provider_units",
         "max_selected_quote_age_seconds",
     )
-    summary: dict[str, dict[str, float]] = {}
+    summary: dict[str, dict[str, float | None]] = {}
+    mixed_units = len({record.get('quote_size_unit') for record in records}) > 1
     for ticker in tickers:
         symbol = str(ticker).upper()
         summary[symbol] = {
-            field: float(
+            field: None if mixed_units and 'size_provider_units' in field else float(
                 statistics.median(
                     float(record["quote_quality"][symbol][field]) for record in records
                 )
@@ -489,6 +505,7 @@ def regenerate_range(
                 "n_rows": int(len(midpoints)),
                 "cache_hit": cache_hit,
                 "quote_quality": quote_quality,
+                "quote_size_unit": quote_size_unit(feed, session_date, session_date),
                 **raw_record,
             }
         )
@@ -509,7 +526,7 @@ def regenerate_range(
         raise ValueError(f"duplicate timestamp across sessions: {duplicate}")
     out_path = write_csv(combined, out)
     metadata: dict[str, Any] = {
-        "artifact_schema_version": 3,
+        "artifact_schema_version": 4,
         "dataset_id": dataset_id,
         "tickers": symbols,
         "start_date": start_date,
@@ -539,7 +556,8 @@ def regenerate_range(
         "price_field": "(bid_price + ask_price) / 2",
         "quote_feed": feed,
         "quote_consolidation": "consolidated NBBO" if feed == "sip" else "single-venue IEX",
-        "quote_size_unit": "round lots (provider bs/as fields)",
+        "quote_size_unit": quote_size_unit(feed, start_date, end_date),
+        "quote_size_unit_source": "https://docs.alpaca.markets/us/v1.1/changelog/marketdata-bid-and-ask-size-display-change",
         "normalize": "none",
         "model_coordinate_transform": "each selected session is rebased to grid.S0 by the environment loader",
         "fill": "error",

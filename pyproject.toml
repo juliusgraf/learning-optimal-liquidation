@@ -15,7 +15,8 @@ dependencies = [
     "scipy>=1.11",
     "pyyaml>=6.0",
     "torch>=2.11",
-    "gymnasium>=1.2",
+    "gymnasium>=1.2,<1.3",
+    "stable-baselines3==2.7.1",
 ]
 
 [project.optional-dependencies]
@@ -26,6 +27,7 @@ lmm-train = "lmm.experiments.train:main"
 lmm-evaluate = "lmm.experiments.evaluate:main"
 lmm-make-figures = "lmm.experiments.make_figures:main"
 lmm-make-tables = "lmm.experiments.make_tables:main"
+lmm-make-report = "lmm.experiments.make_report:main"
 lmm-policy-differences = "lmm.experiments.policy_differences:main"
 lmm-load-midquotes = "lmm.data.load_midquote_data:main"
 lmm-diagnose-simulator = "lmm.experiments.diagnose_simulator:main"

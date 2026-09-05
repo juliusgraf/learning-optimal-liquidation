@@ -1,0 +1,8 @@
+# Lillicrap et al., ICLR 2016, section 7 optimizer settings.
+# Keep the shared 64x64 networks and SB3's native DDPG losses/updates.
+algo:
+  hyperparams:
+    learning_rate: 0.001
+    actor_learning_rate: 0.0001
+    critic_weight_decay: 0.01
+    target_soft_tau: 0.001

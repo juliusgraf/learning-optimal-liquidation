@@ -1,0 +1,5 @@
+# One common invertible transform resolves near-zero exposure without
+# discarding the large inventories needed for coverage and robustness.
+rl:
+  phase_normalization: true
+  auction_inventory_asinh: true

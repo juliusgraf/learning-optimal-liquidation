@@ -1,54 +1,33 @@
-# Revised RL design
+# Learning and evaluation contract (v17)
 
-This document records the implemented learning contract. The resolved active
-configuration is authoritative for experiment selection; the manuscript gives
-the mathematical model. This file explains how state, actions, chronology,
-rewards, and evaluation criteria reach the learners.
+`configs/base.yaml` and the algorithm/treatment overlays are the executable
+specification. `paper/main.tex` defines the control problem. The protected
+manuscript has not been edited: `docs/manuscript_recommendations_v17.patch` gives
+precise proposed changes, and `docs/model_refinement_v17.md` records the diagnosis
+and limits of the bounded verification.
 
-## Physical clock
+## Economics and observations
 
-Synthetic and historical environments share one minute as their physical time
-unit. The CLOB runs from minute 0 to auction opening at `tau_op=120`; the
-closing auction then has 30 one-minute action intervals and clears at
-`tau_cl=150`. CLOB `lambda0` values are intensities per minute, and auction
-arrival/cancellation probabilities apply once per minute. The rough-Heston
-Euler scheme converts its nonuniform minute grid to trading years with
-`s_star=98,280` trading minutes per year. This affects calendar-time dynamics,
-but not the number of simulator decisions or network input dimensions.
+Both price sources share the 120-minute CLOB and 30-minute closing auction,
+one-sided CLOB liquidation, signed persistent auction schedules, cancellation
+chronology, tick clearing and actual pro-rata allocation. The historical
+setting replays midprices within the same stylized simulated market; it is
+not a replay or calibration of historical order flow or exchange liquidity.
+The calibration uses alpha=.01, beta=.25, lambda=.01, k_star=10000,
+q=0, auction shaping weight=.0001, d=.001, and exogenous slope support
+[1,20]. Price units are rebased; the liquidity parameters are stylized.
+See the dimensional and empirical qualifications in docs/model_refinement_v17.md.
 
-## Shared simulator contract
+All 391 CLOB and 1,346 auction actions remain. The auction slope lattice is
+`0.25 * {0,...,32}`; its maximum is 8 per schedule. Multiple schedules
+may remain live, and aggregate fills and terminal inventory are never clipped.
+AS/TWAP retain their manuscript formulas and the same per-schedule slope cap.
+They are deterministic reference policies, not deterministic market outcomes
+or members of the same two-sided auction policy class.
 
-Rough-Heston and historical-midquote runs differ only in the exogenous
-mid-price branch and run identity. They share the complete market and learner
-configuration: `lambda0=1`, `V_inf=2`, `rho_lob=0.96`, exogenous book depth
-200, strategic CLOB offset bound 12, auction flow, action semantics, centered
-economic reward, validation design, and algorithm hyperparameters. Setting
-overlays contain no simulator or learning overrides. The active historical
-branch is therefore a historical mid-price replay inside the same simulated
-CLOB/auction—not a separately calibrated simulator.
+The raw observation remains the common 18-coordinate manuscript vector:
 
-## Objective and Bellman targets
-
-The finite-horizon learning objective is undiscounted. Every nonterminal target
-uses Bellman factor one, including transitions across irregular CLOB time gaps.
-The final auction transition stores the step reward and known terminal reward
-separately and adds the latter exactly once, with no terminal network
-bootstrap.
-
-At the phase boundary, the last CLOB transition evaluates its next action with
-the auction target network. DQN uses Double-DQN selection/evaluation when the
-resolved config enables it; every Bellman maximization is masked by the next
-state's admissible action set.
-
-All four methods store rewards at the common scale `1e-3`. None clips rewards.
-Each environment transition creates at most one eligible optimizer update from
-that transition's phase. Repeated calls cannot manufacture extra updates.
-
-## Common observation
-
-Both phases use the same 18-coordinate input in manuscript order:
-
-```text
+```
 (time, inventory, h_cl, s_mid, decision_index,
  depth_ask, depth_bid, top_ask, top_bid,
  n_mm, n_buy, n_sell, cancel_admissible,
@@ -56,261 +35,187 @@ Both phases use the same 18-coordinate input in manuscript order:
  auction_imbalance, exogenous_weighted_quote)
 ```
 
-Phase-inactive coordinates are zero. Auction quantities describe the currently
-accepted exogenous proposals and active strategic schedules strictly before the
-current action. The indicative price is the lagged value available under the
-manuscript chronology.
+Before fitting standardization, `h_cl` becomes `h_cl-s_mid`; each weighted
+quote becomes `weighted_quote-s_mid*slope`. The original midprice and slopes
+are retained, so this is a deterministic invertible coordinate change in
+H-on runs. H-off runs set the transformed H coordinate to zero and anchor
+auction actions on the frozen midprice. No future grid, arrivals or prices
+enter any feature or action.
 
-Physical time in minutes and decision index are divided by `tau_cl`. All other continuous
-features are standardized using statistics fitted on dedicated training-only
-paths and then frozen. The same transformed observation reaches behavior
-policies, replay, online networks, target networks, actors, and critics.
-Normalizer state is embedded in every checkpoint and reused unchanged for
-validation and test. In the `H_cl`-off ablation, the normalized `h_cl`
-coordinate is set to zero while the network dimension remains 18.
+The normalizer is fitted on 16 independent training paths and frozen. Its
+four calibration modes cover random actions, persistent auction schedules,
+CLOB abstention followed by persistent schedules, and auction abstention.
+Uniform cancellation-heavy paths alone underrepresent accumulated exposure.
+Time and decision index divide by tau_cl; the cancellation bit passes through.
+Checkpoints store and validate the fitted transform.
 
-## Discrete actions
+DDPG and TD3 now fit separate CLOB/auction population statistics. Before
+fitting, their auction inventory and continuous-root residual exposure use
+the signed transform `asinh(x / I_s)`, where `I_s=alpha/lambda` (I0 if lambda
+is zero). This inventory scale equates one-tick execution value with the
+quadratic inventory cost. The transform is invertible and unbounded. Time
+and decision index retain their existing scaling. DQN and SAC retain pooled
+linear standardization because the matched development controls did not
+support switching them. Thus the headline comparison includes the specified
+preprocessing, not an isolated causal comparison of algorithm update rules.
 
-The canonical five-coordinate representation is `(v, delta, K, ell, c)`.
+The supplementary `representation_pooled.yaml` and
+`representation_phase_asinh.yaml` overlays in `configs/treatment/` apply
+one representation uniformly to all four methods. They are bounded
+representation controls outside the existing publication treatment matrix;
+their distinct labels prevent confusing them with headline artifacts.
 
-CLOB actions consist of one canonical no-order action `(0,0)` and every
-integer `v=1..30`, `delta=0..12`, for 391 actions. The state mask enforces
-`v <= floor(inventory)`; zero volume always has zero offset. A strategic CLOB
-order lives only for the current realized interval and is removed before the
-next snapshot/carry-over.
+## Rewards
 
-Auction actions use the full manuscript lattice `beta*{0,...,K_max}`, with
-`beta=1` and `K_max=32`, and the manuscript local action
-`ell in [-B_max,B_max]=[-10,10]`. At decision time the simulator derives
+Headline training uses the author-approved weighted shaped J: only fictive
+auction credits and their exact cancellation clawbacks are multiplied by
+.0001. Economic cash, fees, risk and clearing are unchanged. This is a change
+to the manuscript objective, not an invariant normalization. q=0 removes the purchase
+subsidy; it does not remove the CLOB multiplier or the interim auction term.
+Initial-inventory centering subtracts the policy-invariant S0*I0 once across
+the episode. Thus `training_return` reports a sample of J-S0*I0.
 
-```text
-b_t = round_half_up((H_t^cl-S_{tau_op}^mid)/alpha) + ell_t,
+A training-only control variate uses `r_t + Phi(next)-Phi(now)` before replay
+scaling. During CLOB trading,
+`Phi=(s_mid-S0)*I-lambda*max(I-I0*(1-t/tau_op),0)^2`. During the auction,
+using the observed slope and weighted-quote sums,
+
+```
+delta = (W_own-mid*G_own + W_exo-mid*G_exo + taker_imbalance)
+        / (G_own+G_exo)
+z_hat = G_own*delta - (W_own-mid*G_own)
+Phi = (mid-S0)*inventory + delta*z_hat - lambda*(inventory-z_hat)^2
 ```
 
-and masks a local action if the resulting absolute `b_t` is outside the
-ambient band `[-B_inf,B_inf]=[-150,150]`. The
-same `B_inf=150` support sets the exogenous quote bounds `M_1=-B_inf` and
-`M_2=B_inf`; cross-configuration validation requires the two uses of `B_inf`
-to agree. `B_max=10` is the local manuscript-action half-width. With
-cancellation enabled the grid has
-`2 + 2*32*21 = 1,346` actions. Without cancellation it has
-`1 + 32*21 = 673`. Zero slope has `ell=0`. Cancellation removes every live
-strategic schedule submitted strictly before the current action; the new
-current action is never canceled by its own bit. Without cancellation, a new
-positive-slope action leaves every earlier schedule live; with cancellation,
-it first removes all earlier schedules and may then submit a replacement.
-Equal DQN Q-values choose the first action in lexicographic order.
+The terminal potential is exactly zero. This approximate continuous-root
+liquidation value is only a control variate; actual clearing, fills and cash
+continue to use the original simulator. The potential telescopes. In the
+rebased settings Phi(initial)=0. In addition, replay subtracts the realized
+price return of a frozen deterministic inventory reference curve, evaluated
+at the midpoint of each CLOB decision interval. The reference averages the
+normalizer's training inventory trajectories, excluding deliberate CLOB
+abstention, and is interpolated onto minute times. On a common exogenous
+price/clock path the adjustment is identical for every policy, including
+historical nonmartingales; its historical expectation need not be zero.
+Thus policy differences are preserved, while the diagnostic replay sum is
+`training_return + potential_adjustment + market_baseline_adjustment`.
+Reported J and PnL omit both adjustments. No reward clipping is used.
 
-Auction inventory is not clipped or bounded by a hidden liquidation
-constraint. Two-sided learned schedules may buy. Clearing and accounting use
-the actual signed pro-rata fill.
+Validation, checkpoint selection, AS/TWAP comparisons and final evaluation
+instantiate `economic_evaluation_config`, which disables all manuscript
+shaping and the training control variate. Their metric is
 
-## Continuous proposal relaxation
-
-DDPG, TD3, and SAC output tanh-normalized raw proposals in `[-1,1]`. The CLOB
-actor has two coordinates. The auction actor has three coordinates when
-cancellation is enabled and two otherwise. The environment adapter alone maps
-these proposals to the same market action semantics used by DQN:
-
-- CLOB volume/offset are half-up rounded, inventory-admissible, and canonical at
-  zero volume;
-- auction slope/local `ell` are half-up rounded, the nonnegative-reference condition
-  is enforced, and the cancellation threshold is applied only when admissible.
-
-Consequently all four learned methods use the same 21 local integer templates.
-They are indicative-centred when `actions.auction_anchor=indicative` (the H-on
-arms) and frozen-auction-open-mid-centred when it is `frozen_mid` (the H-off
-arms), while every executed order still carries an absolute frozen-mid `b`.
-DQN and the projected continuous actors share all 33 integer
-slope levels `0,...,32`; they differ in raw proposal parameterization, not
-executable slope support. A continuous proposal is clipped to the nearest ambient boundary;
-a discrete proposal outside that boundary is masked.
-
-Replay stores the committed normalized proposal, not a reconstructed market
-action. DDPG/TD3 exploration noise and TD3 target smoothing are applied in
-normalized proposal coordinates before projection. Projection statistics are
-saved as evaluation diagnostics.
-
-## Two-phase networks and replay
-
-Each method has separate CLOB and auction function approximators and replay
-buffers because the action spaces differ structurally. The observation size is
-identical. Both settings use two 128-unit hidden layers and phase-specific
-replay warm-ups of 2,000 CLOB and 512 auction transitions. Phase-local target updates occur only after a successful update from
-that phase. Replay retains the next phase and admissibility mask so the CLOB to
-auction junction is explicit.
-
-The environment therefore changes its exposed Gymnasium `action_space` at the
-CLOB-to-auction boundary. The repository's two-head episode loop and
-continuous adapter handle that transition explicitly. Generic Gymnasium
-wrappers that assume one stationary action space are not supported without an
-additional fixed-space wrapper.
-
-DQN uses masked epsilon-greedy exploration, uniform over admissible actions,
-with the same probability in both phases. The active linear schedule is
-`epsilon=1` for episodes 0--49, decays to `0.01` at episode 650, and remains
-there. Each phase uses a coordinate-conditioned Q network rather than one
-independent output parameter vector per discrete action. The normalized CLOB
-coordinates are `(v/V_max,delta/L_max)` and the normalized auction coordinates
-are `(K/(beta*K_max),ell/B_max,c)`. A two-layer state trunk produces a scalar
-value and a rank-32 query; a shared two-layer action encoder produces the
-rank-32 action embedding. The score is
-
-```text
-Q(s,a) = V(s) + <query(s), embedding(a)>/sqrt(32)
-         + w_prior * 1{a is not the canonical no-op}.
 ```
-
-Greedy selection and masked Double-DQN targets evaluate the complete exact
-grid. Replay updates evaluate only the sampled action, avoiding an unnecessary
-batch-by-grid tensor. This architecture shares statistical evidence across
-the structured coordinates of the 1,346-action auction lattice without
-relaxing or coarsening that lattice. Checkpoints record architecture identifier
-`coordinate_conditioned_bilinear_v1` and reject checkpoints from the earlier
-independent-output head. They also validate the simulator, reward, action-grid,
-feature, Bellman, and DQN-hyperparameter contract, so a same-shaped tensor
-checkpoint cannot be loaded under different economic or action semantics.
-
-For the auction network, the state value/query heads start at zero and the
-trainable non-no-op coefficient starts at `-0.02` in replay-scaled reward
-units. The canonical no-order action is therefore the unique initial greedy
-auction action. This is an initialization prior, not an admissibility or
-safety constraint, and gradient updates can reverse it.
-For exact reproduction, DDPG, TD3, and SAC likewise initialize their auction
-actors at the projected no-order action `(K,ell,c)=(0,0,0)`: the auction output
-weights are zero and the output biases are the inverse-`tanh` coordinates that
-project to that action. SAC applies the same rule to its mean head and starts
-its auction log-standard-deviation bias at `-2.5`. These are initialization
-priors only; the full admissible action set remains available from episode
-zero.
-DDPG uses one critic, TD3 two critics and delayed actor updates, and SAC twin
-critics plus entropy regularization. Their algorithm-specific hyperparameters
-are resolved from `configs/algo/*.yaml`; the environment/reward/normalization
-contract is shared.
-
-## Reward and accounting separation
-
-Headline training has shaping disabled. With `lambda_inv=2` and cancellation
-fee parameter `d=0.1`, it uses actual CLOB execution cash, actual rationed
-auction cash, the residual inventory mark, cancellation fees, and the terminal
-inventory penalty. Initial-inventory centering removes the policy-invariant
-constant `S0*I0` incrementally. Thus the complete headline training return,
-periodic validation return, and final evaluation return all equal
-`risk_adjusted_pnl` to numerical tolerance.
-
-The exact manuscript three-regime shaped reward is retained in the two
-explicit `shaping_on` treatments with `q=1` and exact cancellation clawback.
-For an auction order submitted at decision `s`, define
-
-```text
-x_s   = K_s * H_s * (H_s - S_s)
-phi_s = x_s + f_a(x_s).
-```
-
-If `L_t` is the set of strategic schedules live immediately before action
-`t`, the implemented interim reward is
-
-```text
-r_t = phi_t - d_t*c_t - c_t * sum(phi_s for s in L_t).
-```
-
-The subtraction uses each order's original signed credit, not a revaluation at
-the current indicative price. Cancellation occurs before the current schedule
-is inserted, so a replacement does not cancel itself. Multiple schedules may
-accumulate between cancellations. Pathwise over the undiscounted auction, each
-submitted schedule's credit is either retained if the schedule survives to
-clearing or exactly reversed by the first later cancel-all action, less all
-cancellation fees. Centering remains the same policy-invariant adjustment in
-these treatments. Validation and final evaluation always instantiate a
-separate economic-only reward contract and record CLOB cash, terminal auction
-cash, cancellation fees, residual mark, and the inventory penalty.
-
-Primary policy selection and comparison use:
-
-```text
-pnl = CLOB cash + auction cash + residual mark
+pnl = CLOB cash + actual auction cash + frozen-mid residual mark
       - initial inventory value - cancellation fees
-risk_adjusted_pnl = pnl - lambda_inv * I_final^2
+risk_adjusted_pnl = pnl - lambda * final_inventory^2
 ```
 
-No shaping term enters either field. With centering in the economic validation
-and test environments, the episode return equals `risk_adjusted_pnl` to
-numerical tolerance.
+Reported PnL never includes shaping or centering a second time. Evaluation
+returns equal risk-adjusted PnL. The training and economic metrics must not
+be conflated in plots or interpretation.
 
-The shaped objective is not the economic objective. With `q=1`,
-`phi_s=max(x_s,0)`. Under the indicative-centred local grid, any positive-slope
-proposal below `H_s` receives positive fictive credit at submission regardless
-of whether it later fills. Because `c=0` leaves earlier schedules live, a
-policy can stack such schedules and retain every credit through clearing.
-Clawback prevents canceled schedules from retaining their original credits;
-it cannot reverse credits for schedules deliberately left live. The `q=1`
-terminal correction also neutralizes negative purchase-side auction cash in
-the shaped training signal. Consequently the shaped treatment can reward live
-order accumulation and purchases while economic risk-adjusted PnL deteriorates.
-This is an objective mismatch, not a centering or evaluation-accounting error.
-Economic validation still ranks eligible checkpoints, and benchmark claims
-require held-out confirmation.
+## Algorithms and replay
 
-## Validation, testing, and comparison
+DQN uses the existing coordinate-conditioned rank-32 Q architecture with two
+256-unit hidden layers per phase, masked Double-DQN targets, MSE loss,
+learning rate 0.00015, Polyak coefficient 0.005 and norm clipping at 1.
+Both heads use ordinary initialization without a no-order prior. Exploration
+is uniform over admissible actions: epsilon=1 for five episodes, declining to
+0.05 over the following 90 episodes. This schedule is fixed across budgets.
 
-The normalizer uses training-only episodes. The risk-neutral AS benchmark
-derives `A=lambda0/gamma_m` from the configured flow and uses a separately
-seeded order-book impact regression for `k`; no volatility parameter is
-calibrated because `gamma=0`. Periodic validation replays the policy under the
-economic-only reward on a fixed validation seed set. A candidate becomes
-reportable only after the CLOB and
-auction learners reach `5,000` and `2,000` optimizer updates, respectively.
-The headline DQN exposes the complete admissible auction grid from episode
-zero and uses the same masked epsilon-greedy probability in both phases; there
-is no forced no-order curriculum. Before both gates pass, validation scores
-are diagnostics: they neither create `best.pt` nor consume patience. The first
-eligible validation initializes the race, after
-which ordinary joint-policy patience applies. The untrained policy's economic
-score is saved only as a diagnostic reference and is never eligible for
-selection. The active configuration sets
-`checkpoint_require_initial_improvement=false`, so every mature validation is
-reportable even when it scores below that initial reference. `best.pt`
-maximizes mean `risk_adjusted_pnl` among mature candidates; `best_mature.pt`
-is retained as redundant diagnostic provenance. A run fails selection only if
-its budget never reaches the phase-maturity requirements. Final evaluation
-uses the same economic-only contract on a separate fixed test seed set and
-defaults to `best.pt`.
+All four methods use one-step replay with undiscounted continuation across
+the phase boundary. Five-step experiments remain in the development ledger;
+they are not the active DQN specification.
 
-The two phase networks are not checkpointed independently. The CLOB Bellman
-target bootstraps from the auction network at the junction, while the auction
-policy is evaluated under inventories generated by the CLOB policy. Splicing
-phase networks selected at different episodes would therefore evaluate a pair
-that was never jointly validated and can create an out-of-distribution phase
-boundary. Phase-specific maturity with joint economic selection preserves the
-coupled control problem without changing its rewards or transition law.
+DDPG, TD3 and SAC use Stable-Baselines3 2.7.1 through `lmm.agents.sb3.SB3Agent`.
+The production factory selects `algo.backend=sb3`. The older handwritten
+classes remain solely for regression characterization; they are not selected
+by the active continuous algorithm overlays. Their tests use explicit frozen
+algorithm fixtures, while active integration tests exercise SB3 itself.
 
-Within each test episode, the learned policy, initial network, AS, and TWAP see
-the same policy-independent realized CLOB tape, midprice path, and auction
-proposal stream. Saved policy-minus-benchmark curves therefore use paired
-common random numbers. Cross-seed confidence intervals are formed from paired
-seed-level differences. Historical cross-asset outputs include currency and
-basis-point forms.
+Each phase has a separate library model and replay buffer. `model.train(1)`
+performs the library losses, backward passes, optimizer and target updates.
+At a CLOB/auction junction, the replay adapter computes the current auction
+continuation at sampling time, adds it to that row's reward and suppresses the
+library's CLOB continuation for that row. It uses the auction target actor
+and critic for DDPG/TD3 (including TD3 smoothing), and the current auction SAC
+actor plus target critics and that phase's entropy coefficient for SAC.
+Terminal cash/mark/penalty is included once with no network continuation.
+Actor and critic optimizer pre-step hooks apply the common gradient norm
+bound of 1; native library loss construction and updates remain intact.
+These hooks are reinstalled when loading checkpoints.
 
-The matched treatment set is:
+The continuous methods retain the manuscript's normalized proposal mapping,
+raw proposal replay, rounded executable orders and cancellation threshold.
+A shared finite exploration design runs first; subsequent DDPG/TD3 exploration is Gaussian
+with standard deviation 0.1. SAC uses automatic entropy adjustment initialized
+at 0.001 in replay units, avoiding the old temperature of 1 overwhelming
+small execution gains. There is no auction-specific saturated actor
+initialization or benchmark imitation. The finite exploration phase below
+collects experience; it does not supply optimized action labels.
 
-1. observed `H_cl` feature and H-centred action anchor absent, shaping absent;
-2. observed `H_cl` feature and H-centred action anchor present, shaping absent;
-3. observed `H_cl` feature and H-centred action anchor absent, shaping present
-   (so the H-derived reward channel intentionally remains);
-4. observed `H_cl` feature and H-centred action anchor present, shaping present;
-5. no auction, with both the `H_cl` feature and all auction-derived shaping
-   disabled;
-6. observed `H_cl`, H-centred action anchor, shaping absent, and no strategic
-   cancellation.
+Every method uses reward scale 1, replay capacity 50,000 per phase,
+batch size 128 and warm-ups of 2500 CLOB / 960 auction transitions. At most
+one optimizer update is permitted per realized environment step. The common
+physical horizon and Bellman factor of one are unchanged.
 
-The canonical synthetic headline runs are reused for cell 2 rather than
-retrained under an ablation alias. Cell 4 is the explicit
-`ablation_h_on_shaping_on` treatment.
+## Selection and treatments
 
-The primary information comparison uses the two shaping-off arms. The paired
-cross-treatment report additionally gives the H/anchor bundle effect at both
-shaping levels, the shaping effect at both H/anchor levels, the full
-auction-aware treatment versus the bundled no-auction comparator, and
-cancellation on minus off. It pairs runs within algorithm and master seed and
-requires exact evaluation-episode/environment-seed alignment before forming
-seed-level differences.
+Joint checkpoints are selected by mean economic validation score after at
+least 5,000 CLOB and 2,000 auction updates (the auction gate is inactive in
+no-auction runs). Phase networks are never spliced. The initial policy is a
+diagnostic comparator, not a selectable checkpoint. A mature candidate must
+also improve its economic validation score over the initial policy; otherwise
+the run reports selection failure. This gate does not require beating AS. Final evaluation uses
+separate seeds and common random numbers for all policies. A larger training
+return is not evidence of greater economic value or benchmark superiority.
+
+The canonical headline is H-on/shaping-on/auction-on. The launcher reuses it
+for that 2x2 cell and trains H-on/shaping-off, H-off/shaping-on and
+H-off/shaping-off as distinct treatments. No-cancellation retains headline
+shaping. The no-auction arm disables H and all shaping, so its contrast is a
+bundle; an additional same-CLOB/auction-noop counterfactual measures the
+direct execution contribution of the auction without claiming a retrained
+no-auction optimum.
+
+Schema 15 and the new environment contract prevent accidental reuse of v12
+checkpoints or publication artifacts. Full production runs remain at the
+configured 800-episode cap; development verification uses the separately
+labelled, capped `scripts/diagnose_learning.py` and never consumes final-test
+seeds or overwrites the manuscript outputs.
+
+## Shared exploration and conditioning
+
+The first 32 episodes cross four CLOB exploration modes (maximal submitted
+volume at offset one, abstention, and two random fixed proposals) with four
+auction modes (no order, persistent sales, persistent purchases, and
+cancel/replace sales), twice. Random parameters use a dedicated stream derived
+from the environment seed. Feasibility is enforced by the same action grid or
+continuous adapter; evaluation never invokes this exploration. The enlarged
+auction replay warm-up covers every combination before optimization starts.
+CLOB warm-up is transition-count based because its clock is irregular.
+
+All initial learning rates use the fixed factor `max(.1, 2**(-episode/90))`.
+DDPG's actor starts at .0001 (the manuscript rate), while its critic and the
+TD3/SAC networks start at .0003; DQN starts at .00015. Native SB3 optimizer
+pre-step hooks apply the actor rate and the common gradient bound. No L2
+critic regularization is active. The rejected original-paper optimizer trial
+remains an explicitly named diagnostic.
+
+After relative-price conversion, replace the two auction weighted-quote
+coordinates by the projected residual `I-z_hat` and displacement `delta`
+defined above. This invertible transform retains the same 18 raw observations
+and does not require H. It exposes inventory and price exposure to all four
+learners without adding future information. The reference inventory curve and
+feature transform are stored and restored with replay and RNG state.
+
+The shaping-off treatment removes the manuscript's objective-changing reward
+terms but retains the common invariant replay conditioning. It must be called
+training on the economic objective with common numerical conditioning, not
+an ablation of every form of intermediate reward transformation.
+
+The default dataclass auction weight remains one for explicit legacy configs;
+the active base sets .0001. All diagnostic parameter choices, including
+rejected alternatives, are retained in the development ledger. Final-test
+results are still required for publication claims about cross-seed rankings.

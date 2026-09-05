@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
-# Cross-seed aggregation: build the IQM/bootstrap-CI tables + figure from runs
-# spanning several master seeds, per setting, into
-# results/revision_v12/<setting>/_multiseed/.
+# Cross-seed research report: four focused figures and three tables, with
+# auditable seed estimates. Legacy comprehensive outputs are opt-in diagnostics.
 # Reads each run's seed from seed.txt and includes only the requested seeds.
 #
 # Usage: scripts/make_multiseed_outputs.sh [--seeds "42 7 99 123 2024"]
-#          [--require-complete] [--publication] [--symbol TICKER]
+#          [--require-complete] [--publication] [--symbol TICKER] [--diagnostics]
 set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
@@ -16,16 +15,18 @@ SEEDS="42 7 99 123 2024"
 REQUIRE_COMPLETE=0
 PUBLICATION=0
 SYMBOL=""
+DIAGNOSTICS=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --seeds) SEEDS="$2"; shift 2 ;;
     --seeds=*) SEEDS="${1#*=}"; shift ;;
     --require-complete) REQUIRE_COMPLETE=1; shift ;;
     --publication) PUBLICATION=1; REQUIRE_COMPLETE=1; shift ;;
+    --diagnostics) DIAGNOSTICS=1; shift ;;
     --symbol) SYMBOL="${2:-}"; shift 2 ;;
     --symbol=*) SYMBOL="${1#*=}"; shift ;;
     -h|--help)
-      echo "usage: $0 [--seeds \"42 7 99 123 2024\"] [--require-complete] [--publication] [--symbol TICKER]"
+      echo "usage: $0 [--seeds \"42 7 99 123 2024\"] [--require-complete] [--publication] [--symbol TICKER] [--diagnostics]"
       exit 0
       ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
@@ -69,8 +70,16 @@ if [[ "$PUBLICATION" -eq 1 ]]; then
   fi
 fi
 
-RESULTS_ROOT="${LMM_RESULTS_ROOT:-results/revision_v12}"
+RESULTS_ROOT="${LMM_RESULTS_ROOT:-results/revision_v17}"
 [[ -d "$RESULTS_ROOT" ]] || { echo "no $RESULTS_ROOT directory" >&2; exit 1; }
+if [[ "$DIAGNOSTICS" -eq 0 ]]; then
+  REPORT_ARGS=(--root "$RESULTS_ROOT" --seeds $SEEDS)
+  [[ "$REQUIRE_COMPLETE" -eq 1 ]] && REPORT_ARGS+=(--require-complete --include-treatments)
+  [[ "$PUBLICATION" -eq 1 ]] && REPORT_ARGS+=(--publication)
+  [[ -n "$SYMBOL" ]] && REPORT_ARGS+=(--symbol "$SYMBOL")
+  python3 -m lmm.experiments.make_report "${REPORT_ARGS[@]}"
+  exit 0
+fi
 aggregates_written=0
 complete_settings=""
 

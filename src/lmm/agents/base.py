@@ -25,7 +25,7 @@ __all__ = [
 # implementations from silently drifting apart.
 BELLMAN_FACTOR: Final[float] = 1.0
 REWARD_SCALE: Final[float] = 1.0e-3
-ENVIRONMENT_CONTRACT: Final[str] = "unified-minute-auction-mdp-2026-09-02-v8"
+ENVIRONMENT_CONTRACT: Final[str] = "shaped-j-economic-eval-sb3-2026-09-05-v15"
 
 Action = Union[int, np.ndarray]  # discrete index (DQN) or continuous vector
 
@@ -36,12 +36,12 @@ class Transition:
 
     ``next_phase`` marks the cross-phase junction: a CLOB
     transition whose next state is in the auction bootstraps from the AUCTION
-    target network. On the terminal transition (``done=True``) the env returns
-    the combined reward r_step + r_tau_cl and exposes r_tau_cl in
-    ``info["terminal_reward"]``; the RL agents un-fold it and bootstrap the
-    terminal clearing reward as the known absorbing-state value,
-    ``y = c_r * r_step + c_r * r_tau_cl``.  It is not folded into the stored
-    step reward and there is no terminal network bootstrap.
+    target network. On the terminal transition (``done=True``) the environment
+    includes the terminal reward exactly once. Shared numerical conditioning
+    has already been applied to ``reward``. DQN separates the terminal part
+    inside its legacy replay representation and adds it back once in the
+    target; SB3 stores the complete reward with done=True. Neither uses a
+    terminal network continuation.
 
     ``action`` is the policy output. For DQN it is the exact executed discrete
     index (admissibility is enforced by selection-time masking, AUDIT N12).
@@ -51,8 +51,8 @@ class Transition:
 
     ``next_mask`` is Adm(x') over the NEXT phase's action grid (None iff
     ``done``): the Bellman masked max needs it at update time because the
-    auction cancel-admissibility C(x') is not recoverable from the pruned
-    feature vector. ``info`` carries per-step env diagnostics (E_t, S_bullet,
+    next-state feasibility is supplied directly by the shared environment.
+    ``info`` carries per-step env diagnostics (E_t, S_bullet,
     ...) for non-learning consumers (benchmark execution-price tracking); it
     is NEVER stored in replay.
 
@@ -167,6 +167,20 @@ class Agent(ABC):
             if float(state["tau_cl"]) != float(cfg.grid.tau_cl):
                 raise ValueError("checkpoint normalizer tau_cl does not match resolved config")
             expected_zero_h = not bool(cfg.rl.h_cl_feature_enabled)
+            if bool(state.get('auction_inventory_asinh', False)) != cfg.rl.auction_inventory_asinh:
+                raise ValueError('checkpoint auction-inventory asinh contract mismatch')
+            if cfg.rl.auction_inventory_asinh:
+                scale = cfg.grid.alpha/cfg.reward.lambda_inv if cfg.reward.lambda_inv > 0 else cfg.grid.I0
+                if state.get('inventory_scale') != scale:
+                    raise ValueError('checkpoint auction-inventory scale mismatch')
+            if bool(state.get('phase_normalization', False)) != cfg.rl.phase_normalization:
+                raise ValueError('checkpoint phase-normalization contract mismatch')
+            if cfg.rl.phase_normalization and state.get('tau_op') != cfg.grid.tau_op:
+                raise ValueError('checkpoint phase-normalization boundary mismatch')
+            if bool(state.get("relative_prices", False)) != cfg.rl.relative_price_features:
+                raise ValueError("checkpoint relative-price feature contract mismatch")
+            if bool(state.get('auction_exposure_features', False)) != cfg.rl.auction_exposure_features:
+                raise ValueError('checkpoint auction-exposure feature contract mismatch')
             if bool(state.get("zero_h_cl", False)) != expected_zero_h:
                 raise ValueError(
                     "checkpoint normalizer H_cl ablation does not match resolved config"

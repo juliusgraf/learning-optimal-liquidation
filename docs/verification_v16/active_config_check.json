@@ -1,0 +1,178 @@
+[
+  {
+    "run": "dqn_verified",
+    "matching": [
+      "grid",
+      "actions",
+      "clob_flow",
+      "auction_flow",
+      "algo1",
+      "midprice",
+      "reward",
+      "features",
+      "benchmark",
+      "algo"
+    ],
+    "rl_changes": {
+      "checkpoint_require_initial_improvement": [
+        false,
+        true
+      ]
+    },
+    "selected_episode_unchanged": 180
+  },
+  {
+    "run": "ddpg_paper_actor",
+    "matching": [
+      "grid",
+      "actions",
+      "clob_flow",
+      "auction_flow",
+      "algo1",
+      "midprice",
+      "reward",
+      "features",
+      "benchmark",
+      "algo"
+    ],
+    "rl_changes": {
+      "checkpoint_require_initial_improvement": [
+        false,
+        true
+      ]
+    },
+    "selected_episode_unchanged": 180
+  },
+  {
+    "run": "td3_verified",
+    "matching": [
+      "grid",
+      "actions",
+      "clob_flow",
+      "auction_flow",
+      "algo1",
+      "midprice",
+      "reward",
+      "features",
+      "benchmark",
+      "algo"
+    ],
+    "rl_changes": {
+      "checkpoint_require_initial_improvement": [
+        false,
+        true
+      ]
+    },
+    "selected_episode_unchanged": 180
+  },
+  {
+    "run": "sac_verified",
+    "matching": [
+      "grid",
+      "actions",
+      "clob_flow",
+      "auction_flow",
+      "algo1",
+      "midprice",
+      "reward",
+      "features",
+      "benchmark",
+      "algo"
+    ],
+    "rl_changes": {
+      "checkpoint_require_initial_improvement": [
+        false,
+        true
+      ]
+    },
+    "selected_episode_unchanged": 180
+  },
+  {
+    "run": "dqn_verified_history",
+    "matching": [
+      "grid",
+      "actions",
+      "clob_flow",
+      "auction_flow",
+      "algo1",
+      "midprice",
+      "reward",
+      "features",
+      "benchmark",
+      "algo"
+    ],
+    "rl_changes": {
+      "checkpoint_require_initial_improvement": [
+        false,
+        true
+      ]
+    },
+    "selected_episode_unchanged": 180
+  },
+  {
+    "run": "ddpg_paper_actor_history",
+    "matching": [
+      "grid",
+      "actions",
+      "clob_flow",
+      "auction_flow",
+      "algo1",
+      "midprice",
+      "reward",
+      "features",
+      "benchmark",
+      "algo"
+    ],
+    "rl_changes": {
+      "checkpoint_require_initial_improvement": [
+        false,
+        true
+      ]
+    },
+    "selected_episode_unchanged": 180
+  },
+  {
+    "run": "td3_verified_history",
+    "matching": [
+      "grid",
+      "actions",
+      "clob_flow",
+      "auction_flow",
+      "algo1",
+      "midprice",
+      "reward",
+      "features",
+      "benchmark",
+      "algo"
+    ],
+    "rl_changes": {
+      "checkpoint_require_initial_improvement": [
+        false,
+        true
+      ]
+    },
+    "selected_episode_unchanged": 180
+  },
+  {
+    "run": "sac_verified_history",
+    "matching": [
+      "grid",
+      "actions",
+      "clob_flow",
+      "auction_flow",
+      "algo1",
+      "midprice",
+      "reward",
+      "features",
+      "benchmark",
+      "algo"
+    ],
+    "rl_changes": {
+      "checkpoint_require_initial_improvement": [
+        false,
+        true
+      ]
+    },
+    "selected_episode_unchanged": 150
+  }
+]

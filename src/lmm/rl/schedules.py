@@ -2,15 +2,47 @@
 
 from __future__ import annotations
 
+
+def learning_rate_factor(rl, episode: int) -> float:
+    """Fixed, outcome-independent decay; zero half-life preserves old runs."""
+    half_life = rl.learning_rate_half_life_episodes
+    if half_life == 0:
+        return 1.0
+    return max(rl.learning_rate_min_fraction, 2.0 ** (-max(0, episode) / half_life))
+
+
+def learning_conditioning_contract(rl):
+    """Only enabled extensions enter the contract of compatible old runs."""
+    extra = {}
+    if rl.phase_normalization:
+        extra['phase_normalization'] = True
+    if rl.auction_inventory_asinh:
+        extra['auction_inventory_asinh'] = True
+    if rl.learning_credit_baseline:
+        extra['learning_credit_baseline'] = True
+    if rl.learning_clob_inventory_potential:
+        extra['learning_clob_inventory_potential'] = True
+    if rl.auction_exposure_features:
+        extra['auction_exposure_features'] = True
+    if rl.market_return_control_variate:
+        extra['market_return_control_variate'] = True
+        if rl.market_control_reference != 'linear':
+            extra['market_control_reference'] = rl.market_control_reference
+    if rl.structured_warmup_episodes:
+        extra['structured_warmup_episodes'] = rl.structured_warmup_episodes
+    if rl.learning_rate_half_life_episodes:
+        extra['learning_rate_schedule'] = [rl.learning_rate_half_life_episodes, rl.learning_rate_min_fraction]
+    return extra
+
 __all__ = ["LinearEpsilonSchedule", "ExponentialEpsilonSchedule"]
 
 
 class LinearEpsilonSchedule:
     """Warm-up followed by an exact linear decay.
 
-    The endpoints are entirely configuration-driven.  With the active DQN
-    values, episodes 0--49 use epsilon 1, episode 50 starts the linear decay,
-    and episode 650 reaches 0.01 exactly.  Values thereafter remain at the
+    The endpoints are entirely configuration-driven. With the active DQN
+    values, episodes 0--4 use epsilon 1, episode 5 starts the linear decay,
+    and episode 95 reaches 0.05 exactly. Values thereafter remain at the
     endpoint.  The active DQN applies this same schedule in both phases;
     phase multipliers and delayed unlocks are explicit ablations only.
     """

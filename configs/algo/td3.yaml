@@ -1,39 +1,26 @@
-# TD3 hyperparameters (Phase 5; continuous-action relaxation, ruling D9).
-# Standard literature defaults (Fujimoto et al. 2018). Spec + update rules:
-# docs/continuous_action_extension.md. The discrete DQN setting is untouched.
-# chi lives in rl.chi (shared, D15).
-#
-# Phase 7: kept exactly as the Phase 5 tuned defaults. Deviations from
-# configs/algo/dqn.yaml are intentional and standard for continuous control:
-# shared [128,128] networks, Polyak target updates, and the TD3-specific twin
-# critics / target smoothing / delayed actor (policy_delay).
-
+# Stable-Baselines3 2.7.1; standard updates with a shared optimizer gradient-norm bound.
+# Invertible conditioning for the deterministic actor/critic; same raw information.
+rl:
+  phase_normalization: true
+  auction_inventory_asinh: true
 algo:
   name: td3
+  backend: sb3
   hyperparams:
-    # -- shared run/eval/replay (mirror configs/algo/dqn.yaml) ---------------
     buffer_size: 50000
-    min_buffer: 5000
-    min_buffer_clob: 2000
-    min_buffer_auction: 512
+    min_buffer_clob: 2500
+    min_buffer_auction: 960
     batch_size: 128
-    hidden_layers: [128, 128]
-    safe_auction_initialization: true
-    grad_clip_norm: 1.0
-    updates_per_env_step: 1
-    update_every: 1
-    reward_scale: 1.0e-3        # see configs/algo/ddpg.yaml: paper rewards
-                                # O(1e3-1e6); 1.0 diverged the MSE critic. 1e-3
-                                # keeps Bellman targets O(1-100).
-    activation: relu
+    hidden_layers:
+    - 256
+    - 256
+    learning_rate: 0.0003
+    target_soft_tau: 0.005
+    reward_scale: 1.0
     device: cpu
     checkpoint_interval_episodes: 100
-    # -- TD3-specific ---------------------------------------------------------
-    actor_lr: 3.0e-4
-    critic_lr: 3.0e-4
-    target_soft_tau: 0.005
-    exploration_noise: gaussian # gaussian | ou
     exploration_noise_std: 0.1
-    target_noise_std: 0.2       # target-policy smoothing sigma (x half-range)
-    target_noise_clip: 0.5      # smoothing clip (x half-range)
-    policy_delay: 2             # delayed actor / target-sync cadence
+    policy_delay: 2
+    target_noise_std: 0.2
+    target_noise_clip: 0.5
+    grad_clip_norm: 1.0

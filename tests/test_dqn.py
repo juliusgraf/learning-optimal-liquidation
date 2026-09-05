@@ -105,6 +105,7 @@ def test_structured_q_uses_exact_normalized_grid_coordinates(dqn_cfg):
 
 
 def test_safe_auction_initialization_is_exact_and_trainable(dqn_cfg):
+    dqn_cfg = load_dqn_cfg("algo.hyperparams.safe_auction_initialization=true")
     agent = make_agent(dqn_cfg)
     network = agent.q["auction"]
     obs = torch.randn(4, len(dqn_cfg.features.auction))
@@ -496,7 +497,7 @@ def test_checkpoint_round_trip(dqn_cfg, tmp_path):
     )
     agent = make_agent(cfg, master_seed=5)
     agent.set_feature_normalizer(
-        FeatureNormalizer(cfg.grid.tau_cl).fit(
+        FeatureNormalizer(cfg.grid.tau_cl, relative_prices=cfg.rl.relative_price_features, auction_exposure_features=cfg.rl.auction_exposure_features).fit(
             np.vstack([np.zeros(18), np.ones(18)])
         )
     )
@@ -546,7 +547,7 @@ def test_checkpoint_round_trip(dqn_cfg, tmp_path):
 def test_checkpoint_rejects_pre_structured_q_architecture(dqn_cfg, tmp_path):
     agent = make_agent(dqn_cfg)
     agent.set_feature_normalizer(
-        FeatureNormalizer(dqn_cfg.grid.tau_cl).fit(
+        FeatureNormalizer(dqn_cfg.grid.tau_cl, relative_prices=dqn_cfg.rl.relative_price_features, auction_exposure_features=dqn_cfg.rl.auction_exposure_features).fit(
             np.vstack([np.zeros(18), np.ones(18)])
         )
     )
@@ -564,7 +565,7 @@ def test_checkpoint_rejects_pre_structured_q_architecture(dqn_cfg, tmp_path):
     "override",
     (
         "actions.beta=2.0",  # same tensor shapes, different auction slopes
-        "reward.shaping_enabled=true",
+        "reward.shaping_enabled=false",
         "algo.hyperparams.lr=0.0002",
     ),
 )
@@ -573,7 +574,7 @@ def test_checkpoint_rejects_semantically_different_current_config(
 ):
     agent = make_agent(dqn_cfg)
     agent.set_feature_normalizer(
-        FeatureNormalizer(dqn_cfg.grid.tau_cl).fit(
+        FeatureNormalizer(dqn_cfg.grid.tau_cl, relative_prices=dqn_cfg.rl.relative_price_features, auction_exposure_features=dqn_cfg.rl.auction_exposure_features).fit(
             np.vstack([np.zeros(18), np.ones(18)])
         )
     )

@@ -22,20 +22,14 @@ K_STAR, ALPHA, Q, D, LAMBDA = 1000, 0.01, 1.0, 0.1, 0.5
 
 def test_config_carries_closed_form_constants(synthetic_cfg):
     r = synthetic_cfg.reward
-    assert (r.k_star, synthetic_cfg.grid.alpha, r.q, r.d, r.lambda_inv) == (
-        K_STAR,
-        ALPHA,
-        Q,
-        D,
-        2.0,
-    )
-    assert not r.shaping_enabled
+    assert (r.k_star, synthetic_cfg.grid.alpha, r.q, r.d, r.lambda_inv) == (10000, 0.01, 0.0, 0.001, 0.01)
+    assert r.shaping_enabled
     assert r.clawback_shaping
     assert r.center_initial_inventory_value
 
 
 def test_phase_specific_shaping_switches_fall_back_to_shared_contract():
-    baseline = load_synthetic_cfg()
+    baseline = load_synthetic_cfg("reward.shaping_enabled=false")
     assert baseline.reward.effective_clob_shaping is False
     assert baseline.reward.effective_auction_shaping is False
 
@@ -152,18 +146,18 @@ def test_cancel_and_replace_clawback_telescopes_to_surviving_credit_and_fees():
     env = new_env(cfg)
     drive_to_auction(env, seed=19)
 
-    _, r1, _, _, i1 = env.step(AuctionAction(2.0, -10, 0))
+    _, r1, _, _, i1 = env.step(AuctionAction(2.0 * env.cfg.actions.beta, -10, 0))
     phi1 = i1["auction_interim_shaping"]
     assert phi1 > 0.0
     assert i1["auction_shaping_clawback"] == 0.0
     assert r1 == pytest.approx(phi1)
 
-    _, r2, _, _, i2 = env.step(AuctionAction(4.0, -9, 1))
+    _, r2, _, _, i2 = env.step(AuctionAction(4.0 * env.cfg.actions.beta, -9, 1))
     phi2 = i2["auction_interim_shaping"]
     assert phi2 > 0.0
     assert i2["auction_shaping_clawback"] == pytest.approx(phi1)
     assert r2 == pytest.approx(phi2 - phi1 - i2["cancellation_fee"])
-    assert env.own_slope == pytest.approx(4.0)  # current replacement remains live
+    assert env.own_slope == pytest.approx(4.0 * cfg.actions.beta)  # current replacement remains live
 
     _, r3, _, _, i3 = env.step(AuctionAction(0.0, 0, 1))
     assert i3["auction_interim_shaping"] == 0.0
@@ -184,8 +178,8 @@ def test_cancel_all_claws_back_every_live_credit():
     )
     env = new_env(cfg)
     drive_to_auction(env, seed=2)
-    _, r1, _, _, i1 = env.step(AuctionAction(1.0, -10, 0))
-    _, r2, _, _, i2 = env.step(AuctionAction(2.0, -9, 0))
+    _, r1, _, _, i1 = env.step(AuctionAction(1.0 * env.cfg.actions.beta, -10, 0))
+    _, r2, _, _, i2 = env.step(AuctionAction(2.0 * env.cfg.actions.beta, -9, 0))
     _, r3, _, _, i3 = env.step(AuctionAction(0.0, 0, 1))
     phi1 = i1["auction_interim_shaping"]
     phi2 = i2["auction_interim_shaping"]
@@ -228,7 +222,7 @@ def test_environment_step_rewards_match_pure_formulas():
             volume = float(min(5, int(env.inventory)))
             action = ClobAction(volume, 2 if volume else 0)
         else:
-            action = AuctionAction(2.0, 2, 0)
+            action = AuctionAction(2.0 * env.cfg.actions.beta, 2, 0)
         _, reward, done, _, info = env.step(action)
         if info["phase"] == "clob":
             expected = clob_reward(
@@ -246,6 +240,7 @@ def test_environment_step_rewards_match_pure_formulas():
                 cfg.reward.q,
                 info["d_t"],
                 action.cancel,
+                shaping_weight=cfg.reward.auction_shaping_weight,
             )
             if done:
                 expected += info["terminal_reward"]
@@ -257,6 +252,7 @@ def test_environment_step_rewards_match_pure_formulas():
                         env.s_mid,
                         cfg.reward.lambda_inv,
                         cfg.reward.q,
+                        shaping_weight=cfg.reward.auction_shaping_weight,
                     )
                 )
         assert reward == pytest.approx(expected)

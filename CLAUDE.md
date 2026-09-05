@@ -44,8 +44,11 @@ not implementation specifications.
   `frozen_mid` in H-off treatments, so masks, projection, and execution cannot
   leak the ablated indicative signal.
 - Training uses the reward selected by the resolved configuration: the
-  headline uses centered economic risk-adjusted PnL, while exact manuscript
-  shaping is confined to explicit treatment overlays. Validation, checkpoint
+  headline uses the author-approved weighted, centered shaped J. The exact
+  unapplied manuscript edits are in docs/manuscript_recommendations_v16.patch.
+  Shaping-off specifications are explicit treatments. The telescoping
+  potential and frozen exogenous-price reference preserve policy differences;
+  neither enters reported training J or economic PnL. Validation, checkpoint
   selection, final evaluation, and AS/TWAP comparisons always use economic
   risk-adjusted PnL. Initial-inventory centering is policy invariant and must
   never enter reported PnL twice.

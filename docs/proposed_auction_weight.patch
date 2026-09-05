@@ -1,0 +1,70 @@
+--- a/paper/main.tex
++++ b/paper/main.tex
+@@ -399,12 +399,12 @@
+ \[r_t(X_t,A_t)= S_t^\bullet E_t f^c(k^\star \alpha -( H_t^\cl -S_t^\bullet)_+).\]
+ \item During the auction trading session for $\tau^{\op}\leqslant t<\tau^{\cl}$. The market maker submits a slope $K_t^a = A_t^3$ and a price
+ \[S_t^a = S_{\tau^\op}^\mathrm{mid}+\alpha \left(\left\lfloor \frac{H_t^\cl-S_{\tau^\op}^\text{mid}}{\alpha}+\frac{1}{2}\right\rfloor+A_t^4\right).\]
+-The agent receives a ``fictive'' reward $K_t^aH_t^\cl(H_t^\cl-S_t^a)$, where $H_t^\cl$ is the anticipated clearing price (were the auction to close at time $t$). The agent is penalized for canceling previous orders at cost $d_t$ at time $t$, yielding a penalty $-d_tc_t$. Here, $d_t$ is an exchange cancellation fee. Because the auction action set is two-sided, a submitted schedule may imply a projected purchase at the indicative price. This happens when $H_t^\cl \leqslant S_t^a$: the market maker is willing to buy $K_t^a(S_t^a-H_t^\cl)$ shares at price $H_t^\cl$ or below. We attenuate the negative cash-like component associated with projected purchases. This makes purchases less costly in the shaped objective and need not promote liquidation; the terminal inventory penalty remains a separate incentive to reduce terminal exposure. We hence introduce a function $f^a:\mathbb R\longrightarrow \mathbb R_+$ convex, continuous and decreasing such that $f^a$ is zero on $\mathbb{R}_+$ and $f^a(x) \leqslant (-x)_+$. The term $f^a(K_t^a H_t^\cl(H_t^\cl-S_t^a))$ attenuates or even removes the adverse consequence of buying. This attenuation is neither an admissibility constraint nor an economic cash flow. To simplify notation, introduce $u_t = K_t^a H_t^\cl (H_t^\cl-S_t^a) + f^a(K_t^a H_t^\cl(H_t^\cl-S_t^a))$ The reward of the market maker is given by
++Introduce a dimensionless auction shaping weight $\omega_a\in[0,1]$. The agent receives a ``fictive'' reward $\omega_a K_t^aH_t^\cl(H_t^\cl-S_t^a)$, where $H_t^\cl$ is the anticipated clearing price (were the auction to close at time $t$). The agent is penalized for canceling previous orders at cost $d_t$ at time $t$, yielding a penalty $-d_tc_t$. Here, $d_t$ is an exchange cancellation fee. Because the auction action set is two-sided, a submitted schedule may imply a projected purchase at the indicative price. This happens when $H_t^\cl \leqslant S_t^a$: the market maker is willing to buy $K_t^a(S_t^a-H_t^\cl)$ shares at price $H_t^\cl$ or below. We attenuate the negative cash-like component associated with projected purchases. This makes purchases less costly in the shaped objective and need not promote liquidation; the terminal inventory penalty remains a separate incentive to reduce terminal exposure. We hence introduce a function $f^a:\mathbb R\longrightarrow \mathbb R_+$ convex, continuous and decreasing such that $f^a$ is zero on $\mathbb{R}_+$ and $f^a(x) \leqslant (-x)_+$. The term $f^a(K_t^a H_t^\cl(H_t^\cl-S_t^a))$ attenuates or even removes the adverse consequence of buying. This attenuation is neither an admissibility constraint nor an economic cash flow. To simplify notation, introduce $u_t = \omega_a\left[K_t^a H_t^\cl (H_t^\cl-S_t^a) + f^a(K_t^a H_t^\cl(H_t^\cl-S_t^a))\right]$ The reward of the market maker is given by
+ \[r_t(X_t,A_t) = u_t - c_t\left[d_t+ \sum_{s<t}\mathbf{1}_{\{K_s^a>0\}}\left(1-\theta_t^{(s-\tau^\op+1)}\right)u_s\right].\]
+ The ``fictive'' reward during the auction is a training-shaping term designed to provide a denser learning signal for actions that improve the agent's position relative to the current indicative clearing price. When a live order is canceled, the exact fictive reward originally credited to that order is subtracted once as a clawback.
+ \item Final reward at the clearing for $t=\tau^{\cl}$. At the clearing time, the clearing price $S_{\tau^\cl}^\cl$ is determined and orders are matched. The market maker makes the profit or loss $S_{\tau^\cl}^\cl Z_{\tau^\cl}$ based on the orders she sent to the market and did not cancel by the clearing time. The agent is furthermore penalized for holding inventory. We introduce $\lambda > 0$ as a penalization parameter. Furthermore, the agent's reward associated with purchases is once again attenuated. Since the midprice is frozen throughout the auction phase in our model, any inventory remaining after the auction is priced at the last exogenous midprice $S^\text{mid}_{\tau^\op}$ rather than at the auction clearing price. This separates the valuation of residual inventory from the endogenous auction price, which may be affected by the agent's own submitted schedules. The final reward of the market maker is given by
+ \begin{align*}
+-    G(X_{\tau^\cl}) &= S_{\tau^\cl}^\cl Z_{\tau^\cl}- \lambda |I_{\tau^\cl}|^2 + f^a\left (S_{\tau^\cl}^\cl Z_{\tau^\cl}\right) + S^\text{mid}_{\tau^\op}I_{\tau^\cl}.
++    G(X_{\tau^\cl}) &= S_{\tau^\cl}^\cl Z_{\tau^\cl}- \lambda |I_{\tau^\cl}|^2 + \omega_a f^a\left (S_{\tau^\cl}^\cl Z_{\tau^\cl}\right) + S^\text{mid}_{\tau^\op}I_{\tau^\cl}.
+ \end{align*}
+ \end{enumerate}
+ 
+@@ -425,9 +425,9 @@
+ 
+ In our setting, the agent chooses action $A_{t_i}$ in state $X_{t_i}$. Then, the executed volume $E_{t_i}$ is realized, determining the one-step reward $r_{t_i}(X_{t_i},A_{t_i})$ during the state transition. Finally, the agent transitions into state $X_{t_{i+1}}$.\vspace{0.5em}
+ 
+-The learning objective of the agent is to solve
++Write $J_{\omega_a}$ for the resulting shaped objective. The original fictive-cash specification is recovered at $\omega_a=1$. The execution-scale alternative uses $\omega_a=\alpha/S_0^\mathrm{mid}$. Cancellation claws back the original weighted $u_s$, while actual cash, cancellation fees, terminal inventory risk, admissible controls and clearing are unchanged. This weight changes policy rankings in the training objective; it is not a policy-invariant normalization. The learning objective of the agent is to solve
+ \begin{align*}
+-    (\mathbf{P})\quad \sup_{\pi \in \Pi} \quad & J(\pi) = \mathbb{E}_\pi\left [\sum_{i=0}^{m} r_{t_i}(X_{t_i},A_{t_i}) + G(X_{\tau^\cl}) \right] \nonumber \\
++    (\mathbf{P})\quad \sup_{\pi \in \Pi} \quad & J_{\omega_a}(\pi) = \mathbb{E}_\pi\left [\sum_{i=0}^{m} r_{t_i}(X_{t_i},A_{t_i}) + G(X_{\tau^\cl}) \right] \nonumber \\
+     \text{s.t.} \quad & \left \{\begin{array}{l}
+     X_0 \sim \mu_0  \\
+     A_{t_i} \sim \pi(\cdot \mid \varphi(X_{t_i}))
+@@ -447,7 +447,7 @@
+ \end{array}\right..
+ \end{align*}
+ 
+-Without reward shaping or initial-inventory centering, $J(\pi)=\bar J_\lambda(\pi)+S_0^{\mathrm{mid}}I_0$. The unshaped training criterion and the reported risk-adjusted economic criterion differ only by a constant, which unifies the base training objective with the economic objective. For precision, by the unshaped specification, we mean that the CLOB multiplier is set identically equal to one, the entire interim auction term $K_t^aH_t^\cl(H_t^\cl-S_t^a) + f^a\left(K_t^aH_t^\cl(H_t^\cl-S_t^a)\right)$ is omitted, and the terminal $f^a$ term is set to zero.\vspace{0.5em}
++Without reward shaping or initial-inventory centering, $J_{\omega_a}(\pi)=\bar J_\lambda(\pi)+S_0^{\mathrm{mid}}I_0$. The unshaped training criterion and the reported risk-adjusted economic criterion differ only by a constant, which unifies the base training objective with the economic objective. For precision, by the unshaped specification, we mean that the CLOB multiplier is set identically equal to one, the entire interim auction term $K_t^aH_t^\cl(H_t^\cl-S_t^a) + f^a\left(K_t^aH_t^\cl(H_t^\cl-S_t^a)\right)$ is omitted, and the terminal $f^a$ term is set to zero.\vspace{0.5em}
+ 
+ \section{Learning Algorithms}
+ \label{sec:learning}
+--- a/paper/results/tables_params/params_generative.tex
++++ b/paper/results/tables_params/params_generative.tex
+@@ -22,22 +22,23 @@
+ $B_\infty$ & 150 & Common absolute strategic/exogenous auction price-deviation bound \\
+ $B_\text{max}$ & 10 & Local auction policy-coordinate half-width \\
+ $D_\mu$ & 0.1 & Numerical lower slope bound \\
+-$U_1$ & 0.1 & Exogenous supply slope lower bound \\
+-$U_2$ & 2 & Exogenous supply slope upper bound \\
++$U_1$ & 1 & Exogenous supply slope lower bound \\
++$U_2$ & 20 & Exogenous supply slope upper bound \\
+ $p_1$ & 1 & One market-maker arrival proposal per auction minute; acceptance is validity-screened \\
+ $p_3$ & 0.3 & Per-side, per-minute market-taker arrival proposal probability \\
+ $p_4$ & 0.05 & Per-side, per-minute active-market-order cancellation proposal probability \\
+-$\lambda$ & 2 & Inventory penalty \\
+-$q$ & 1 & Shaping-treatment purchase-side coefficient; inactive in headline runs \\
+-$k^\star$ & 1000 & CLOB shaping tolerance; inactive in headline runs \\
++$\lambda$ & 0.05 & Inventory penalty (preference, not a market estimate) \\
++$q$ & 0 & Purchase-side subsidy coefficient (zero: no subsidy) \\
++$k^\star$ & 10000 & $S_0^{\mathrm{mid}}/\alpha$: unit opportunity-cost scale \\
+ $d$ & 0.1 & Cancellation-fee increment, $d_j=(j-n-1)d$ \\
+ $\alpha$ & 0.01 & Tick size \\
+ $\beta$ & 1 & Tick size of grid on $K^a$ \\
++$\omega_a$ & 0.0001 & Auction shaping weight $\alpha/S_0^{\mathrm{mid}}$ \\
+ $K_\text{max}$ & 32 & Full slope-index lattice bound (zero included) \\
+ $H_0$ & 100 & Initial projected clearing signal \\
+ $\eta_H$ & 0.95 & Update weight in Algorithm \ref{alg:hyp_clearing_price}\\
+ \bottomrule
+ \end{tabular}
+-\caption{Shared simulator, action-grid and reward parameters (identical in both settings)}
++\caption{Proposed stylized simulator, action-grid and reward parameters (identical in both settings); auction slope support is an illustrative sensitivity setting, not an empirical estimate}
+ \label{tab:params_generative}
+ \end{table}

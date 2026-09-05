@@ -7,11 +7,10 @@ alignment before reducing the episode differences to one mean per master seed.
 Those seed-level means are the independent units consumed by the table builder.
 
 The headline ``synthetic_rough_heston`` runs are the
-``H_on__shaping_off__auction_on`` arm. Keeping that mapping here avoids a
+``H_on__shaping_on__auction_on`` arm. Keeping that mapping here avoids a
 second set of numerically identical training runs under an
-``ablation_h_on_shaping_off`` directory name. The exact shaped objective is a
-separate treatment because persistent schedules make its optimum economically
-different from the reported objective.
+``ablation_h_on_shaping_on`` directory name. The shaping-off specification
+is an explicit treatment; every policy is evaluated on economic performance.
 """
 
 from __future__ import annotations
@@ -91,12 +90,12 @@ TREATMENT_SPECS: "OrderedDict[str, dict[str, Any]]" = OrderedDict(
             HEADLINE_TREATMENT,
             {
                 "setting": "synthetic_rough_heston",
-                "ablation_label": "H_on__shaping_off__auction_on",
+                "ablation_label": "H_on__shaping_on__auction_on",
                 "h_cl": True,
                 "auction_anchor": "indicative",
-                "shaping": False,
-                "clob_shaping": False,
-                "auction_shaping": False,
+                "shaping": True,
+                "clob_shaping": True,
+                "auction_shaping": True,
                 "clawback_shaping": True,
                 "auction": True,
                 "cancellation": True,
@@ -118,15 +117,15 @@ TREATMENT_SPECS: "OrderedDict[str, dict[str, Any]]" = OrderedDict(
             },
         ),
         (
-            "h_on_shaping_on",
+            "h_on_shaping_off",
             {
-                "setting": "synthetic_rough_heston__ablation_h_on_shaping_on",
-                "ablation_label": "H_on__shaping_on__auction_on",
+                "setting": "synthetic_rough_heston__ablation_h_on_shaping_off",
+                "ablation_label": "H_on__shaping_off__auction_on",
                 "h_cl": True,
                 "auction_anchor": "indicative",
-                "shaping": True,
-                "clob_shaping": True,
-                "auction_shaping": True,
+                "shaping": False,
+                "clob_shaping": False,
+                "auction_shaping": False,
                 "clawback_shaping": True,
                 "auction": True,
                 "cancellation": True,
@@ -166,12 +165,12 @@ TREATMENT_SPECS: "OrderedDict[str, dict[str, Any]]" = OrderedDict(
             "no_cancellation",
             {
                 "setting": "synthetic_rough_heston__no_cancellation",
-                "ablation_label": "H_on__shaping_off__auction_on__cancel_off",
+                "ablation_label": "H_on__shaping_on__auction_on__cancel_off",
                 "h_cl": True,
                 "auction_anchor": "indicative",
-                "shaping": False,
-                "clob_shaping": False,
-                "auction_shaping": False,
+                "shaping": True,
+                "clob_shaping": True,
+                "auction_shaping": True,
                 "clawback_shaping": True,
                 "auction": True,
                 "cancellation": False,
@@ -186,13 +185,13 @@ TREATMENT_CONTRASTS = (
     (
         "h_anchor_shaping_off",
         "H/anchor effect, shaping off (on - off)",
-        HEADLINE_TREATMENT,
+        "h_on_shaping_off",
         "h_off_shaping_off",
     ),
     (
         "h_anchor_shaping_on",
         "H/anchor effect, shaping on (on - off)",
-        "h_on_shaping_on",
+        HEADLINE_TREATMENT,
         "h_off_shaping_on",
     ),
     (
@@ -204,8 +203,8 @@ TREATMENT_CONTRASTS = (
     (
         "shaping_h_on",
         "Shaping effect, H/anchor on (on - off)",
-        "h_on_shaping_on",
         HEADLINE_TREATMENT,
+        "h_on_shaping_off",
     ),
     (
         "auction_aware_vs_no_auction",
@@ -228,7 +227,7 @@ _TREATMENT_OVERLAYS = {
     HEADLINE_TREATMENT: None,
     "h_off_shaping_off": "ablation_h_off_shaping_off.yaml",
     "h_off_shaping_on": "ablation_h_off_shaping_on.yaml",
-    "h_on_shaping_on": "ablation_h_on_shaping_on.yaml",
+    "h_on_shaping_off": "ablation_h_on_shaping_off.yaml",
     "no_auction": "no_auction.yaml",
     "no_cancellation": "no_cancellation.yaml",
 }
@@ -830,8 +829,6 @@ def validate_treatment_run_configs(runs: Iterable["RunInfo"]) -> None:
                 f"{run.run_dir}: treatment-defining config mismatch; "
                 f"expected {expected!r}, got {observed!r}"
             )
-        if run.cfg.reward.q != 1.0:
-            errors.append(f"{run.run_dir}: matched treatment reward.q must equal 1.0")
         if run.metadata.get("ablation_label") != expected["ablation_label"]:
             errors.append(
                 f"{run.run_dir}: eval metadata carries the wrong treatment label"

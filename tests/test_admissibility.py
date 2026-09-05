@@ -106,7 +106,7 @@ def test_cancel_forbidden_at_auction_open_and_after_abstain(synthetic_cfg):
     assert len(env.auction_grid) == 1346
     assert env.action_mask().sum() == 673
     with pytest.raises(ValueError, match="cancel-all is ineligible"):
-        env.step(AuctionAction(2.0, 2, 1))
+        env.step(AuctionAction(2.0 * env.cfg.actions.beta, 2, 1))
 
     env.step(NOOP_AUCTION)  # abstain (K^a = 0)
     assert_cancel_admissible(env, False)
@@ -117,7 +117,7 @@ def test_cancel_forbidden_at_auction_open_and_after_abstain(synthetic_cfg):
 def test_cancel_allowed_after_live_submission_then_forbidden_again(synthetic_cfg):
     env = new_env(synthetic_cfg)
     drive_to_auction(env, seed=2)
-    env.step(AuctionAction(2.0, 1, 0))  # live prior order with K^a > 0
+    env.step(AuctionAction(2.0 * env.cfg.actions.beta, 1, 0))  # live prior order with K^a > 0
     assert_cancel_admissible(env, True)
     assert env.action_mask().sum() == len(env.auction_grid)
 
@@ -127,9 +127,9 @@ def test_cancel_allowed_after_live_submission_then_forbidden_again(synthetic_cfg
 
     # Submit + cancel in one step: the same-step order survives (theta
     # recursion cutoff s < t), so the cancel stays admissible at t+1.
-    env.step(AuctionAction(3.0, 2, 0))
+    env.step(AuctionAction(3.0 * env.cfg.actions.beta, 2, 0))
     assert_cancel_admissible(env, True)
-    env.step(AuctionAction(1.0, 0, 1))
+    env.step(AuctionAction(1.0 * env.cfg.actions.beta, 0, 1))
     assert_cancel_admissible(env, True)  # the just-submitted K=1 order lives
 
 
@@ -297,7 +297,7 @@ def test_cancel_admissibility_is_in_the_auction_observation(synthetic_cfg):
     drive_to_auction(env, seed=2)
     idx = synthetic_cfg.features.auction.index("cancel_admissible")
     assert env.features.auction_features(env)[idx] == 0.0
-    obs, *_ = env.step(AuctionAction(2.0, 1, 0))
+    obs, *_ = env.step(AuctionAction(2.0 * env.cfg.actions.beta, 1, 0))
     assert obs[idx] == 1.0
 
 
@@ -320,7 +320,7 @@ def test_env_rejects_inadmissible_auction_actions(synthetic_cfg):
     with pytest.raises(ValueError, match="beta lattice"):
         env.step(AuctionAction(0.5 * synthetic_cfg.actions.beta, 0, 0))
     with pytest.raises(ValueError, match="cancel must be 0 or 1"):
-        env.step(AuctionAction(1.0, 0, 2))
+        env.step(AuctionAction(1.0 * env.cfg.actions.beta, 0, 2))
     with pytest.raises(TypeError):
         env.step(ClobAction(1.0, 2))  # wrong phase's action type
 
@@ -356,7 +356,7 @@ def test_ledger_mask_agrees_with_C_on_paper_state_throughout(synthetic_cfg):
         assert mask[cancel_rows].any() == admissible
         checked += 1
 
-        K = float(rng.choice([0.0, 0.0, 2.0, 5.0]))  # abstain half the time
+        K = env.cfg.actions.beta * float(rng.choice([0.0, 0.0, 2.0, 5.0]))  # abstain half the time
         cancel = int(
             admissible
             and (K > 0.0 or rng.random() < 0.4)

@@ -1,6 +1,6 @@
 """Train any agent on any setting from config (Phase 4).
 
-Writes the configured results root (currently results/revision_v12) with config_resolved.yaml,
+Writes the configured results root (currently results/revision_v16) with config_resolved.yaml,
 seed.txt, git_sha.txt, metrics.csv (per-episode), checkpoints/, logs/run.log
 (engineering conventions, CLAUDE.md). Figures/tables are produced separately
 by make_figures.py / make_tables.py from these saved outputs.
@@ -69,6 +69,9 @@ METRICS_COLUMNS = [
     "return_undisc",
     "return_disc",
     "training_return",
+    "replay_return_unscaled",
+    "potential_adjustment",
+    "market_baseline_adjustment",
     "clob_economic_cash",
     "auction_economic_cash",
     "cancellation_fees",
@@ -128,12 +131,20 @@ METRICS_COLUMNS = [
     "H_MAE_improvement_vs_mid",
     "H_MAE_improvement_vs_open_mid",
     "loss_clob",
+    "learning_rate_clob",
+    "actor_learning_rate_clob",
+    "actor_loss_clob",
+    "ent_coef_clob",
     "grad_norm_clob",
     "td_abs_mean_clob",
     "td_abs_max_clob",
     "n_grad_steps_clob",
     "buffer_clob",
     "loss_auction",
+    "learning_rate_auction",
+    "actor_learning_rate_auction",
+    "actor_loss_auction",
+    "ent_coef_auction",
     "grad_norm_auction",
     "td_abs_mean_auction",
     "td_abs_max_auction",
@@ -162,6 +173,9 @@ def make_agent(cfg: ExperimentConfig, seeds: SeedBundle) -> Agent:
     relaxation, Phase 5)."""
     if cfg.algo is None:
         raise ValueError("config has no algo section; overlay configs/algo/*.yaml")
+    if cfg.algo.backend == "sb3":
+        from lmm.agents.sb3 import SB3Agent
+        return SB3Agent(cfg, seeds)
     try:
         agent_cls = _AGENTS[cfg.algo.name]
     except KeyError:
@@ -211,20 +225,47 @@ def fit_feature_normalizer(
     normalizer = FeatureNormalizer(
         cfg.grid.tau_cl,
         zero_h_cl=not cfg.rl.h_cl_feature_enabled,
+        relative_prices=cfg.rl.relative_price_features,
+        auction_exposure_features=cfg.rl.auction_exposure_features,
+        phase_normalization=cfg.rl.phase_normalization,
+        tau_op=cfg.grid.tau_op,
+        auction_inventory_asinh=cfg.rl.auction_inventory_asinh,
+        inventory_scale=(cfg.grid.alpha/cfg.reward.lambda_inv if cfg.reward.lambda_inv > 0 else cfg.grid.I0),
     )
     used_seeds: list[int] = []
-    for _ in range(n_episodes):
+    reference_curves = []
+    for fit_episode in range(n_episodes):
         env_seed = draw_seed(env_rng)
         used_seeds.append(env_seed)
         obs, _ = env.reset(seed=env_seed)
+        reference_times, reference_values = [], []
         done = False
         while not done:
+            if env.t <= cfg.grid.tau_op:
+                reference_times.append(float(env.t))
+                reference_values.append(float(env.inventory))
             normalizer.update(obs)
             admissible = np.flatnonzero(env.action_mask())
+            if cfg.rl.relative_price_features:
+                # Cover persistent schedules as well as cancellation-heavy
+                # paths. Uniform action sampling alone cancels half of the
+                # time and badly underestimates the scale of live exposure
+                # under a learned policy that rationally avoids fees.
+                mode = fit_episode % 4
+                if env.phase == "auction" and mode in (0, 2):
+                    admissible = np.array([i for i in admissible
+                                           if env.auction_grid.actions[i].cancel == 0])
+                elif (env.phase == "clob" and mode == 2) or (env.phase == "auction" and mode == 3):
+                    admissible = np.array([0])
             if not len(admissible):
                 raise AssertionError("normalizer policy encountered an empty action set")
             action = int(admissible[int(policy_rng.integers(0, len(admissible)))])
             obs, _, done, _, _ = env.step(action)
+        if fit_episode % 4 != 2:
+            reference_curves.append(np.interp(np.arange(cfg.grid.tau_op+1), reference_times, reference_values))
+    if cfg.rl.market_control_reference == 'calibration':
+        normalizer.set_inventory_reference(np.arange(cfg.grid.tau_op+1,dtype=float),
+                                           np.mean(reference_curves,axis=0))
     return normalizer.freeze(), used_seeds
 
 
@@ -258,6 +299,9 @@ def _metrics_row(
         "return_undisc": res.return_undisc,
         "return_disc": res.return_disc,
         "training_return": res.training_return,
+        "replay_return_unscaled": res.replay_return_unscaled,
+        "potential_adjustment": res.potential_adjustment,
+        "market_baseline_adjustment": res.market_baseline_adjustment,
         "clob_economic_cash": res.clob_economic_cash,
         "auction_economic_cash": res.auction_economic_cash,
         "cancellation_fees": res.cancellation_fees,
@@ -323,6 +367,14 @@ def _metrics_row(
         "n_grad_steps_clob": int(d.get("n_grad_steps_clob", 0)),
         "buffer_clob": buffer_sizes["clob"],
         "loss_auction": d.get("loss_auction"),
+        "learning_rate_clob": d.get("learning_rate_clob"),
+        "learning_rate_auction": d.get("learning_rate_auction"),
+        "actor_learning_rate_clob": d.get("actor_learning_rate_clob"),
+        "actor_learning_rate_auction": d.get("actor_learning_rate_auction"),
+        "actor_loss_clob": d.get("actor_loss_clob"),
+        "ent_coef_clob": d.get("ent_coef_clob"),
+        "actor_loss_auction": d.get("actor_loss_auction"),
+        "ent_coef_auction": d.get("ent_coef_auction"),
         "grad_norm_auction": d.get("grad_norm_auction"),
         "td_abs_mean_auction": d.get("td_abs_mean_auction"),
         "td_abs_max_auction": d.get("td_abs_max_auction"),

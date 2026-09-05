@@ -1,0 +1,19 @@
+# Predeclared liquidity/risk units: about 76 realized CLOB intervals at the
+# paper's clock, <=2 units each, for a 160-unit parent. A 10% residual costs
+# one tick on the initial position: lambda = alpha/(0.1^2*I0) = .00625.
+grid:
+  I0: 160
+  I_max: 160
+actions:
+  V_max: 2
+auction_flow:
+  U1: 1.0
+  U2: 20.0
+reward:
+  lambda_inv: 0.00625
+rl:
+  auction_exposure_features: true
+  n_step: 5
+algo:
+  hyperparams:
+    reward_scale: 0.625

@@ -15,12 +15,30 @@ from lmm.data.load_midquote_data import (
     aggregate_quote_midpoints,
     download_alpaca_quotes,
     regenerate_range,
+    quote_size_unit,
+    _quality_summary,
 )
 from lmm.data.historical_artifact import validate_historical_artifact
 
 
 def _quote(ts: str, bid: float, ask: float, bid_size: int = 2, ask_size: int = 3):
     return {"t": ts, "bp": bid, "ap": ask, "bs": bid_size, "as": ask_size}
+
+
+def test_sip_size_units_use_dated_provider_change_without_share_conversion():
+    assert quote_size_unit('sip', '2025-10-01', '2025-10-31').startswith('round lots')
+    assert quote_size_unit('sip', '2025-11-03', '2026-08-31').startswith('shares')
+    assert quote_size_unit('sip', '2025-10-31', '2025-11-03').startswith('mixed')
+    assert quote_size_unit('iex', '2026-08-01', '2026-08-31').startswith('provider-native')
+    grid = pd.date_range('2026-08-03 13:30', periods=1, tz='America/New_York')
+    frame, stats = aggregate_quote_midpoints({'MSFT': [_quote('2026-08-03T17:30:00Z',100,100.02,80,120)]}, ['MSFT'], grid)
+    assert frame.iloc[0, 0] == pytest.approx(100.01)
+    assert stats['MSFT']['median_bid_size_provider_units'] == 80
+    assert stats['MSFT']['median_ask_size_provider_units'] == 120
+    records = [{'quote_quality': stats, 'quote_size_unit': unit} for unit in ['round lots', 'shares']]
+    summary = _quality_summary(records, ['MSFT'])['MSFT']
+    assert summary['median_bid_size_provider_units'] is None
+    assert summary['median_spread_bps'] == stats['MSFT']['median_spread_bps']
 
 
 def test_alpaca_download_paginates_and_keeps_credentials_out_of_url():

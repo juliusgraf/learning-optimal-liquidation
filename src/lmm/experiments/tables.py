@@ -884,7 +884,7 @@ def build_synthetic_treatment_contrasts(
             "bootstrap CI] of seed-level mean risk-adjusted PnL differences. "
             "The sign is first-named condition minus second-named condition, "
             "so a positive value favors the first-named condition. The headline "
-            "runs supply the H/anchor-on, shaping-off, auction-on baseline."
+            "runs supply the H/anchor-on, shaping-on, auction-on baseline."
         ),
         label="tab:synthetic_treatment_contrasts_multiseed",
         row_label_header="Contrast",
@@ -947,9 +947,10 @@ PARAM_SYMBOLS: list[tuple[str, Any, str]] = [
     (
         "$q$",
         "reward.q",
-        "Shaping-treatment wrong-side coefficient (inactive in headline)",
+        "Purchase-side shaping attenuation (shared preference)",
     ),
-    ("$k^\\star$", "reward.k_star", "Tolerance"),
+    ("$k^\\star$", "reward.k_star", "CLOB opportunity-cost coefficient via $S_0/(k^\\star\\alpha)$"),
+    ("$\\omega_{\\mathrm{sh}}$", "reward.auction_shaping_weight", "Auction shaping weight (1: original manuscript J)"),
     ("$d$", "reward.d", "Cancellation cost per unit"),
     ("$H_0$", "algo1.H0", "Initial projected clearing signal"),
     ("$\\eta_H$", "algo1.eta_H", "Projected clearing-signal smoothing coefficient"),
@@ -1070,6 +1071,23 @@ def build_hyperparam_table(cfg: ExperimentConfig) -> Optional[Table]:
         )
     for key, value in cfg.algo.hyperparams.items():
         rows.append(Row(key.replace("_", "\\_"), [HP_SYMBOLS.get(key, ""), _val_str(value)], "raw"))
+    for key, value in (
+        ("algo.backend", cfg.algo.backend),
+        ("rl.n_step", cfg.rl.n_step),
+        ("rl.relative_price_features", cfg.rl.relative_price_features),
+        ("reward.learning_potential", cfg.reward.learning_potential),
+        ("rl.learning_credit_baseline", cfg.rl.learning_credit_baseline),
+        ("rl.learning_clob_inventory_potential", cfg.rl.learning_clob_inventory_potential),
+        ("rl.auction_exposure_features", cfg.rl.auction_exposure_features),
+        ("rl.phase_normalization", cfg.rl.phase_normalization),
+        ("rl.auction_inventory_asinh", cfg.rl.auction_inventory_asinh),
+        ("rl.market_return_control_variate", cfg.rl.market_return_control_variate),
+        ("rl.market_control_reference", cfg.rl.market_control_reference),
+        ("rl.structured_warmup_episodes", cfg.rl.structured_warmup_episodes),
+        ("rl.learning_rate_half_life_episodes", cfg.rl.learning_rate_half_life_episodes),
+        ("rl.learning_rate_min_fraction", cfg.rl.learning_rate_min_fraction),
+    ):
+        rows.append(Row(key.replace("_", "\\_"), ["", _val_str(value)], "raw"))
     return Table(
         columns=["Symbol", "Value"],
         rows=rows,

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Multi-seed reproduction: run the full headline, historical, and synthetic
-# treatment matrix, then build the cross-seed IQM/bootstrap-CI aggregate tables,
-# figures, and paired cross-treatment contrasts. Reported policy is the
+# treatment matrix, then build the focused economic research report with
+# seed-level uncertainty and paired treatment contrasts. Reported policy is the
 # best-validation checkpoint (early stopping; evaluate.py default).
 #
 # DISK-SAFE: runs with --no-resume-ckpt so the replay-heavy periodic ckpt_ep*.pt
@@ -16,6 +16,7 @@
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$HERE/.." && pwd)"
+cd "$REPO_ROOT"
 export MPLCONFIGDIR="${MPLCONFIGDIR:-$REPO_ROOT/.cache/matplotlib}"
 mkdir -p "$MPLCONFIGDIR"
 
@@ -149,12 +150,7 @@ if [[ ${#pids[@]} -gt 0 ]]; then
   [[ "$batch_failed" -eq 0 ]] || exit 1
 fi
 
-echo "############ serial per-run/combined output generation ############"
-SINGLE_SEED_OUTPUT_ARGS=(--seed "$first_seed")
-[[ -z "$AGGREGATE_SYMBOL" ]] && SINGLE_SEED_OUTPUT_ARGS+=(--require-complete)
-bash "$HERE/make_all_outputs.sh" "${SINGLE_SEED_OUTPUT_ARGS[@]}"
-
-echo "############ cross-seed IQM/CI aggregation ############"
+echo "############ focused research report ############"
 AGGREGATE_ARGS=(--seeds "$SEEDS" --require-complete)
 [[ -n "$AGGREGATE_SYMBOL" ]] && AGGREGATE_ARGS+=(--symbol "$AGGREGATE_SYMBOL")
 [[ "$SMOKE" -eq 0 ]] && AGGREGATE_ARGS+=(--publication)

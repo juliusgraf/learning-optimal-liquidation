@@ -87,10 +87,10 @@ def test_config_binding_values_synthetic() -> None:
         cfg.rl.checkpoint_min_clob_updates,
         cfg.rl.checkpoint_min_auction_updates,
     ) == (5000, 2000)
-    assert not cfg.rl.checkpoint_require_initial_improvement
-    assert cfg.reward.d == 0.1 and cfg.reward.lambda_inv == 2.0 and cfg.reward.q == 1.0
-    assert not cfg.reward.shaping_enabled and cfg.reward.clawback_shaping
-    assert cfg.reward.k_star == 1000 and cfg.grid.alpha == 0.01  # kappa=0.1 <=> k*alpha=10
+    assert cfg.rl.checkpoint_require_initial_improvement
+    assert cfg.reward.d == 0.001 and cfg.reward.lambda_inv == 0.01 and cfg.reward.q == 0.0
+    assert cfg.reward.shaping_enabled and cfg.reward.clawback_shaping
+    assert cfg.reward.k_star == 10000 and cfg.grid.alpha == 0.01
     assert cfg.reward.numerical_guard is False  # D8: default OFF
     assert cfg.clob_flow.lambda0 == 1.0 and cfg.experiment.episodes == 800
     assert (cfg.clob_flow.V_inf, cfg.clob_flow.rho_lob, cfg.clob_flow.L_max) == (
@@ -242,8 +242,8 @@ def test_config_rejects_incoherent_physical_clock() -> None:
 
 
 def test_config_rejects_old_or_future_artifact_schema_labels() -> None:
-    for schema in (11, 13):
-        with pytest.raises(ConfigError, match="active schema 12"):
+    for schema in (12, 16):
+        with pytest.raises(ConfigError, match="active schema 15"):
             _load_synthetic(
                 overrides=[f"experiment.artifact_schema_version={schema}"]
             )
@@ -265,7 +265,7 @@ def test_config_rejects_old_or_future_artifact_schema_labels() -> None:
         ("clob_flow.L_max=0", "clob_flow.L_max"),
         ("auction_flow.p3=1.1", "probabilities"),
         ("auction_flow.D_mu=0.0", "D_mu>0"),
-        ("auction_flow.U1=3.0", "0<U1<=U2"),
+        ("auction_flow.U1=30.0", "0<U1<=U2"),
         ("algo1.H0=0.0", "algo1.H0"),
         ("algo1.eta_H=0.0", "algo1.eta_H"),
         ("actions.L_max=201", "actions.L_max"),

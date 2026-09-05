@@ -75,6 +75,7 @@ def auction_reward(
     shaping_enabled: bool = True,
     external_policy: bool = False,
     cancelled_interim_shaping: float = 0.0,
+    shaping_weight: float = 1.0,
 ) -> float:
     """Interim shaping, cancellation clawback, and the actual scalar fee.
 
@@ -95,7 +96,7 @@ def auction_reward(
         if clawback != 0.0:
             raise ValueError("cannot claw back shaping when auction shaping is disabled")
         return -fee
-    return auction_fictive_reward(K_a, S_a, h_cl, q) - fee - clawback
+    return shaping_weight * auction_fictive_reward(K_a, S_a, h_cl, q) - fee - clawback
 
 
 def terminal_reward(
@@ -108,6 +109,7 @@ def terminal_reward(
     *,
     shaping_enabled: bool = True,
     external_policy: bool = False,
+    shaping_weight: float = 1.0,
 ) -> float:
     """Terminal economic cash, residual mark, penalty, and aggregate shaping.
 
@@ -120,5 +122,5 @@ def terminal_reward(
     penalty = float(lambda_inv) * float(inventory_final) ** 2
     shaping = 0.0
     if shaping_enabled and not external_policy:
-        shaping = f_a(cash, q)
+        shaping = shaping_weight * f_a(cash, q)
     return cash - penalty + shaping + residual_mark

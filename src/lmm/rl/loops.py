@@ -13,6 +13,8 @@ one, including the irregular CLOB clock and the terminal clearing reward.
 from __future__ import annotations
 
 from collections.abc import Callable
+from collections import deque
+from dataclasses import replace
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -20,6 +22,8 @@ import numpy as np
 from lmm.agents.base import BELLMAN_FACTOR, Agent, Transition
 from lmm.env.mdp import MarketMakingEnv
 from lmm.experiments.accounting import compute_liquidation_accounting
+from lmm.rl.conditioning import inventory_potential
+from lmm.rl.exploration import PersistentWarmup
 
 __all__ = ["SEED_COMPONENTS", "EpisodeResult", "run_episode"]
 
@@ -48,6 +52,9 @@ class EpisodeResult:
     return_undisc: float = 0.0
     return_disc: float = 0.0
     training_return: float = 0.0
+    replay_return_unscaled: float = 0.0
+    potential_adjustment: float = 0.0
+    market_baseline_adjustment: float = 0.0
     clob_reward_sum: float = 0.0
     auction_step_reward_sum: float = 0.0
     terminal_reward: float = 0.0
@@ -124,6 +131,25 @@ def _transition_discount(chi: float, mode: str, t: float, t_next: float) -> floa
     return BELLMAN_FACTOR
 
 
+def _accumulate_transition(queue, transition, n_step):
+    """Mature an n-step row, or flush shorter tails at a phase boundary."""
+    queue.append(transition)
+    boundary = transition.done or transition.phase != transition.next_phase
+    ready = []
+    while queue and (len(queue) >= n_step or boundary):
+        first, last = queue[0], queue[-1]
+        info_replay = dict(first.info or {})
+        if last.done and last.info is not None and 'terminal_reward' in last.info:
+            info_replay['terminal_reward'] = last.info['terminal_reward']
+        ready.append(replace(first,
+            reward=sum(tr.reward for tr in queue), next_obs=last.next_obs,
+            next_mask=last.next_mask, next_phase=last.next_phase,
+            done=last.done, info=info_replay,
+        ))
+        queue.popleft()
+    return ready
+
+
 def run_episode(
     env: MarketMakingEnv,
     agent: Agent,
@@ -149,10 +175,19 @@ def run_episode(
     diag_lists: dict[str, list[float]] = {}
 
     raw_obs, _ = env.reset(seed=env_seed)
+    warmup = None
+    if train and getattr(agent, '_episode', 0) < env.cfg.rl.structured_warmup_episodes:
+        warmup = PersistentWarmup(env.cfg, env_seed, getattr(agent, '_episode', 0))
+    condition_rewards = train and env.cfg.reward.learning_potential
+    potential = inventory_potential(raw_obs, env.cfg) if condition_rewards else 0.0
     obs = agent.preprocess_observation(raw_obs)
     res.initial_mid = float(env.s_mid)
     res.initial_inventory = float(env.inventory)
     done = False
+    replay_queue = deque()
+    n_step = env.cfg.rl.n_step if train else 1
+    if n_step < 1:
+        raise ValueError("rl.n_step must be positive")
     while not done:
         phase = env.phase
         t_decision = env.t
@@ -166,17 +201,41 @@ def run_episode(
             }
         )
         mask = env.action_mask()
-        a = agent.act(obs, mask, phase, eval_mode=not train)
+        a = (agent.act(obs, mask, phase, eval_mode=not train) if warmup is None
+             else warmup.act(raw_obs, mask, phase))
+        current_mid = float(env.s_mid)
         raw_next_obs, reward, done, _, info = env.step(a)
         next_obs = agent.preprocess_observation(raw_next_obs)
+        raw_obs = raw_next_obs
         next_mask = None if done else env.action_mask()
+        next_potential = inventory_potential(raw_next_obs, env.cfg, done=done) if condition_rewards else 0.0
+        potential_change = next_potential - potential
+        potential = next_potential
+        res.potential_adjustment += potential_change
+        market_adjustment = 0.0
+        if train and env.cfg.rl.market_return_control_variate and phase == 'clob':
+            # A frozen deterministic exposure on the common exogenous clock.
+            # This removes the SAME realized amount from every policy on a
+            # common price/arrival path, even for historical nonmartingales.
+            # It therefore preserves policy differences pathwise and expected
+            # objective rankings. Neither observations nor reported J change.
+            midpoint_time = .5*(float(t_decision)+float(info['t_next']))
+            reference_inventory = env.cfg.grid.I0*max(0., 1-midpoint_time/env.cfg.grid.tau_op)
+            if env.cfg.rl.market_control_reference == 'calibration':
+                normalizer = getattr(agent, '_feature_normalizer', None)
+                if normalizer is None or normalizer.inventory_reference_times is None:
+                    raise ValueError('calibrated market control variate requires its frozen training reference')
+                reference_inventory = float(np.interp(midpoint_time, normalizer.inventory_reference_times,
+                                                     normalizer.inventory_reference_values))
+            market_adjustment = -reference_inventory*(float(env.s_mid)-current_mid)
+        res.market_baseline_adjustment += market_adjustment
+        res.replay_return_unscaled += reward + potential_change + market_adjustment
         transition_discount = BELLMAN_FACTOR
 
-        agent.observe(
-            Transition(
+        transition = Transition(
                 obs=obs,
                 action=a,
-                reward=reward,
+                reward=reward + potential_change + market_adjustment,
                 next_obs=next_obs,
                 done=done,
                 phase=phase,
@@ -185,7 +244,8 @@ def run_episode(
                 info=info,
                 discount=transition_discount,
             )
-        )
+        for replay_transition in _accumulate_transition(replay_queue, transition, n_step):
+            agent.observe(replay_transition)
         if train:
             for k, v in agent.update(phase=phase).items():
                 diag_lists.setdefault(k, []).append(v)

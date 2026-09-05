@@ -1,10 +1,42 @@
+# Current v17 workflow
+
+The active contracts and algorithm details are in `docs/rl_design.md` and
+`docs/model_refinement_v17.md`. The headline is H-on/shaping-on, trained on the
+author-approved weighted J and
+selected/evaluated on economic risk-adjusted PnL. Use a fresh results/revision_v17
+namespace; older outputs remain diagnosis inputs only. Stable-Baselines3 2.7.1
+is installed by the project dependency metadata.
+
+Bounded development verification (180 episodes, no final-test paths):
+
+```bash
+MPLCONFIGDIR=/tmp/lmm-mpl LMM_TORCH_INTRAOP_THREADS=1 LMM_TORCH_INTEROP_THREADS=1 \
+  .venv/bin/python scripts/diagnose_learning.py --algo dqn --seed 628 \
+  --episodes 180 --validation-size 64 --output results/my_dqn_diagnostic
+```
+
+Use `--algo ddpg`, `td3`, or `sac` with distinct output directories. Historical
+checks additionally pass `--setting historical_sp500_midquotes --symbol MSFT`.
+The command refuses more than 200 episodes or an existing output directory.
+
+DDPG/TD3 use phase-specific normalization and signed-asinh auction inventory
+coordinates; DQN/SAC retain their v16 representation. To run a matched
+representation control, append either
+`--config configs/treatment/representation_pooled.yaml` or
+`--config configs/treatment/representation_phase_asinh.yaml` to the bounded
+diagnostic command. These supplementary controls have distinct labels and
+are not added to the production treatment matrix. To reproduce a completed
+run exactly, pass its saved complete `config.yaml` via `--resolved-config`.
+The production launchers below retain the 800-episode cap and full treatment
+matrix. No production run was launched as part of the repair.
+
 # Reproducing the revised experiments
 
 This repository implements the revised manuscript environment for the
 synthetic rough-Heston setting and the historical-midprice setting, with DQN
 and the DDPG/TD3/SAC continuous-action relaxations. Current artifacts use
-schema 12, are written below `results/revision_v12/`, and carry environment
-contract `unified-minute-auction-mdp-2026-09-02-v8`; checkpoints and results
+schema 15, are written below `results/revision_v17/`, and carry environment
+contract `shaped-j-economic-eval-sb3-2026-09-05-v15`; checkpoints and results
 from earlier contracts are rejected.
 
 ## Setup
@@ -122,27 +154,26 @@ python3 -m lmm.experiments.diagnose_simulator \
 
 ## Canonical runs
 
-The matched confirmation budget is 800 episodes in both settings.
-Each run fits its feature normalizer on training-only paths. A checkpoint can
-enter the validation race only after both phase learners pass their configured
-optimizer-update maturity thresholds. The headline DQN exposes the complete
-auction grid from episode zero and uses the same masked epsilon-greedy schedule
-in both phases, so all eligible auction updates count normally. Early-stopping
-patience starts with the first eligible validation. The initial economic score
-is a non-reportable diagnostic reference, not a selection threshold. The
-active configuration sets `checkpoint_require_initial_improvement=false`:
-every maturity-eligible validation can enter the race, and `best.pt` is the
-mature joint policy with the highest validation risk-adjusted PnL. It is
-evaluated on 100 held-out test episodes. A run can still fail closed if its
-episode budget never produces a maturity-eligible checkpoint.
+The matched confirmation budget is 800 episodes in both settings. Each run
+fits its feature normalizer on training-only paths. All algorithms use the
+common 32-episode structured warmup; DQN retains its complete action grids.
+A checkpoint can enter the validation race only after both phase learners pass
+the configured optimizer-update maturity thresholds (only CLOB for no-auction).
+Early-stopping patience starts with the first eligible validation. The active
+`checkpoint_require_initial_improvement=true` also requires improvement over
+the initial policy's economic validation score. The initial policy is never
+reportable. `best.pt` is the highest-scoring mature, reportable joint policy,
+selected on economic validation and evaluated on 100 held-out test episodes.
+If no checkpoint qualifies, the run fails closed and retains its diagnostics;
+the publication report will not silently omit that seed.
 
-Headline training has shaping disabled and optimizes the same economic
-risk-adjusted PnL used for validation and final learned/AS/TWAP comparisons.
-Initial-inventory centering subtracts the policy-invariant constant `S0*I0`,
-so the complete headline training return equals `risk_adjusted_pnl` without
-changing policy rankings. The exact manuscript-shaped reward with `q=1` and
-cancellation clawback is retained only in the explicit `shaping_on` treatment
-arms.
+Headline training uses the manuscript's shaped J. Initial-inventory centering
+subtracts the constant S0*I0. A training-only telescoping potential redistributes
+rewards without changing the full centered J return. Validation, checkpoint
+selection and learned/AS/TWAP comparisons use economic risk-adjusted PnL.
+The common calibration has q=0, while CLOB and signed interim auction shaping
+remain active. The separate shaping-off treatments remove both shaping terms.
+See `docs/rl_design.md` for the exact conditioning and replay equations.
 
 DQN still selects from the exact masked action grids, but its Q function does
 not give each of the 1,346 auction actions an unrelated output vector. A shared
@@ -180,7 +211,7 @@ For isolated development or CI runs, set `LMM_RESULTS_ROOT` to an absolute
 scratch directory. Every launcher and report generator honors the override,
 and training records the same path in `config_resolved.yaml`, so discovery and
 provenance cannot disagree. Leave it unset for the canonical
-`results/revision_v12/` layout. For example:
+`results/revision_v17/` layout. For example:
 
 ```bash
 LMM_RESULTS_ROOT=/absolute/scratch/lmm-results \
@@ -202,22 +233,19 @@ scripts/run_synthetic_treatments.sh --seed 42
 scripts/run_synthetic_treatments.sh --smoke --seed 9001
 ```
 
-The remaining H/anchor-bundle by shaping cell (`H` on, shaping off) is exactly the canonical
+The remaining H/anchor-bundle by shaping cell (`H` on, shaping on) is exactly the canonical
 synthetic headline configuration. The treatment launcher therefore does not
 train it again: paired reporting reuses `synthetic_rough_heston/*_seed<N>` as
 that arm. Run the canonical synthetic launchers (or `reproduce_all.sh`) for the
 same seed before aggregating treatments.
 
-The two shaping-on arms intentionally test the exact `q=1` objective rather
-than treating it as equivalent to economic PnL. For an indicative-centred
-auction proposal, a positive slope with a negative local offset can receive a
-positive fictive submission credit independently of its eventual fill.
-Uncanceled schedules retain those credits and `c=0` permits several schedules
-to survive to clearing; clawback reverses only schedules that are actually
-canceled. The `q=1` terminal correction also removes negative purchase cash
-from the shaped terminal signal. A learner can therefore improve shaped return
-by stacking live schedules while worsening economic PnL. The paired shaping
-contrasts measure this objective mismatch; the headline is not exposed to it.
+The shaping-on arms share exactly the same parameters as the headline.
+Signed fictive submission credit need not equal eventual execution cash;
+cancellation reverses only the original credits of schedules actually canceled.
+Therefore shaped J and the economic criterion are different objectives even
+with q=0. The matched shaping contrasts measure this distinction. The
+`ablation_h_on_shaping_on.yaml` overlay remains an alias for the headline and
+is not separately launched.
 
 The no-cancellation treatment gives DQN 673 auction actions; the enabled
 regime has 1,346. Continuous agents use two or three normalized auction
@@ -230,7 +258,7 @@ clearing feature in addition to terminating at auction open. It is therefore a
 comparison against a policy that does not anticipate the modeled auction.
 
 The canonical five-seed publication command covers the headline, historical,
-and complete synthetic treatment matrix, then generates all aggregates:
+and complete synthetic treatment matrix, then generates the focused report:
 
 ```bash
 scripts/run_multiseed.sh --jobs 5 --threads-per-job 2
@@ -240,8 +268,7 @@ On a 15-core host, five workers with two numerical-library/Torch intra-op
 threads and one Torch inter-op thread each leave some headroom. The launcher
 also caps Apple Accelerate/vecLib and NumExpr, preventing hidden oversubscription;
 the effective settings are saved in `runtime_versions.json`. Lower `--jobs` if memory is tighter. Workers write distinct run
-directories. Shared per-run, combined, and multiseed output generation remains
-serial and begins only after every worker finishes. A small development check
+directories. Report generation runs once, serially, after every worker finishes. A small development check
 can use `--smoke --jobs 2`, which defaults to the deliberately nonpublication
 seeds `9001 9002`; smoke artifacts are explicitly rejected by publication
 mode. The launcher rejects canonical publication seed names in smoke mode so a
@@ -272,20 +299,35 @@ To regenerate reports without training:
 scripts/make_multiseed_outputs.sh --publication
 ```
 
-That command also builds the cross-treatment table. To rebuild only that
-table, use `scripts/make_treatment_outputs.sh --publication`.
+Open `results/revision_v17/_publication/index.html` after completion. It contains
+four figures and three tables, with captions and methods. Figures are vector
+PDF plus PNG; tables are LaTeX (`longtable`/`booktabs`) plus numeric CSV. The
+report retains **mean** economic performance, including poor seeds, because
+that is the expected-value estimand. It does not substitute an IQM or a maximum
+validation score for held-out economic performance. Small plot markers expose
+every seed; 95% intervals resample training-seed means, not individual test
+episodes as independent training replications. Five seeds still limit precision.
 
-Multiseed policy comparisons use confidence intervals over paired per-seed
-policy-minus-benchmark differences. Historical cross-asset tables are emitted
-both in currency units and in basis points of initial notional. The treatment
-table reports six explicit within-algorithm contrasts: the H/anchor bundle at
-each shaping level, shaping at each H/anchor level, the full auction-aware
-headline treatment versus the bundled no-auction comparator, and cancellation
-on minus off. Each evaluation episode is matched by environment
-seed before its difference is reduced to a master-seed mean; positive values
-favor the first-named condition. The summary `.tex`/`.csv` and auditable
-per-seed provenance CSV are written under
-`results/revision_v12/synthetic_rough_heston/_cross_treatment/tables/`.
+The paired treatment figure/table covers H/anchor at both shaping levels,
+shaping at both H/anchor levels, the full auction-aware versus bundled
+no-auction comparator, and cancellation on minus off. The separate auction
+mechanism figure derives the exact same-CLOB no-order counterfactual from
+saved accounting, separating execution price edge, fees and inventory-risk
+relief. It does not reinterpret the bundled no-auction treatment as a pure
+auction-access experiment. Negative contributions are shown unchanged.
+
+All headline comparisons use basis points of initial notional. Historical
+markets are shown individually; the auction summary additionally uses the
+fixed-ticker equal-weight mean within each seed. This is not a dollar forecast
+or uncertainty over unseen historical dates/stocks. See
+[`docs/research_outputs.md`](docs/research_outputs.md) for the full artifact map,
+statistical protocol, and exact unapplied manuscript inclusion instructions.
+
+Comprehensive legacy diagnostics remain opt-in:
+`scripts/make_multiseed_outputs.sh --publication --diagnostics` and
+`scripts/make_all_outputs.sh --seed 42 --diagnostics`. They are outside the
+focused publication bundle. The old standalone paired treatment table remains
+available via `scripts/make_treatment_outputs.sh --publication`.
 
 Generated result artifacts are never copied into `paper/` automatically.
 Promotion into the manuscript artifact directory remains an explicit manual
@@ -296,7 +338,7 @@ review step.
 For a synthetic DQN run named `dqn_seed42`:
 
 ```bash
-RUN=results/revision_v12/synthetic_rough_heston/dqn_seed42
+RUN=results/revision_v17/synthetic_rough_heston/dqn_seed42
 
 python3 -m lmm.experiments.train \
   --config configs/base.yaml \
@@ -307,12 +349,14 @@ python3 -m lmm.experiments.train \
 python3 -m lmm.experiments.evaluate --run-dir "$RUN" --trace-episodes 1
 python3 -m lmm.experiments.policy_differences --run-dir "$RUN" --benchmark as
 python3 -m lmm.experiments.policy_differences --run-dir "$RUN" --benchmark twap
-python3 -m lmm.experiments.make_figures --run-dir "$RUN"
-python3 -m lmm.experiments.make_tables --run-dir "$RUN"
+python3 -m lmm.experiments.publication --write-completion-manifest "$RUN"
+# Optional per-run debugging, not the publication report:
+# python3 -m lmm.experiments.make_figures --run-dir "$RUN"
+# python3 -m lmm.experiments.make_tables --run-dir "$RUN"
 ```
 
 The installed command names are `lmm-train`, `lmm-evaluate`,
-`lmm-policy-differences`, `lmm-make-figures`, and `lmm-make-tables`.
+`lmm-policy-differences`, `lmm-make-report`, `lmm-make-figures`, and `lmm-make-tables`.
 Fixed-policy cumulative differences are not called regret.
 
 ## Artifact map
@@ -329,14 +373,22 @@ Every completed run contains the following raw and provenance artifacts:
   proposal/action/clearing diagnostics, and episode traces;
 - `eval/policy_difference_{as,twap}.csv`.
 
-The canonical multiseed launcher generates per-run and single-seed combined
-figures/tables for its first requested seed only; producing duplicate anatomy
-plots for all five seeds would add substantial runtime and disk use without
-entering the publication summaries. It generates the cross-seed tables and
-figures from all five seeds under each headline setting's `_multiseed/`
-directory, and the paired treatment outputs under `_cross_treatment/`. Run
-`scripts/make_all_outputs.sh --seed N` explicitly if per-run plots and tables
-are wanted for another seed.
+The canonical launcher writes one report under
+`results/revision_v17/_publication/`: `index.html`, `README.md`,
+`figures/{economic_performance,learning,auction_mechanism,treatments}.{pdf,png}`,
+`tables/{economic_performance,auction_mechanism,treatments}.{tex,csv}`,
+`audit/` with seed-level estimates and validation series, and `manifest.json`
+with input and output hashes. Per-run figures, critic-loss plots, cumulative
+fixed-policy differences, and selected episode anatomy are not generated by
+default. Their underlying raw data remain in each run directory.
+
+`scripts/make_all_outputs.sh --seed N` now writes a focused, explicitly
+nonpublication single-seed report under `_single_seedN/`; it requires all four
+algorithms in each included market and omits confidence intervals.
+Nonpublication multiseed reports use `_development/`. Only `--publication`
+produces `_publication/` and applies the strict complete-matrix/configuration/
+commit/checkpoint checks. Reports are read-only with respect to run artifacts
+and completion manifests. Regeneration never executes an environment.
 
 Primary evaluation fields are `pnl` and `risk_adjusted_pnl`. The latter is
 
@@ -345,9 +397,9 @@ risk_adjusted_pnl = pnl - terminal_inventory_penalty
 ```
 
 where `pnl` already includes cancellation fees. Headline training return is
-the centered economic objective. Shaped return and its components are retained
-for the explicit shaping treatments as diagnostics but never enter reported
-PnL or checkpoint selection. Historical tables additionally use
+centered shaped J. Its components and the telescoping replay adjustment are
+retained as training diagnostics and never enter reported PnL or checkpoint
+selection. Historical tables additionally use
 `risk_adjusted_pnl_bps`.
 
 The full field-level schema is in `docs/metrics_schema.md`.

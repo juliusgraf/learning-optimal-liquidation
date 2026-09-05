@@ -234,7 +234,7 @@ def test_checkpoint_round_trip(algo, cls, tmp_path):
         "algo.hyperparams.batch_size=8",
     )
     agent = make_cont_agent(cfg, cls, master_seed=5)
-    normalizer = FeatureNormalizer(cfg.grid.tau_cl).fit(
+    normalizer = FeatureNormalizer(cfg.grid.tau_cl, relative_prices=cfg.rl.relative_price_features, auction_exposure_features=cfg.rl.auction_exposure_features).fit(
         np.vstack([np.zeros(18), np.ones(18)])
     )
     agent.set_feature_normalizer(normalizer)

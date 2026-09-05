@@ -1,0 +1,1150 @@
+{
+  "protected_sha256": {
+    "paper/main.tex": "0d685ea8277d995d5e601ddd826c650205768e142b6704d02e1b43da74eba835",
+    "paper/results/tables_params/params_generative.tex": "13e0b2ebad46b2b33b0fbcbf3785fe3f259cec01105c979c0969f874caa4ca88"
+  },
+  "current_source_sha256": {
+    "src/lmm/config.py": "fd6c139848d064896dda76bcd0d3a63e2512cdb5b6a7350ebbd318d1838a5845",
+    "src/lmm/__init__.py": "f50670719454d8e2d41ec9a9933fc826b4719712d528d455fa7a2efdd9b6f053",
+    "src/lmm/experiments/tracing.py": "810e1e90c99ce0f48c503a244776df580fc5cc87d8d0f313f2354bd18d91a108",
+    "src/lmm/experiments/accounting.py": "755fb510ac3442b1a4a14a79403ef0f3326e6ce55148054a82f18cc5439e51f0",
+    "src/lmm/experiments/plotting.py": "f3e65e58e88a0ec970eb6fca5557048358c7bcb9124d17e3e23ccaee1d04977f",
+    "src/lmm/experiments/make_figures.py": "1f397ffbd848dea45fd86f0bf0fd94d92cc3c2eb506b60f08788b06ee853781f",
+    "src/lmm/experiments/__init__.py": "58abf3fa120d2321176c9e7f2ae5b88c495ac75dc9adb77f77f66e63a5a55742",
+    "src/lmm/experiments/stats.py": "62839f937837d4742c2aff318b254200e981341e9742e4a15a488638b1fce5a0",
+    "src/lmm/experiments/publication.py": "2628a831ba091b14b84010fe68828042c32e469a227905e585069dd397aae4a9",
+    "src/lmm/experiments/train.py": "ca8306c25944b7bcf4f7229678db35a840d42b3f46459813ee55b23d09d7d5de",
+    "src/lmm/experiments/policy_differences.py": "6ac95a6c0e540425e3483892423952681cabc08fc21a6b6f177f150f0251557a",
+    "src/lmm/experiments/tables.py": "f01b35cb5632e4545c5c5c74b6c22bd7683f0f5f6fb4132bfac49614679d4617",
+    "src/lmm/experiments/evaluate.py": "1553b90135a8042aae2dba135802ecc2516b2d866f6a0e85804ca69f05b58b7a",
+    "src/lmm/experiments/diagnose_simulator.py": "4a9301d10d19426d8ccfcb909b12494f0964b4989ecd473b151c677a2ced79bf",
+    "src/lmm/experiments/calibration.py": "4e70094388052bc50310e6cf92e91d395c3ed728cb46fcc36189a62562534122",
+    "src/lmm/experiments/make_tables.py": "d85b5f4db2a04c8b9c26c5588ac4213054ccc44ca4553f73f794a3e9254acf2c",
+    "src/lmm/agents/td3.py": "2bdd0bb9af67a6592e2828cf0bbc2137f185cdc15c39787b1f46b0bf286de392",
+    "src/lmm/agents/sb3.py": "571e0ccbd80dd05994083f7060612bd65889171ae69dbb4919a6361e611ab8c7",
+    "src/lmm/agents/__init__.py": "0c83d8daedd9a4364493f3ca76646da8150b5f973796bb24ed3a99fce79f1cfc",
+    "src/lmm/agents/sac.py": "0f96e1ff7ad9659270a1ec72051be6a2c1341e2b145fdd3529563664ac803010",
+    "src/lmm/agents/ddpg.py": "b2cbf65b6cccf612667e1e8972f7061ef274343d7d3ecc21d5664647cc03d63e",
+    "src/lmm/agents/continuous_base.py": "7d947d7d1f8a606930b3d50439ccde4ce02d640af5c5fdfb5a8010cab6984d9b",
+    "src/lmm/agents/dqn.py": "565488ff5f30b54dd33d5daecbcbd2dcce67a3739a0e76b99d3381ef60b9ca68",
+    "src/lmm/agents/benchmarks.py": "522b15627ecc0e266bec1056be627f109b2309bef2159939c3b2120ebb2ece9a",
+    "src/lmm/agents/base.py": "9b0a7a3805c5d4080188beda9713cc42ccdd912e0de11c7472b6e754d00a179c",
+    "src/lmm/utils/seeding.py": "9b572a50bc7b652987e55e82e04b8d1b02b7d2473fd0e3eca4c5055bd601c850",
+    "src/lmm/utils/logging.py": "b5a6f30cfe7d983f0fd6e966bdf32146608813da852628df8676c18eeb246a13",
+    "src/lmm/utils/__init__.py": "eac2945a26d08920d0267b04b5889c2709fe66d38fc201c5d694523dabfdc319",
+    "src/lmm/env/__init__.py": "69aab95c73fa9d39d13569f1e722b472775859d6c833e4576a58c7764f253e29",
+    "src/lmm/env/features.py": "aedf701c5df8dc534eaf87397c520c30d9b3302ff65ba66b0397b442e17de4eb",
+    "src/lmm/env/mdp.py": "5b065f01a28321d99ffe1bcd047cb49554b37aa0ebc276400ee95eea69154e88",
+    "src/lmm/env/rewards.py": "01ed5f5602d90fc0498575a0edef2192883e401a8a1cf2aff6376fee503b5d09",
+    "src/lmm/env/action_spaces.py": "56671a535e311fb4d9dd3b2ab9cbee8d0208510e721d154a0c52a26f4ab2a6d7",
+    "src/lmm/market/__init__.py": "66a9f1a19c2d19b491fd291e96f6dc7ccaca167c821a1968c9d0a2f5f886e9ab",
+    "src/lmm/market/midprice.py": "ee3d3678fde446b5d12636c21474f83855f2566c76a433c5b37b168957b201fa",
+    "src/lmm/market/clearing.py": "7448fe1d82d18632da88a470014c31e6d7b9987da14ec848ff08b270d7713499",
+    "src/lmm/market/generator.py": "704567b1c500e5b8fd9da02e1eb41b47ebedf62c6e25208e80093105d84ff01a",
+    "src/lmm/market/clob.py": "4682dd3740d002645f4a2d1f735794004e2aa2a6a2ee36dfd18f0f6742399bd2",
+    "src/lmm/market/auction.py": "775edfb45c0707a93e51ed7917f128455f935aa341e38cea17c52a093bfc4d78",
+    "src/lmm/data/__init__.py": "f1b020f2f2625022bb889058205df8e90ac519c7e384df74ccb6cf7fba26a95f",
+    "src/lmm/data/load_midquote_data.py": "fc5f041ba8fdc227448d0b033125615eaa3c0f8f2ed3e0341b466036e852d56c",
+    "src/lmm/data/historical_artifact.py": "9bad4423e87b0ef0aec6673ddf06429781b040229f2d8efbcfdb8dfdb59522ed",
+    "src/lmm/rl/continuous_replay.py": "4c864e8dc1f5aa68c9eeff4230982f0d4f26221959607bea56fef685faa4f22f",
+    "src/lmm/rl/exploration.py": "9b2b0ce1c2946b9c98e220803b9f458d411075b54f863c42882d9636db3e1545",
+    "src/lmm/rl/__init__.py": "dd9e117f765949117ef4431ada95be1d26371fbe10de35db233c8dd30f2d4ab1",
+    "src/lmm/rl/loops.py": "50f64ec0aa16e8e016c391a614416036ea0d33f328fe7ac7e307bd02211755b3",
+    "src/lmm/rl/networks.py": "c5ff878f0cf3f93f8c36b9802f4e3457420af7eae3fb5817a757d4fab9acddbf",
+    "src/lmm/rl/replay.py": "944a98f57c7a9f2dc9c2fa99c8d510ec88d5c5186159e48c2d3f178a27ce5517",
+    "src/lmm/rl/conditioning.py": "1d363eb435eae9b3ed8fd93819bee9815a8e53e55a5644973f6051c837c36f60",
+    "src/lmm/rl/schedules.py": "9ffdcf00088b24eca4f14e71f3555e1b43fa823eee0d964f80e3bb22794a0050",
+    "configs/synthetic_rough_heston.yaml": "44f48bd24f02eab030224e3e51fe8841d4d9267af1d5a06d512289480b3b88a1",
+    "configs/base.yaml": "8498f07c2fd88cf04e60d4a3c09d80b75c5e88816d76cd93f2c11ab708e9ac5a",
+    "configs/historical_sp500_midquotes.yaml": "48b3059fb0d4a5c6fd6f8af035bdf3bad157f12d86be51d7825d598e27817707",
+    "configs/diagnostic/ddpg_optimizer.yaml": "78a35131eb4674115a393103dd35fc9751072ac1c0aca84ee5735894a9caceea",
+    "configs/diagnostic/liquid_market.yaml": "21a7309d8fc9bee41e5958a9d94d8f8bbdb3df9c3d4ff8328c7e585c9f49afd2",
+    "configs/diagnostic/calibration_followup.yaml": "b9e24284321a4576206cb1628453bf293ef77b106ed473f35e256f5b8920ed2b",
+    "configs/diagnostic/finite_liquidity.yaml": "a84210cb678591db2810a2cf8ae87897759e8f1164df32f3ec4489be6a88941f",
+    "configs/diagnostic/execution_units.yaml": "7f638e88ec7822ded595dc1171b648411a26985946ccd84d7a6b58e9980cfb19",
+    "configs/diagnostic/phase_inventory_asinh.yaml": "2a7b7710dcc1cac28643ed15b993bdf1ca84b8d167a92d4c7ff5bb2404f32612",
+    "configs/diagnostic/persistent_exploration.yaml": "92334f9a0e006c42e9ff28f0b788372bb030fa77f0e47445a410d05fc3baf208",
+    "configs/diagnostic/message_cost.yaml": "a85ee69e866857458ac84fa51dffd186681a27873501b73dc66df2236f508144",
+    "configs/diagnostic/market_control_variate.yaml": "95092b29f07c4a2e1ec4120d51dfcd004d8a5408d67f88ecb0825133795b4506",
+    "configs/diagnostic/v15_reference.yaml": "02ba8ee2fb15e3e7d2c438dc27f1878448ab6687c23419bb00028dbaa041250b",
+    "configs/diagnostic/actor_paper_rate.yaml": "14992702fa18d63320ffabe2bb82e0e6d79c7072bb7d31e1979a6e74807cc685",
+    "configs/diagnostic/liquidity_matched.yaml": "acfc0bc5713f809b0dee200a0898e8bafe162db48cb743520505118e99a8209c",
+    "configs/diagnostic/value_capacity.yaml": "597015484dd0fe820fad1e5a3eb87028d7071be8313e01ef985306f151387550",
+    "configs/diagnostic/complete_warmup.yaml": "2cd7f5d998cb617752fb026509129076a357926f374b42d41528e647c0d31a82",
+    "configs/diagnostic/revised_objective.yaml": "eafcf9ae18d33d16ab338470fdaa2adcc9ad682dbb16f1d928c4cb83e046777b",
+    "configs/diagnostic/proposed_credit_scale.yaml": "54002d90dfbc66c3ba76deb236c445a07df1e22ad613bcb247e16167f0563b2f",
+    "configs/diagnostic/exposure_resolution.yaml": "3e3367703418efa6314c97dbc1e17075c65837aafe077c00d7d9f3014d2aa0a6",
+    "configs/diagnostic/phase_normalization.yaml": "12004838d3cd50c5289bf35b097f445934bc95d1b4a5bfb082738ff25309da12",
+    "configs/algo/td3.yaml": "bacf341c77f17b983f6174132e41b6aa072033ae93f5a3ebafcd0aa96d3dbfaf",
+    "configs/algo/ddpg.yaml": "6f4a626b12009c94c236527d4eafd47e6bfa91803649ab8005eaf7346b20f6e1",
+    "configs/algo/dqn.yaml": "4b761440a23a901200272ceec6418b577d34a2fd6ce46252e028db2e9f76c980",
+    "configs/algo/sac.yaml": "cff783bd50e766849ef94e2d236080d618d4a8c5923e6b35d5664cf4ef11cc26",
+    "configs/treatment/representation_phase_asinh.yaml": "5563b024f2998137c460ab60ed0622589e6840d41cef787cc1adec5521c4aeeb",
+    "configs/treatment/representation_pooled.yaml": "02c4eb8dcb7c4819ca957f4cc1265e01957e30b400c31f35713be2d656d550da",
+    "configs/treatment/ablation_h_off_shaping_off.yaml": "4b4f1d90cc9329d8a740e225df35042c20eca663e346cfa0b7833a969c7a06a7",
+    "configs/treatment/ablation_h_off_shaping_on.yaml": "b9868643e07a6f64f000bfe8e01f5e6d4fc8bc3a0c1145ff55e201528d539c64",
+    "configs/treatment/no_cancellation.yaml": "8f34ecaebe8df10f54f3d877ad10e67b39b30d2a782e6214bb5d4e5789d0d34a",
+    "configs/treatment/no_auction.yaml": "db126bb60d69d434e50f4b99e35d6966e0510b71a3acbdfca77c3752b10fef0a",
+    "configs/treatment/ablation_h_on_shaping_off.yaml": "e608ca515edeb2d4f59a0d86365ff2bcd91c4c88d60e7dac864b8e40bd2d35e3",
+    "configs/treatment/ablation_h_on_shaping_on.yaml": "2ee042ecbd443d50c002b6f928b87396474cdeb0b2f371ea378657dc836b196a"
+  },
+  "completed_bounded_pilots": 16,
+  "pilot_episodes": 180,
+  "complete_production_runs_launched": false,
+  "current_configurations": {
+    "dqn": {
+      "experiment": {
+        "name": "synthetic_rough_heston",
+        "setting": "synthetic_rough_heston",
+        "episodes": 800,
+        "master_seed": 42,
+        "results_root": "results/revision_v17",
+        "artifact_schema_version": 15,
+        "seeds": [
+          42
+        ],
+        "ablation_label": "H_on__shaping_on__auction_on",
+        "auction_enabled": true
+      },
+      "grid": {
+        "tau_op": 120,
+        "tau_cl": 150,
+        "h": 30,
+        "time_unit": "minutes",
+        "T_physical": 150.0,
+        "alpha": 0.01,
+        "S0": 100.0,
+        "I0": 100,
+        "I_max": 100
+      },
+      "clob_flow": {
+        "lambda0": 1.0,
+        "v_m": 2.0,
+        "gamma_m": 2.5,
+        "V": 30,
+        "V_inf": 2.0,
+        "beta_a": 2.0,
+        "beta_b": 5.0,
+        "rho_lob": 0.96,
+        "L_max": 200
+      },
+      "auction_flow": {
+        "p1": 1.0,
+        "p2": 0.0,
+        "p3": 0.3,
+        "p4": 0.05,
+        "D_mu": 0.1,
+        "U1": 1.0,
+        "U2": 20.0,
+        "B_inf": 150
+      },
+      "midprice": {
+        "model": "rough_heston",
+        "rough_heston": {
+          "H": 0.1,
+          "rho_h": -0.7,
+          "v0": 0.02,
+          "theta": 0.02,
+          "varsigma": 0.3,
+          "nu": 0.3,
+          "s_star": 98280.0
+        },
+        "historical": null
+      },
+      "algo1": {
+        "H0": 100.0,
+        "eta_H": 0.95
+      },
+      "reward": {
+        "k_star": 10000,
+        "lambda_inv": 0.01,
+        "q": 0.0,
+        "d": 0.001,
+        "shaping_enabled": true,
+        "clawback_shaping": true,
+        "numerical_guard": false,
+        "numerical_guard_bound": 1000000000.0,
+        "clob_shaping_enabled": null,
+        "auction_shaping_enabled": null,
+        "center_initial_inventory_value": true,
+        "learning_potential": true,
+        "auction_shaping_weight": 0.0001
+      },
+      "rl": {
+        "chi": 1.0,
+        "relative_price_features": true,
+        "n_step": 1,
+        "learning_credit_baseline": false,
+        "learning_clob_inventory_potential": true,
+        "auction_exposure_features": true,
+        "phase_normalization": false,
+        "auction_inventory_asinh": false,
+        "market_return_control_variate": true,
+        "structured_warmup_episodes": 32,
+        "market_control_reference": "calibration",
+        "learning_rate_half_life_episodes": 90.0,
+        "learning_rate_min_fraction": 0.1,
+        "discount_mode": "undiscounted",
+        "checkpoint_metric": "risk_adjusted_pnl",
+        "normalizer_fit_episodes": 16,
+        "validation_size": 100,
+        "validation_frequency_episodes": 100,
+        "validation_patience_evals": 6,
+        "checkpoint_min_clob_updates": 5000,
+        "checkpoint_min_auction_updates": 2000,
+        "checkpoint_require_initial_improvement": true,
+        "test_size": 100,
+        "h_cl_feature_enabled": true
+      },
+      "actions": {
+        "V_max": 30,
+        "L_max": 12,
+        "beta": 0.25,
+        "K_max": 32,
+        "B_inf": 150,
+        "B_max": 10,
+        "auction_anchor": "indicative",
+        "auction_cancel_mode": "enabled"
+      },
+      "features": {
+        "clob": [
+          "time",
+          "inventory",
+          "h_cl",
+          "s_mid",
+          "decision_index",
+          "depth_ask",
+          "depth_bid",
+          "top_ask",
+          "top_bid",
+          "n_mm",
+          "n_buy",
+          "n_sell",
+          "cancel_admissible",
+          "own_slope",
+          "own_weighted_quote",
+          "exogenous_slope",
+          "auction_imbalance",
+          "exogenous_weighted_quote"
+        ],
+        "auction": [
+          "time",
+          "inventory",
+          "h_cl",
+          "s_mid",
+          "decision_index",
+          "depth_ask",
+          "depth_bid",
+          "top_ask",
+          "top_bid",
+          "n_mm",
+          "n_buy",
+          "n_sell",
+          "cancel_admissible",
+          "own_slope",
+          "own_weighted_quote",
+          "exogenous_slope",
+          "auction_imbalance",
+          "exogenous_weighted_quote"
+        ]
+      },
+      "benchmark": {
+        "z": 10.0,
+        "as_n_samples": 5000,
+        "as_gamma": 0.0,
+        "twap_delta_mode": "min"
+      },
+      "algo": {
+        "name": "dqn",
+        "hyperparams": {
+          "buffer_size": 50000,
+          "min_buffer": 5000,
+          "min_buffer_clob": 2500,
+          "min_buffer_auction": 960,
+          "batch_size": 128,
+          "lr": 0.00015,
+          "loss": "mse",
+          "grad_clip_norm": 1.0,
+          "hidden_layers": [
+            256,
+            256
+          ],
+          "action_embedding_dim": 32,
+          "safe_auction_initialization": false,
+          "target_update_interval": 1000,
+          "target_soft_tau": 0.005,
+          "double_q": true,
+          "updates_per_env_step": 1,
+          "update_every": 1,
+          "reward_scale": 1.0,
+          "activation": "relu",
+          "device": "cpu",
+          "checkpoint_interval_episodes": 100,
+          "epsilon_start": 1.0,
+          "epsilon_end": 0.05,
+          "epsilon_decay_episodes": 90.0,
+          "epsilon_warmup_episodes": 5,
+          "epsilon_auction_scale": 1.0,
+          "safe_auction_noop_margin": 0.02,
+          "auction_learning_start_episode": 0
+        },
+        "backend": "native"
+      }
+    },
+    "ddpg": {
+      "experiment": {
+        "name": "synthetic_rough_heston",
+        "setting": "synthetic_rough_heston",
+        "episodes": 800,
+        "master_seed": 42,
+        "results_root": "results/revision_v17",
+        "artifact_schema_version": 15,
+        "seeds": [
+          42
+        ],
+        "ablation_label": "H_on__shaping_on__auction_on",
+        "auction_enabled": true
+      },
+      "grid": {
+        "tau_op": 120,
+        "tau_cl": 150,
+        "h": 30,
+        "time_unit": "minutes",
+        "T_physical": 150.0,
+        "alpha": 0.01,
+        "S0": 100.0,
+        "I0": 100,
+        "I_max": 100
+      },
+      "clob_flow": {
+        "lambda0": 1.0,
+        "v_m": 2.0,
+        "gamma_m": 2.5,
+        "V": 30,
+        "V_inf": 2.0,
+        "beta_a": 2.0,
+        "beta_b": 5.0,
+        "rho_lob": 0.96,
+        "L_max": 200
+      },
+      "auction_flow": {
+        "p1": 1.0,
+        "p2": 0.0,
+        "p3": 0.3,
+        "p4": 0.05,
+        "D_mu": 0.1,
+        "U1": 1.0,
+        "U2": 20.0,
+        "B_inf": 150
+      },
+      "midprice": {
+        "model": "rough_heston",
+        "rough_heston": {
+          "H": 0.1,
+          "rho_h": -0.7,
+          "v0": 0.02,
+          "theta": 0.02,
+          "varsigma": 0.3,
+          "nu": 0.3,
+          "s_star": 98280.0
+        },
+        "historical": null
+      },
+      "algo1": {
+        "H0": 100.0,
+        "eta_H": 0.95
+      },
+      "reward": {
+        "k_star": 10000,
+        "lambda_inv": 0.01,
+        "q": 0.0,
+        "d": 0.001,
+        "shaping_enabled": true,
+        "clawback_shaping": true,
+        "numerical_guard": false,
+        "numerical_guard_bound": 1000000000.0,
+        "clob_shaping_enabled": null,
+        "auction_shaping_enabled": null,
+        "center_initial_inventory_value": true,
+        "learning_potential": true,
+        "auction_shaping_weight": 0.0001
+      },
+      "rl": {
+        "chi": 1.0,
+        "relative_price_features": true,
+        "n_step": 1,
+        "learning_credit_baseline": false,
+        "learning_clob_inventory_potential": true,
+        "auction_exposure_features": true,
+        "phase_normalization": true,
+        "auction_inventory_asinh": true,
+        "market_return_control_variate": true,
+        "structured_warmup_episodes": 32,
+        "market_control_reference": "calibration",
+        "learning_rate_half_life_episodes": 90.0,
+        "learning_rate_min_fraction": 0.1,
+        "discount_mode": "undiscounted",
+        "checkpoint_metric": "risk_adjusted_pnl",
+        "normalizer_fit_episodes": 16,
+        "validation_size": 100,
+        "validation_frequency_episodes": 100,
+        "validation_patience_evals": 6,
+        "checkpoint_min_clob_updates": 5000,
+        "checkpoint_min_auction_updates": 2000,
+        "checkpoint_require_initial_improvement": true,
+        "test_size": 100,
+        "h_cl_feature_enabled": true
+      },
+      "actions": {
+        "V_max": 30,
+        "L_max": 12,
+        "beta": 0.25,
+        "K_max": 32,
+        "B_inf": 150,
+        "B_max": 10,
+        "auction_anchor": "indicative",
+        "auction_cancel_mode": "enabled"
+      },
+      "features": {
+        "clob": [
+          "time",
+          "inventory",
+          "h_cl",
+          "s_mid",
+          "decision_index",
+          "depth_ask",
+          "depth_bid",
+          "top_ask",
+          "top_bid",
+          "n_mm",
+          "n_buy",
+          "n_sell",
+          "cancel_admissible",
+          "own_slope",
+          "own_weighted_quote",
+          "exogenous_slope",
+          "auction_imbalance",
+          "exogenous_weighted_quote"
+        ],
+        "auction": [
+          "time",
+          "inventory",
+          "h_cl",
+          "s_mid",
+          "decision_index",
+          "depth_ask",
+          "depth_bid",
+          "top_ask",
+          "top_bid",
+          "n_mm",
+          "n_buy",
+          "n_sell",
+          "cancel_admissible",
+          "own_slope",
+          "own_weighted_quote",
+          "exogenous_slope",
+          "auction_imbalance",
+          "exogenous_weighted_quote"
+        ]
+      },
+      "benchmark": {
+        "z": 10.0,
+        "as_n_samples": 5000,
+        "as_gamma": 0.0,
+        "twap_delta_mode": "min"
+      },
+      "algo": {
+        "name": "ddpg",
+        "hyperparams": {
+          "buffer_size": 50000,
+          "min_buffer_clob": 2500,
+          "min_buffer_auction": 960,
+          "batch_size": 128,
+          "hidden_layers": [
+            256,
+            256
+          ],
+          "learning_rate": 0.0003,
+          "actor_learning_rate": 0.0001,
+          "target_soft_tau": 0.0025,
+          "reward_scale": 1.0,
+          "device": "cpu",
+          "checkpoint_interval_episodes": 100,
+          "exploration_noise_std": 0.1,
+          "grad_clip_norm": 1.0
+        },
+        "backend": "sb3"
+      }
+    },
+    "td3": {
+      "experiment": {
+        "name": "synthetic_rough_heston",
+        "setting": "synthetic_rough_heston",
+        "episodes": 800,
+        "master_seed": 42,
+        "results_root": "results/revision_v17",
+        "artifact_schema_version": 15,
+        "seeds": [
+          42
+        ],
+        "ablation_label": "H_on__shaping_on__auction_on",
+        "auction_enabled": true
+      },
+      "grid": {
+        "tau_op": 120,
+        "tau_cl": 150,
+        "h": 30,
+        "time_unit": "minutes",
+        "T_physical": 150.0,
+        "alpha": 0.01,
+        "S0": 100.0,
+        "I0": 100,
+        "I_max": 100
+      },
+      "clob_flow": {
+        "lambda0": 1.0,
+        "v_m": 2.0,
+        "gamma_m": 2.5,
+        "V": 30,
+        "V_inf": 2.0,
+        "beta_a": 2.0,
+        "beta_b": 5.0,
+        "rho_lob": 0.96,
+        "L_max": 200
+      },
+      "auction_flow": {
+        "p1": 1.0,
+        "p2": 0.0,
+        "p3": 0.3,
+        "p4": 0.05,
+        "D_mu": 0.1,
+        "U1": 1.0,
+        "U2": 20.0,
+        "B_inf": 150
+      },
+      "midprice": {
+        "model": "rough_heston",
+        "rough_heston": {
+          "H": 0.1,
+          "rho_h": -0.7,
+          "v0": 0.02,
+          "theta": 0.02,
+          "varsigma": 0.3,
+          "nu": 0.3,
+          "s_star": 98280.0
+        },
+        "historical": null
+      },
+      "algo1": {
+        "H0": 100.0,
+        "eta_H": 0.95
+      },
+      "reward": {
+        "k_star": 10000,
+        "lambda_inv": 0.01,
+        "q": 0.0,
+        "d": 0.001,
+        "shaping_enabled": true,
+        "clawback_shaping": true,
+        "numerical_guard": false,
+        "numerical_guard_bound": 1000000000.0,
+        "clob_shaping_enabled": null,
+        "auction_shaping_enabled": null,
+        "center_initial_inventory_value": true,
+        "learning_potential": true,
+        "auction_shaping_weight": 0.0001
+      },
+      "rl": {
+        "chi": 1.0,
+        "relative_price_features": true,
+        "n_step": 1,
+        "learning_credit_baseline": false,
+        "learning_clob_inventory_potential": true,
+        "auction_exposure_features": true,
+        "phase_normalization": true,
+        "auction_inventory_asinh": true,
+        "market_return_control_variate": true,
+        "structured_warmup_episodes": 32,
+        "market_control_reference": "calibration",
+        "learning_rate_half_life_episodes": 90.0,
+        "learning_rate_min_fraction": 0.1,
+        "discount_mode": "undiscounted",
+        "checkpoint_metric": "risk_adjusted_pnl",
+        "normalizer_fit_episodes": 16,
+        "validation_size": 100,
+        "validation_frequency_episodes": 100,
+        "validation_patience_evals": 6,
+        "checkpoint_min_clob_updates": 5000,
+        "checkpoint_min_auction_updates": 2000,
+        "checkpoint_require_initial_improvement": true,
+        "test_size": 100,
+        "h_cl_feature_enabled": true
+      },
+      "actions": {
+        "V_max": 30,
+        "L_max": 12,
+        "beta": 0.25,
+        "K_max": 32,
+        "B_inf": 150,
+        "B_max": 10,
+        "auction_anchor": "indicative",
+        "auction_cancel_mode": "enabled"
+      },
+      "features": {
+        "clob": [
+          "time",
+          "inventory",
+          "h_cl",
+          "s_mid",
+          "decision_index",
+          "depth_ask",
+          "depth_bid",
+          "top_ask",
+          "top_bid",
+          "n_mm",
+          "n_buy",
+          "n_sell",
+          "cancel_admissible",
+          "own_slope",
+          "own_weighted_quote",
+          "exogenous_slope",
+          "auction_imbalance",
+          "exogenous_weighted_quote"
+        ],
+        "auction": [
+          "time",
+          "inventory",
+          "h_cl",
+          "s_mid",
+          "decision_index",
+          "depth_ask",
+          "depth_bid",
+          "top_ask",
+          "top_bid",
+          "n_mm",
+          "n_buy",
+          "n_sell",
+          "cancel_admissible",
+          "own_slope",
+          "own_weighted_quote",
+          "exogenous_slope",
+          "auction_imbalance",
+          "exogenous_weighted_quote"
+        ]
+      },
+      "benchmark": {
+        "z": 10.0,
+        "as_n_samples": 5000,
+        "as_gamma": 0.0,
+        "twap_delta_mode": "min"
+      },
+      "algo": {
+        "name": "td3",
+        "hyperparams": {
+          "buffer_size": 50000,
+          "min_buffer_clob": 2500,
+          "min_buffer_auction": 960,
+          "batch_size": 128,
+          "hidden_layers": [
+            256,
+            256
+          ],
+          "learning_rate": 0.0003,
+          "target_soft_tau": 0.005,
+          "reward_scale": 1.0,
+          "device": "cpu",
+          "checkpoint_interval_episodes": 100,
+          "exploration_noise_std": 0.1,
+          "policy_delay": 2,
+          "target_noise_std": 0.2,
+          "target_noise_clip": 0.5,
+          "grad_clip_norm": 1.0
+        },
+        "backend": "sb3"
+      }
+    },
+    "sac": {
+      "experiment": {
+        "name": "synthetic_rough_heston",
+        "setting": "synthetic_rough_heston",
+        "episodes": 800,
+        "master_seed": 42,
+        "results_root": "results/revision_v17",
+        "artifact_schema_version": 15,
+        "seeds": [
+          42
+        ],
+        "ablation_label": "H_on__shaping_on__auction_on",
+        "auction_enabled": true
+      },
+      "grid": {
+        "tau_op": 120,
+        "tau_cl": 150,
+        "h": 30,
+        "time_unit": "minutes",
+        "T_physical": 150.0,
+        "alpha": 0.01,
+        "S0": 100.0,
+        "I0": 100,
+        "I_max": 100
+      },
+      "clob_flow": {
+        "lambda0": 1.0,
+        "v_m": 2.0,
+        "gamma_m": 2.5,
+        "V": 30,
+        "V_inf": 2.0,
+        "beta_a": 2.0,
+        "beta_b": 5.0,
+        "rho_lob": 0.96,
+        "L_max": 200
+      },
+      "auction_flow": {
+        "p1": 1.0,
+        "p2": 0.0,
+        "p3": 0.3,
+        "p4": 0.05,
+        "D_mu": 0.1,
+        "U1": 1.0,
+        "U2": 20.0,
+        "B_inf": 150
+      },
+      "midprice": {
+        "model": "rough_heston",
+        "rough_heston": {
+          "H": 0.1,
+          "rho_h": -0.7,
+          "v0": 0.02,
+          "theta": 0.02,
+          "varsigma": 0.3,
+          "nu": 0.3,
+          "s_star": 98280.0
+        },
+        "historical": null
+      },
+      "algo1": {
+        "H0": 100.0,
+        "eta_H": 0.95
+      },
+      "reward": {
+        "k_star": 10000,
+        "lambda_inv": 0.01,
+        "q": 0.0,
+        "d": 0.001,
+        "shaping_enabled": true,
+        "clawback_shaping": true,
+        "numerical_guard": false,
+        "numerical_guard_bound": 1000000000.0,
+        "clob_shaping_enabled": null,
+        "auction_shaping_enabled": null,
+        "center_initial_inventory_value": true,
+        "learning_potential": true,
+        "auction_shaping_weight": 0.0001
+      },
+      "rl": {
+        "chi": 1.0,
+        "relative_price_features": true,
+        "n_step": 1,
+        "learning_credit_baseline": false,
+        "learning_clob_inventory_potential": true,
+        "auction_exposure_features": true,
+        "phase_normalization": false,
+        "auction_inventory_asinh": false,
+        "market_return_control_variate": true,
+        "structured_warmup_episodes": 32,
+        "market_control_reference": "calibration",
+        "learning_rate_half_life_episodes": 90.0,
+        "learning_rate_min_fraction": 0.1,
+        "discount_mode": "undiscounted",
+        "checkpoint_metric": "risk_adjusted_pnl",
+        "normalizer_fit_episodes": 16,
+        "validation_size": 100,
+        "validation_frequency_episodes": 100,
+        "validation_patience_evals": 6,
+        "checkpoint_min_clob_updates": 5000,
+        "checkpoint_min_auction_updates": 2000,
+        "checkpoint_require_initial_improvement": true,
+        "test_size": 100,
+        "h_cl_feature_enabled": true
+      },
+      "actions": {
+        "V_max": 30,
+        "L_max": 12,
+        "beta": 0.25,
+        "K_max": 32,
+        "B_inf": 150,
+        "B_max": 10,
+        "auction_anchor": "indicative",
+        "auction_cancel_mode": "enabled"
+      },
+      "features": {
+        "clob": [
+          "time",
+          "inventory",
+          "h_cl",
+          "s_mid",
+          "decision_index",
+          "depth_ask",
+          "depth_bid",
+          "top_ask",
+          "top_bid",
+          "n_mm",
+          "n_buy",
+          "n_sell",
+          "cancel_admissible",
+          "own_slope",
+          "own_weighted_quote",
+          "exogenous_slope",
+          "auction_imbalance",
+          "exogenous_weighted_quote"
+        ],
+        "auction": [
+          "time",
+          "inventory",
+          "h_cl",
+          "s_mid",
+          "decision_index",
+          "depth_ask",
+          "depth_bid",
+          "top_ask",
+          "top_bid",
+          "n_mm",
+          "n_buy",
+          "n_sell",
+          "cancel_admissible",
+          "own_slope",
+          "own_weighted_quote",
+          "exogenous_slope",
+          "auction_imbalance",
+          "exogenous_weighted_quote"
+        ]
+      },
+      "benchmark": {
+        "z": 10.0,
+        "as_n_samples": 5000,
+        "as_gamma": 0.0,
+        "twap_delta_mode": "min"
+      },
+      "algo": {
+        "name": "sac",
+        "hyperparams": {
+          "buffer_size": 50000,
+          "min_buffer_clob": 2500,
+          "min_buffer_auction": 960,
+          "batch_size": 128,
+          "hidden_layers": [
+            256,
+            256
+          ],
+          "learning_rate": 0.0003,
+          "target_soft_tau": 0.005,
+          "reward_scale": 1.0,
+          "device": "cpu",
+          "checkpoint_interval_episodes": 100,
+          "ent_coef": "auto_0.001",
+          "target_entropy": "auto",
+          "grad_clip_norm": 1.0
+        },
+        "backend": "sb3"
+      }
+    }
+  },
+  "primary_checkpoint_contracts": [
+    {
+      "run": "results/revised_objective/dqn_verified_history",
+      "matched_sections": [
+        "grid",
+        "clob_flow",
+        "auction_flow",
+        "actions",
+        "algo1",
+        "reward",
+        "features",
+        "benchmark",
+        "algo"
+      ],
+      "rl_changes": {
+        "checkpoint_require_initial_improvement": [
+          false,
+          true
+        ]
+      },
+      "selection": {
+        "pnl": 4.860772254062035,
+        "objective": 4.352996557626967,
+        "inventory": 2.4133423409744834,
+        "auction_qty": -1.1640418493161682,
+        "inventory_at_auction_open": 1.249300491658316,
+        "clob_qty": 98.75069950834168,
+        "cancels": 4.21875,
+        "episode": 180,
+        "updates": {
+          "clob": 11348,
+          "auction": 4441
+        }
+      },
+      "checkpoint_sha256": "245469f42d9bff16a6761a214c9f226b6baef7ff217062d1145be17dd56aa361"
+    },
+    {
+      "run": "results/refinement_v17/ddpg_asinh_history",
+      "matched_sections": [
+        "grid",
+        "clob_flow",
+        "auction_flow",
+        "actions",
+        "algo1",
+        "reward",
+        "features",
+        "benchmark",
+        "algo"
+      ],
+      "rl_changes": {},
+      "selection": {
+        "pnl": 5.776324338444737,
+        "objective": 5.364002758989523,
+        "inventory": 1.5985388411727328,
+        "auction_qty": -0.30011653019071394,
+        "inventory_at_auction_open": 1.2984223109820183,
+        "clob_qty": 98.70157768901798,
+        "cancels": 1.34375,
+        "episode": 180,
+        "updates": {
+          "clob": 11348,
+          "auction": 4441
+        }
+      },
+      "checkpoint_sha256": "9343235c0a725b3e5ec40af47eb9043be597dd1a6f630aef6b367342f10c5897"
+    },
+    {
+      "run": "results/refinement_v17/td3_asinh_history",
+      "matched_sections": [
+        "grid",
+        "clob_flow",
+        "auction_flow",
+        "actions",
+        "algo1",
+        "reward",
+        "features",
+        "benchmark",
+        "algo"
+      ],
+      "rl_changes": {},
+      "selection": {
+        "pnl": 5.325320449764865,
+        "objective": 4.7446841327723135,
+        "inventory": 5.3487378968230574,
+        "auction_qty": -1.7149622928285904,
+        "inventory_at_auction_open": 3.6337756039944678,
+        "clob_qty": 96.36622439600555,
+        "cancels": 7.1875,
+        "episode": 180,
+        "updates": {
+          "clob": 11348,
+          "auction": 4441
+        }
+      },
+      "checkpoint_sha256": "87140a05b0f19b5107e44b768743b2e371c41463434dc3af3b5ecce6a99170e4"
+    },
+    {
+      "run": "results/revised_objective/sac_verified_history",
+      "matched_sections": [
+        "grid",
+        "clob_flow",
+        "auction_flow",
+        "actions",
+        "algo1",
+        "reward",
+        "features",
+        "benchmark",
+        "algo"
+      ],
+      "rl_changes": {
+        "checkpoint_require_initial_improvement": [
+          false,
+          true
+        ]
+      },
+      "selection": {
+        "pnl": 5.637766533861985,
+        "objective": 5.371496605431384,
+        "inventory": 1.936865993490897,
+        "auction_qty": -0.6431609641143992,
+        "inventory_at_auction_open": 1.2937050293764962,
+        "clob_qty": 98.7062949706235,
+        "cancels": 4.53125,
+        "episode": 150,
+        "updates": {
+          "clob": 9051,
+          "auction": 3541
+        }
+      },
+      "checkpoint_sha256": "235ffe9dcdbec2b158fdd9a26f54f036a2a2b147eaa5aa7561bc86c074327b86"
+    },
+    {
+      "run": "results/revised_objective/dqn_verified",
+      "matched_sections": [
+        "grid",
+        "clob_flow",
+        "auction_flow",
+        "actions",
+        "algo1",
+        "reward",
+        "features",
+        "benchmark",
+        "algo"
+      ],
+      "rl_changes": {
+        "checkpoint_require_initial_improvement": [
+          false,
+          true
+        ]
+      },
+      "selection": {
+        "pnl": 14.255988274669296,
+        "objective": 14.162553146590428,
+        "inventory": 1.1654076587044355,
+        "auction_qty": -0.06715336451108372,
+        "inventory_at_auction_open": 1.0982542941933517,
+        "clob_qty": 98.90174570580665,
+        "cancels": 16.0,
+        "episode": 180,
+        "updates": {
+          "clob": 11139,
+          "auction": 4441
+        }
+      },
+      "checkpoint_sha256": "36df28b243ba6228522262f1b7c07859c841793be300bc85758ec6a113d0cfb2"
+    },
+    {
+      "run": "results/refinement_v17/ddpg_asinh",
+      "matched_sections": [
+        "grid",
+        "clob_flow",
+        "auction_flow",
+        "actions",
+        "algo1",
+        "reward",
+        "features",
+        "benchmark",
+        "algo"
+      ],
+      "rl_changes": {},
+      "selection": {
+        "pnl": 12.10880543371932,
+        "objective": 10.795825292317412,
+        "inventory": 3.1249616535052898,
+        "auction_qty": 2.180406607178501,
+        "inventory_at_auction_open": 5.305368260683789,
+        "clob_qty": 94.69463173931621,
+        "cancels": 3.921875,
+        "episode": 180,
+        "updates": {
+          "clob": 11139,
+          "auction": 4441
+        }
+      },
+      "checkpoint_sha256": "1dbc390065dac5ea94f235fdec107d29501afee956c07fc513c483ff3ad13cdf"
+    },
+    {
+      "run": "results/refinement_v17/td3_asinh",
+      "matched_sections": [
+        "grid",
+        "clob_flow",
+        "auction_flow",
+        "actions",
+        "algo1",
+        "reward",
+        "features",
+        "benchmark",
+        "algo"
+      ],
+      "rl_changes": {},
+      "selection": {
+        "pnl": 12.050987120025622,
+        "objective": 11.432578356493062,
+        "inventory": 3.4060701684343258,
+        "auction_qty": -0.3148219011705933,
+        "inventory_at_auction_open": 3.0912482672637305,
+        "clob_qty": 96.90875173273628,
+        "cancels": 6.953125,
+        "episode": 180,
+        "updates": {
+          "clob": 11139,
+          "auction": 4441
+        }
+      },
+      "checkpoint_sha256": "93a727ae1df2065ac63e1f4415a5dd22ff39a9d3c572a8f232e0d4c0b49fa68a"
+    },
+    {
+      "run": "results/revised_objective/sac_verified",
+      "matched_sections": [
+        "grid",
+        "clob_flow",
+        "auction_flow",
+        "actions",
+        "algo1",
+        "reward",
+        "features",
+        "benchmark",
+        "algo"
+      ],
+      "rl_changes": {
+        "checkpoint_require_initial_improvement": [
+          false,
+          true
+        ]
+      },
+      "selection": {
+        "pnl": 12.326061056241986,
+        "objective": 11.793027846059992,
+        "inventory": 2.834657153311675,
+        "auction_qty": 0.693335859840592,
+        "inventory_at_auction_open": 3.5279930131522708,
+        "clob_qty": 96.47200698684773,
+        "cancels": 6.9375,
+        "episode": 180,
+        "updates": {
+          "clob": 11139,
+          "auction": 4441
+        }
+      },
+      "checkpoint_sha256": "3e4c4f4536bfe185b43467373f261cdf1bfb0cf200a534ea5ae7f62a3de1b5ed"
+    }
+  ],
+  "no_auction_fix_preserves_primary_fit": [
+    {
+      "run": "ddpg_asinh",
+      "normalizer_training_state_bit_identical": true
+    },
+    {
+      "run": "ddpg_asinh_history",
+      "normalizer_training_state_bit_identical": true
+    }
+  ],
+  "tests": {
+    "command": ".venv/bin/python -m pytest -q -m 'not network and not slow'",
+    "passed": 545,
+    "deselected": 23,
+    "warnings": 14,
+    "output": "test_results.txt"
+  },
+  "final_checks": [
+    {
+      "command": [
+        "git",
+        "diff",
+        "--check"
+      ],
+      "exit_code": 0
+    },
+    {
+      "command": [
+        "git",
+        "apply",
+        "--check",
+        "docs/manuscript_recommendations_v17.patch"
+      ],
+      "exit_code": 0
+    }
+  ]
+}

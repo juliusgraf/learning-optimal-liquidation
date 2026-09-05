@@ -1,99 +1,31 @@
-# Continuous-action relaxation
+# Continuous-control implementation
 
-DDPG, TD3, and SAC are explicitly labeled relaxations of the manuscript's
-discrete policy class. They share the revised market, chronology, features,
-reward, accounting, normalization, and evaluation protocol with DQN. Only the
-agent's raw proposal parameterization differs.
+The active DDPG, TD3 and SAC implementation is `src/lmm/agents/sb3.py`, selected
+by `algo.backend: sb3`. It uses the pinned Stable-Baselines3 2.7.1 package.
+`docs/rl_design.md` specifies the common observation, proposal mapping, rewards,
+phase junction, checkpoint selection and treatment contracts.
 
-## Raw proposal spaces
+Two library models allow the structurally different CLOB and auction action
+spaces without padding an inactive action into SAC entropy. Their environment
+objects provide spaces only; the shared market episode loop owns interaction.
+The replay bridge is the only phase-specific Bellman adaptation. It computes
+junction continuation at sampling time, never caches a stale auction value,
+and prevents the CLOB library model from bootstrapping the same row again.
+All ordinary and terminal training updates use the library implementations.
 
-Actors end in `tanh` and emit normalized coordinates in `[-1,1]`:
+Private NumPy generators sample replay and exploration, and the seeded Torch
+stream drives initialization, SAC reparameterization and TD3 target noise.
+Checkpoint files include native SB3 models, optional replay contents, replay
+and exploration generator states, Torch state, counters, and the frozen feature
+normalizer. Loading validates the algorithm, economic, action and observation
+contracts. Optimizer hooks, when configured, are reinstalled on loaded models.
 
-- CLOB: `(volume_coordinate, offset_coordinate)`;
-- auction with cancellation: `(slope_coordinate, offset_coordinate,
-  cancellation_coordinate)`;
-- auction without cancellation: `(slope_coordinate, ell_coordinate)`.
+The older handwritten `continuous_base.py`, `ddpg.py`, `td3.py`, and `sac.py`
+are retained for characterization tests and provenance. Their internal details
+must not be described as the active headline implementation.
 
-The proposal is stored in replay. The adapter rounds it to the public local
-manuscript action, and the simulator separately records derived absolute `b`.
+Primary library references:
 
-In manuscript notation, `B_inf=150` bounds the absolute executed auction
-offset `b`, while `B_max=10` bounds the local proposal coordinate `ell` around
-the configured `auction_anchor`. H-on uses the current indicative price and
-H-off uses the frozen auction-open midprice. These are distinct coordinates
-and distinct configuration keys.
-
-## Projection
-
-For the CLOB phase, affine maps produce a proposed volume in `[0,V_max]` and
-offset in `[0,L_max]`. Both are rounded half-up. Volume is capped by
-`floor(inventory)` and the strategic volume cap. A zero-volume action is
-canonicalized to offset zero.
-
-For the auction phase, the slope index and local offset are rounded half-up.
-Thus DQN, DDPG, TD3, and SAC execute the same 33 slope levels (`0,...,32`)
-and 21 local integer templates (`-10,...,10`). DQN enumerates this lattice
-directly; the actor-critic methods project a continuous raw proposal onto it.
-The adapter translates a local template into the derived absolute frozen-mid
-coordinate `b=b_anchor+ell`, where
-`b_anchor=round_half_up((H_t^cl-S_{tau_op}^{mid})/alpha)` in H-on and
-`b_anchor=0` in H-off. The local offset is clipped whenever its admissible
-intersection with the ambient `[-B_inf,B_inf]=[-150,150]` band is nonempty. If
-an extreme anchor leaves no admissible positive-slope local template, the
-proposal maps to the canonical zero-slope action (while an admissible
-cancel-all request can still execute), exactly as DQN's mask leaves only its
-zero-slope actions. Every executed positive-slope reference is therefore still exactly
-`S_t^a=S_{tau_op}^{mid}+alpha*b_t^a`. Positive-slope references must be
-nonnegative. In the enabled regime, a nonnegative
-cancellation coordinate requests cancel-all, but execution requires a live
-prior strategic schedule. In the no-cancellation treatment the coordinate is
-absent and `c=0` always.
-
-Projection is not an auction inventory constraint. Learned schedules remain
-two-sided and may create a purchase. Terminal inventory is never clipped.
-
-Evaluation saves the configured anchor and its per-step absolute coordinate,
-along with clipping, boundary saturation, rounding, inventory projection,
-`ell_admissibility_projection`, `slope_admissibility_projection`, and
-cancellation-threshold/execution counts.
-
-## Exploration and targets
-
-DDPG and TD3 add standard deviation `0.1` noise in normalized raw-action
-coordinates before projection. TD3 target smoothing uses standard deviation
-`0.2` and clip `0.5` in the same coordinates. SAC samples and applies its
-reparameterization in normalized coordinates.
-
-Critics consume the normalized proposal. A target action is projected only
-where the state-dependent executed-action semantics are needed; replay never
-silently replaces the actor's output with a different coordinate system.
-
-## Shared learning contract
-
-- common 18-coordinate normalized state in both phases;
-- independent CLOB/auction actor, critic, target, and replay structures;
-- explicit CLOB-to-auction target-network junction;
-- Bellman factor one;
-- terminal reward included exactly once;
-- one eligible update per environment transition;
-- common reward scale `1e-3` for DQN, DDPG, TD3, and SAC;
-- no method-specific reward clipping;
-- frozen training-only feature normalization in every checkpoint;
-- stale checkpoint contract/schema rejection;
-- joint checkpoint eligibility only after the CLOB/auction optimizer-update
-  maturity thresholds, with patience starting at the first eligible validation;
-- the centered economic training objective in the headline, with the exact
-  manuscript-shaped objective confined to explicit shaping treatments.
-
-## Evaluation
-
-Continuous agents run through the same episode loop and common-random-number
-test seeds as DQN and the benchmarks. The reported checkpoint maximizes
-validation risk-adjusted PnL. Primary outputs are PnL, risk-adjusted PnL,
-terminal inventory and negative-inventory diagnostics, phase cash, fees, and
-actual signed auction fill. Headline training return is economic; shaped return
-is a training diagnostic for the explicit shaping treatments. Validation and
-final comparison use the economic-only replay contract.
-
-Fixed-policy policy-minus-benchmark curves are generated by
-`lmm.experiments.policy_differences`; they are not described as regret.
+- [SAC implementation](https://stable-baselines3.readthedocs.io/en/v2.7.1/_modules/stable_baselines3/sac/sac.html)
+- [TD3 implementation](https://stable-baselines3.readthedocs.io/en/v2.7.1/_modules/stable_baselines3/td3/td3.html)
+- [DDPG implementation](https://stable-baselines3.readthedocs.io/en/v2.7.1/_modules/stable_baselines3/ddpg/ddpg.html)

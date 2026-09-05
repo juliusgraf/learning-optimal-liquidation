@@ -1,0 +1,16 @@
+# Rejected diagnostic candidate: literal J rewards economic overselling here.
+# Retained for reproducibility; see docs/calibration_followup.md.
+grid:
+  alpha: 0.01
+actions:
+  beta: 0.1
+auction_flow:
+  U1: 1.0
+  U2: 20.0
+reward:
+  k_star: 10000
+  q: 0.0
+rl:
+  learning_credit_baseline: true
+  learning_rate_half_life_episodes: 60.0
+  learning_rate_min_fraction: 0.1

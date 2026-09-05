@@ -1,0 +1,23 @@
+{
+  "source": "data/historical_sp500_midquotes_1m.csv.meta.json",
+  "source_sha256": "67ff4981deeb2ea8b216ec9600dc5a1e08cea46a531f4f5def00fec0d8a43baa",
+  "used_dates": [
+    "2026-08-03",
+    "2026-08-04",
+    "2026-08-05",
+    "2026-08-06",
+    "2026-08-07",
+    "2026-08-10",
+    "2026-08-11",
+    "2026-08-12",
+    "2026-08-13",
+    "2026-08-14"
+  ],
+  "corrected_size_unit": "shares; numbers are not multiplied",
+  "unit_source": "https://docs.alpaca.markets/us/v1.1/changelog/marketdata-bid-and-ask-size-display-change",
+  "unit_label_erratum": "Frozen schema-3 names say round_lots; August 2026 SIP values are shares.",
+  "pooled_median_daily_selected_top_size_shares": 80.0,
+  "model_top_depth_median": 0.5288999665913201,
+  "illustrative_shares_per_model_inventory_unit": 151.2573360811267,
+  "limitation": "One top-depth scale anchor, not a fit of full depth, market-order flow or auction supply."
+}

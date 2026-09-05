@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Build the paired cross-treatment publication table from a complete balanced
 # synthetic matrix. The canonical synthetic runs are reused as the
-# H-on/shaping-off headline arm; no ablation_h_on_shaping_off runs are expected.
+# H-on/shaping-on headline arm; H-on/shaping-off is a distinct treatment.
 #
 # Usage: scripts/make_treatment_outputs.sh
 #          [--seeds "42 7 99 123 2024"] [--publication]
@@ -50,7 +50,7 @@ if [[ "$PUBLICATION" -eq 1 ]]; then
   fi
 fi
 
-RESULTS_ROOT="${LMM_RESULTS_ROOT:-results/revision_v12}"
+RESULTS_ROOT="${LMM_RESULTS_ROOT:-results/revision_v17}"
 [[ -d "$RESULTS_ROOT" ]] || { echo "no $RESULTS_ROOT directory" >&2; exit 1; }
 
 # Parallel arrays: resolved experiment.name and stable run-name suffix.  The
@@ -59,7 +59,7 @@ SETTINGS=(
   synthetic_rough_heston
   synthetic_rough_heston__ablation_h_off_shaping_off
   synthetic_rough_heston__ablation_h_off_shaping_on
-  synthetic_rough_heston__ablation_h_on_shaping_on
+  synthetic_rough_heston__ablation_h_on_shaping_off
   synthetic_rough_heston__no_auction
   synthetic_rough_heston__no_cancellation
 )
@@ -67,7 +67,7 @@ SUFFIXES=(
   ""
   __ablation_h_off_shaping_off
   __ablation_h_off_shaping_on
-  __ablation_h_on_shaping_on
+  __ablation_h_on_shaping_off
   __no_auction
   __no_cancellation
 )

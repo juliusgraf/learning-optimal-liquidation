@@ -1,44 +1,39 @@
-# DQN hyperparameters for the manuscript's phase-specific Double-DQN
-# algorithm. This overlay is the authoritative numerical configuration;
-# legacy NFQ values are provenance only. The update schedule is online DQN,
-# not the superseded implementation's per-episode full-buffer refit.
+# One-step Double DQN on the exact action grid. MSE retains the contribution
+# of rare inventory losses; phase junctions use the auction target network.
+# The 5/95-episode exploration schedule is fixed, not stretched with run length.
+# Full production budget remains 800 episodes; bounded verification uses 180.
 
 algo:
   name: dqn
   hyperparams:
-    buffer_size: 50000          # per phase network; legacy main.py:1487
-    min_buffer: 5000            # compatibility fallback; phase thresholds below win
-    min_buffer_clob: 2000       # both phases learn before first validation
-    min_buffer_auction: 512
-    batch_size: 128             # legacy main.py:1490
-    lr: 1.5e-4                  # conservative Adam step for the shared value nets
-    loss: huber                 # SmoothL1
-    grad_clip_norm: 1.0         # legacy convention
-    hidden_layers: [128, 128]   # common capacity across both mid-price sources
-    action_embedding_dim: 32    # shared coordinate embedding for exact grid actions
-    safe_auction_initialization: true
-    target_update_interval: 1000  # hard-update cadence (ignored when soft_tau set)
-    target_soft_tau: 0.0025     # slow Polyak tracking limits target-value drift
-    double_q: true              # online selection, target-network evaluation
-    updates_per_env_step: 1     # gradient steps per eligible update
-    update_every: 1             # update every N env steps
-    reward_scale: 1.0e-3        # reward scaling INSIDE replay only (reported
-                                # metrics stay in paper units). The paper's
-                                # rewards are O(1e3-1e6) (auction/terminal terms
-                                # ~K^a*H*(H-S^a) with H~100); 1e-3 keeps Bellman
-                                # targets O(1-100) so the clipped gradients are
-                                # not swamped. Was 1.0 -> value-target blow-up.
-    activation: relu            # mlp activation (relu | tanh | elu)
-    device: cpu                 # torch device
-    checkpoint_interval_episodes: 100  # periodic resumable checkpoints
-    epsilon_start: 1.0          # legacy schedule shape, main.py:1597-1602
-    epsilon_end: 0.01
-    epsilon_decay_episodes: 600.0
-    epsilon_warmup_episodes: 50
-    # Headline Algorithm 1 uses the same masked epsilon-greedy probability in
-    # both phases. Phase-specific scaling is an explicit ablation only.
+    buffer_size: 50000
+    min_buffer: 5000
+    min_buffer_clob: 2500
+    min_buffer_auction: 960
+    batch_size: 128
+    lr: 0.00015
+    loss: mse
+    grad_clip_norm: 1.0
+    hidden_layers:
+    - 256
+    - 256
+    action_embedding_dim: 32
+    safe_auction_initialization: false
+    target_update_interval: 1000
+    target_soft_tau: 0.005
+    double_q: true
+    updates_per_env_step: 1
+    update_every: 1
+    reward_scale: 1.0
+    activation: relu
+    device: cpu
+    checkpoint_interval_episodes: 100
+    epsilon_start: 1.0
+    epsilon_end: 0.05
+    epsilon_decay_episodes: 90.0
+    epsilon_warmup_episodes: 5
     epsilon_auction_scale: 1.0
     safe_auction_noop_margin: 0.02
-    # No forced no-order curriculum: all 1,346 auction actions are available
-    # from episode zero and every eligible auction update counts toward maturity.
     auction_learning_start_episode: 0
+rl:
+  n_step: 1

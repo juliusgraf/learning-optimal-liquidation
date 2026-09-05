@@ -1,0 +1,10 @@
+# Common action-resolution check: a maximum schedule offers .8 units at a
+# ten-tick gap, while 30 persistent schedules offer 24 nominal units.
+# This places small residual/market-making positions inside the action grid.
+# It does not bound actual signed fills or force auction participation.
+actions:
+  beta: 0.25
+rl:
+  n_step: 1
+  learning_rate_half_life_episodes: 90.0
+  learning_rate_min_fraction: 0.1

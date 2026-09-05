@@ -20,7 +20,7 @@ from lmm.experiments.plotting import ALGO_ORDER, RunInfo
 _ARM_LEVEL = {
     "headline": 100.0,
     "h_off_shaping_off": 10.0,
-    "h_on_shaping_on": 30.0,
+    "h_on_shaping_off": 30.0,
     "h_off_shaping_on": 50.0,
     "no_auction": 20.0,
     "no_cancellation": 80.0,
@@ -152,10 +152,10 @@ def test_cross_treatment_table_reports_explicit_paired_contrasts():
     assert provenance["evaluation_seed_sha256"].str.len().eq(64).all()
 
     expected = {
-        "H/anchor effect, shaping off (on - off)": 90.0,
-        "H/anchor effect, shaping on (on - off)": -20.0,
+        "H/anchor effect, shaping off (on - off)": 20.0,
+        "H/anchor effect, shaping on (on - off)": 50.0,
         "Shaping effect, H/anchor off (on - off)": 40.0,
-        "Shaping effect, H/anchor on (on - off)": -70.0,
+        "Shaping effect, H/anchor on (on - off)": 70.0,
         "Full auction-aware treatment vs no-auction comparator": 80.0,
         "Cancellation effect (on - off)": 20.0,
     }
@@ -166,7 +166,7 @@ def test_cross_treatment_table_reports_explicit_paired_contrasts():
             assert lo == pytest.approx(expected[row.label])
             assert hi == pytest.approx(expected[row.label])
     assert "first-named condition minus second-named condition" in table.caption
-    assert "H/anchor-on, shaping-off, auction-on baseline" in table.caption
+    assert "H/anchor-on, shaping-on, auction-on baseline" in table.caption
 
 
 def test_cross_treatment_pairing_rejects_env_seed_mismatch():
@@ -233,7 +233,7 @@ def configured_treatment_matrix() -> list[RunInfo]:
 @pytest.mark.parametrize(
     ("setting_suffix", "reward_change"),
     [
-        ("synthetic_rough_heston", {"clob_shaping_enabled": True}),
+        ("synthetic_rough_heston", {"clob_shaping_enabled": False}),
         (
             "synthetic_rough_heston__ablation_h_off_shaping_off",
             {"clawback_shaping": False},

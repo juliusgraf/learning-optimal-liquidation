@@ -1,0 +1,5 @@
+# Matched H-on cell without the manuscript reward shaping.
+experiment:
+  ablation_label: H_on__shaping_off__auction_on
+reward:
+  shaping_enabled: false

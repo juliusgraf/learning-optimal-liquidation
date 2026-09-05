@@ -166,7 +166,7 @@ def test_raw_auction_actions_cannot_bypass_common_bounds():
     with pytest.raises(ValueError, match=r"K\^a exceeds"):
         env.step(AuctionAction(cfg.actions.auction_K_grid_max + 1.0, 0, 0))
     with pytest.raises(ValueError, match="auction ell"):
-        env.step(AuctionAction(1.0, cfg.actions.B_max + 1, 0))
+        env.step(AuctionAction(1.0 * env.cfg.actions.beta, cfg.actions.B_max + 1, 0))
 
 
 def test_dqn_auction_grid_has_unique_canonical_zero_slope_actions():
@@ -203,8 +203,8 @@ def test_no_cancel_treatment_has_genuine_673_action_grid_and_rejects_cancel():
     while env.phase == "clob":
         env.step(ClobAction(0.0, 0))
     with pytest.raises(ValueError, match="cancellation is disabled"):
-        env.step(AuctionAction(1.0, 0, 1))
-    env.step(AuctionAction(1.0, 0, 0))
+        env.step(AuctionAction(1.0 * env.cfg.actions.beta, 0, 1))
+    env.step(AuctionAction(1.0 * env.cfg.actions.beta, 0, 0))
     assert env._ledger.cancel_admissible()
     assert not env.cancel_admissible
 
