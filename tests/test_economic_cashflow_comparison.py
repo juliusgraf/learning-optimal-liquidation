@@ -81,3 +81,71 @@ def test_followup_dry_run_adds_only_40_controls_without_writing(tmp_path, capsys
     assert all(cmd[-2] == C.ARM for cmd in plan['commands'])
     assert not root.exists()
     assert len(C.jobs_for([91031], smoke=True)) == 8
+
+
+@pytest.mark.parametrize('algo', ['dqn', 'ddpg', 'td3', 'sac'])
+def test_conditioned_rewards_differ_only_by_manuscript_preferences(algo):
+    from lmm.experiments.train import fit_feature_normalizer
+    from lmm.rl.loops import SEED_COMPONENTS
+    from lmm.utils.seeding import seed_everything
+
+    files = ['configs/base.yaml', 'configs/synthetic_rough_heston.yaml',
+             f'configs/algo/{algo}.yaml']
+    overrides = ['rl.structured_warmup_episodes=0', 'rl.normalizer_fit_episodes=2']
+    h = load_config(*files, overrides=overrides)
+    e = load_config(*files, f'configs/treatment/{C.DENSE_ARM}.yaml', overrides=overrides)
+    assert h.rl == e.rl
+    assert h.actions == e.actions
+    assert h.algo == e.algo
+    assert e.reward == replace(h.reward, shaping_enabled=False, clob_shaping_enabled=False,
+                               auction_shaping_enabled=False, clawback_shaping=False)
+    normalizer, _ = fit_feature_normalizer(h, seed_everything(652, SEED_COMPONENTS))
+
+    class Probe:
+        def __init__(self):
+            self._feature_normalizer = normalizer
+            self.transitions = []
+            self.rng = np.random.default_rng(432)
+        def set_train(self, value): pass
+        def preprocess_observation(self, x): return x
+        def act(self, obs, mask, phase, **kwargs):
+            return int(self.rng.choice(np.flatnonzero(mask)))
+        def observe(self, tr): self.transitions.append(tr)
+        def update(self, **kwargs): return {}
+
+    hp, ep = Probe(), Probe()
+    hr = run_episode(make_env(h), hp, 815, chi=1., train=True)
+    er = run_episode(make_env(e), ep, 815, chi=1., train=True)
+    auction_conditioning = []
+    for a, b in zip(hp.transitions, ep.transitions, strict=True):
+        np.testing.assert_array_equal(a.obs, b.obs)
+        np.testing.assert_array_equal(a.next_obs, b.next_obs)
+        assert a.action == b.action
+        info = a.info
+        preferences = (info['clob_shaping_adjustment'] + info['auction_interim_shaping']
+                       - info.get('auction_shaping_clawback', 0.) + info['auction_terminal_shaping'])
+        assert a.reward-b.reward == pytest.approx(preferences, abs=1e-9)
+        if b.phase == 'auction' and not b.done:
+            auction_conditioning.append(b.reward + b.info['cancellation_fee'])
+    assert max(abs(np.array(auction_conditioning))) > 1e-4
+    assert hr.economic_objective == pytest.approx(er.economic_objective)
+    assert er.training_return == pytest.approx(er.economic_objective)
+    assert er.potential_adjustment == pytest.approx(hr.potential_adjustment)
+    assert er.market_baseline_adjustment == pytest.approx(hr.market_baseline_adjustment)
+    assert er.reward_baseline_adjustment == pytest.approx(hr.reward_baseline_adjustment)
+
+
+def test_conditioned_followup_has_its_own_40_run_plan(tmp_path, capsys):
+    root = tmp_path / 'conditioned'
+    assert C.main(['--conditioned', '--dry-run', '--root', str(root)]) == 0
+    plan = json.loads(capsys.readouterr().out)
+    assert plan['runs'] == 40
+    assert all(cmd[-2] == C.DENSE_ARM for cmd in plan['commands'])
+    assert not root.exists()
+    assert len(C.jobs_for([91031], smoke=True, conditioned=True)) == 8
+
+
+def test_conditioned_followup_rejects_frozen_cashflow_root():
+    with pytest.raises(SystemExit) as error:
+        C.main(['--conditioned', '--dry-run', '--root', str(C.DEFAULT_ROOT)])
+    assert error.value.code == 2

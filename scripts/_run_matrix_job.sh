@@ -19,7 +19,7 @@ case "$block" in
     SYMBOL="$block"
     run_historical "configs/algo/${algo}.yaml" "$algo"
     ;;
-  mechanism_fixed_anchor|mechanism_economic_dense|mechanism_economic_sparse|mechanism_economic_cashflow|mechanism_h_feature_off|mechanism_clob_shaping|mechanism_auction_shaping|no_auction)
+  mechanism_fixed_anchor|mechanism_economic_dense|mechanism_economic_dense_h|mechanism_economic_sparse|mechanism_economic_cashflow|mechanism_h_feature_off|mechanism_clob_shaping|mechanism_auction_shaping|no_auction)
     EXTRA_CONFIGS=("configs/treatment/${block}.yaml")
     EXTRA_OVERRIDES=(-o "experiment.name=synthetic_rough_heston__${block}")
     RUN_NAME_SUFFIX="__${block}"
