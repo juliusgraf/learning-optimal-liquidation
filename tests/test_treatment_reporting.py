@@ -146,8 +146,8 @@ def test_cross_treatment_table_reports_explicit_paired_contrasts():
     table, provenance = T.build_synthetic_treatment_contrasts(_matrix(), n_boot=100)
 
     assert table.columns == ["DQN", "DDPG", "TD3", "SAC"]
-    assert len(table.rows) == 6
-    assert provenance.shape[0] == 6 * 4 * 5
+    assert len(table.rows) == 7
+    assert provenance.shape[0] == 7 * 4 * 5
     assert set(provenance["n_episodes"]) == {4}
     assert provenance["evaluation_seed_sha256"].str.len().eq(64).all()
 
@@ -158,6 +158,7 @@ def test_cross_treatment_table_reports_explicit_paired_contrasts():
         "Shaping effect, H/anchor on (on - off)": 70.0,
         "Full auction-aware treatment vs no-auction comparator": 80.0,
         "Cancellation effect (on - off)": 20.0,
+        "Auction access, H/anchor and shaping off (on - off)": -10.0,
     }
     for row in table.rows:
         assert row.label in expected
@@ -419,7 +420,7 @@ def test_completion_manifest_binds_every_required_publication_artifact(tmp_path)
 def test_publication_validation_rejects_partial_algorithm_matrix(tmp_path):
     runs = _publication_runs(tmp_path)
     runs.pop()
-    with pytest.raises(ValueError, match="four algorithms x five seeds"):
+    with pytest.raises(ValueError, match="four algorithms x ten seeds"):
         publication.validate_publication_runs(runs, expected_git_sha="test-head")
 
 

@@ -1,0 +1,188 @@
+experiment:
+  name: historical_sp500_midquotes
+  setting: historical_sp500_midquotes
+  episodes: 800
+  master_seed: 42
+  results_root: results/revision_v18
+  artifact_schema_version: 15
+  seeds:
+  - 42
+  ablation_label: H_on__shaping_on__auction_on
+  auction_enabled: true
+grid:
+  tau_op: 120
+  tau_cl: 150
+  h: 30
+  time_unit: minutes
+  T_physical: 150.0
+  alpha: 0.01
+  S0: 100.0
+  I0: 100
+  I_max: 100
+clob_flow:
+  lambda0: 0.5
+  v_m: 2.0
+  gamma_m: 2.5
+  V: 30
+  V_inf: 2.0
+  beta_a: 2.0
+  beta_b: 5.0
+  rho_lob: 0.96
+  L_max: 200
+auction_flow:
+  p1: 1.0
+  p2: 0.0
+  p3: 0.3
+  p4: 0.05
+  D_mu: 0.1
+  U1: 1.0
+  U2: 20.0
+  B_inf: 150
+midprice:
+  model: historical
+  rough_heston: null
+  historical:
+    csv_path: data/historical_sp500_midquotes_1m.csv
+    symbols:
+    - MSFT
+    - JPM
+    - PG
+    - GOOGL
+    - CAT
+    normalize_first: 100.0
+    n_rows: 121
+    date: 2026-08-03..2026-08-28
+    path_policy: split_pool
+    timezone: America/New_York
+    missing_data_treatment: error
+    split_id: sp500_midquotes_sip_2026-08_v1
+    train_date_range:
+    - '2026-08-03'
+    - '2026-08-14'
+    validation_date_range:
+    - '2026-08-17'
+    - '2026-08-21'
+    test_date_range:
+    - '2026-08-24'
+    - '2026-08-28'
+    source: alpaca_market_data_api
+    price_type: quote_midpoint
+    quote_feed: sip
+    artifact_normalization: none
+    training_pool: all_symbols
+algo1:
+  H0: 100.0
+  eta_H: 0.95
+reward:
+  k_star: 10000
+  lambda_inv: 0.01
+  q: 0.0
+  d: 0.001
+  shaping_enabled: true
+  clawback_shaping: true
+  numerical_guard: false
+  numerical_guard_bound: 1000000000.0
+  clob_shaping_enabled: null
+  auction_shaping_enabled: null
+  center_initial_inventory_value: true
+  learning_potential: true
+  auction_shaping_weight: 0.0001
+rl:
+  chi: 1.0
+  relative_price_features: true
+  n_step: 1
+  learning_credit_baseline: false
+  learning_clob_inventory_potential: true
+  auction_exposure_features: true
+  phase_normalization: false
+  auction_inventory_asinh: false
+  market_return_control_variate: true
+  structured_warmup_episodes: 32
+  learning_starts_after_warmup: true
+  market_control_reference: calibration
+  learning_rate_half_life_episodes: 90.0
+  learning_rate_min_fraction: 0.1
+  discount_mode: undiscounted
+  checkpoint_metric: risk_adjusted_pnl
+  normalizer_fit_episodes: 16
+  validation_size: 128
+  validation_frequency_episodes: 50
+  validation_patience_evals: 4
+  checkpoint_min_clob_updates: 2000
+  checkpoint_min_auction_updates: 2000
+  checkpoint_require_initial_improvement: false
+  test_size: 100
+  test_seed_namespace: 18001
+  h_cl_feature_enabled: true
+actions:
+  V_max: 30
+  L_max: 12
+  beta: 0.25
+  K_max: 32
+  B_inf: 150
+  B_max: 10
+  auction_anchor: indicative
+  auction_cancel_mode: enabled
+features:
+  clob:
+  - time
+  - inventory
+  - h_cl
+  - s_mid
+  - decision_index
+  - depth_ask
+  - depth_bid
+  - top_ask
+  - top_bid
+  - n_mm
+  - n_buy
+  - n_sell
+  - cancel_admissible
+  - own_slope
+  - own_weighted_quote
+  - exogenous_slope
+  - auction_imbalance
+  - exogenous_weighted_quote
+  auction:
+  - time
+  - inventory
+  - h_cl
+  - s_mid
+  - decision_index
+  - depth_ask
+  - depth_bid
+  - top_ask
+  - top_bid
+  - n_mm
+  - n_buy
+  - n_sell
+  - cancel_admissible
+  - own_slope
+  - own_weighted_quote
+  - exogenous_slope
+  - auction_imbalance
+  - exogenous_weighted_quote
+benchmark:
+  z: 10.0
+  as_n_samples: 5000
+  as_gamma: 0.0
+  twap_delta_mode: min
+algo:
+  name: sac
+  hyperparams:
+    buffer_size: 50000
+    min_buffer_clob: 512
+    min_buffer_auction: 512
+    batch_size: 128
+    hidden_layers:
+    - 256
+    - 256
+    learning_rate: 0.0003
+    target_soft_tau: 0.005
+    reward_scale: 1.0
+    device: cpu
+    checkpoint_interval_episodes: 100
+    ent_coef: auto_0.001
+    target_entropy: auto
+    grad_clip_norm: 1.0
+  backend: sb3

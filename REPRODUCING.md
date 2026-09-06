@@ -1,9 +1,9 @@
-# Current v17 workflow
+# Current v18 workflow
 
 The active contracts and algorithm details are in `docs/rl_design.md` and
-`docs/model_refinement_v17.md`. The headline is H-on/shaping-on, trained on the
+`docs/pathology_repair_v18.md`. The headline is H-on/shaping-on, trained on the
 author-approved weighted J and
-selected/evaluated on economic risk-adjusted PnL. Use a fresh results/revision_v17
+selected/evaluated on economic risk-adjusted PnL. Use a fresh results/revision_v18
 namespace; older outputs remain diagnosis inputs only. Stable-Baselines3 2.7.1
 is installed by the project dependency metadata.
 
@@ -19,8 +19,12 @@ Use `--algo ddpg`, `td3`, or `sac` with distinct output directories. Historical
 checks additionally pass `--setting historical_sp500_midquotes --symbol MSFT`.
 The command refuses more than 200 episodes or an existing output directory.
 
-DDPG/TD3 use phase-specific normalization and signed-asinh auction inventory
-coordinates; DQN/SAC retain their v16 representation. To run a matched
+DQN/DDPG/TD3 use phase-specific normalization and signed-asinh auction inventory
+coordinates; SAC retains pooled standardization. DQN additionally uses a
+normalized action-conditioned Q representation, AdamW and one-step Double-DQN replay.
+The auction follow-up also fixes zero-slope warm-up projection, control exploration
+coverage and the auction Q reference; see [the detailed audit](docs/dqn_auction_repair_v18.md).
+To run a matched
 representation control, append either
 `--config configs/treatment/representation_pooled.yaml` or
 `--config configs/treatment/representation_phase_asinh.yaml` to the bounded
@@ -35,7 +39,7 @@ matrix. No production run was launched as part of the repair.
 This repository implements the revised manuscript environment for the
 synthetic rough-Heston setting and the historical-midprice setting, with DQN
 and the DDPG/TD3/SAC continuous-action relaxations. Current artifacts use
-schema 15, are written below `results/revision_v17/`, and carry environment
+schema 15, are written below `results/revision_v18/`, and carry environment
 contract `shaped-j-economic-eval-sb3-2026-09-05-v15`; checkpoints and results
 from earlier contracts are rejected.
 
@@ -92,7 +96,7 @@ The active setting overlays select only run identity and the exogenous
 mid-price source. Both inherit the same grid, CLOB and auction flows, action
 space, cancellation/order semantics, reward, validation design, and
 algorithm-specific hyperparameters from `configs/base.yaml` and
-`configs/algo/*.yaml`. In particular, both use `lambda0=1`, `V_inf=2`,
+`configs/algo/*.yaml`. In particular, both use `lambda0=.5`, `V_inf=2`,
 `rho_lob=0.96`, exogenous `L_max=200`, agent CLOB offset bound 12, and the
 same 1,346-action cancellation-enabled DQN auction grid. The acceptance suite
 compares every shared resolved section for all four learners.
@@ -127,6 +131,13 @@ auction-open midquote during the call and rebases a selected session to
 `S0=100` only as an explicit model-coordinate transformation. Order flow,
 books, auction proposals, clearing, and allocation remain simulated.
 
+Training and normalizer fitting sample the 50 whole rebased stock--session
+paths across all five stocks on the training dates. Validation/test remain
+specific to the requested stock. V18 changes the final simulation seed
+namespace to 18001. It does not create new historical dates: the August
+24--28 test week has already informed development through v17. Disclose
+this reused holdout; do not claim unseen-stock or fresh-date validation.
+
 The optional credential-safe regeneration command and raw-event archive
 contract are documented in `data/README.md`:
 
@@ -160,9 +171,11 @@ common 32-episode structured warmup; DQN retains its complete action grids.
 A checkpoint can enter the validation race only after both phase learners pass
 the configured optimizer-update maturity thresholds (only CLOB for no-auction).
 Early-stopping patience starts with the first eligible validation. The active
-`checkpoint_require_initial_improvement=true` also requires improvement over
-the initial policy's economic validation score. The initial policy is never
-reportable. `best.pt` is the highest-scoring mature, reportable joint policy,
+`checkpoint_require_initial_improvement=false` retains every seed, including
+non-improvers. Each phase needs at least 2,000 optimizer updates. Validation
+uses 128 paths every 50 episodes, also evaluates the first mature checkpoint
+immediately, and stops after four eligible evaluations without improvement.
+The initial policy is never reportable. `best.pt` is the highest-scoring mature, reportable joint policy,
 selected on economic validation and evaluated on 100 held-out test episodes.
 If no checkpoint qualifies, the run fails closed and retains its diagnostics;
 the publication report will not silently omit that seed.
@@ -181,7 +194,10 @@ two-layer state trunk scores normalized action coordinates through a rank-32
 embedding. The replay update evaluates only its sampled action, while greedy
 and Double-DQN target selection enumerate the complete admissible grid. This
 coordinate-conditioned head shares evidence across nearby `(K,ell,c)` actions
-and is recorded in checkpoints as `coordinate_conditioned_bilinear_v1`.
+and is recorded in checkpoints as `coordinate_conditioned_normalized_v2`.
+State hidden layers and the bounded learned action embedding use non-affine
+LayerNorm; linear query/value heads stay unrestricted. AdamW weight decay is
+.0001 and gradient clipping is 10. Three-step replay flushes at phase boundaries.
 
 One synthetic run:
 
@@ -211,7 +227,7 @@ For isolated development or CI runs, set `LMM_RESULTS_ROOT` to an absolute
 scratch directory. Every launcher and report generator honors the override,
 and training records the same path in `config_resolved.yaml`, so discovery and
 provenance cannot disagree. Leave it unset for the canonical
-`results/revision_v17/` layout. For example:
+`results/revision_v18/` layout. For example:
 
 ```bash
 LMM_RESULTS_ROOT=/absolute/scratch/lmm-results \
@@ -257,7 +273,7 @@ auction-derived training input: it disables auction shaping and the projected
 clearing feature in addition to terminating at auction open. It is therefore a
 comparison against a policy that does not anticipate the modeled auction.
 
-The canonical five-seed publication command covers the headline, historical,
+The canonical ten-seed publication command covers the headline, historical,
 and complete synthetic treatment matrix, then generates the focused report:
 
 ```bash
@@ -266,7 +282,7 @@ scripts/run_multiseed.sh --jobs 10 --threads-per-job 1
 
 On the current 15-core Apple M5 Pro with 24 GB RAM, start with ten workers
 and one numerical-library/Torch intra-op thread per worker. Jobs are individual
-experiments from the complete 220-run matrix, rather than one long worker per
+experiments from the complete 440-run matrix, rather than one long worker per
 master seed. The queue continuously refills idle slots and works with more
 than five workers. It caps Apple Accelerate/vecLib, BLAS and NumExpr as well as
 Torch; effective settings are saved in each `runtime_versions.json`. Lower
@@ -307,18 +323,19 @@ To regenerate reports without training:
 scripts/make_multiseed_outputs.sh --publication
 ```
 
-Open `results/revision_v17/_publication/index.html` after completion. It contains
+Open `results/revision_v18/_publication/index.html` after completion. It contains
 four figures and three tables, with captions and methods. Figures are vector
 PDF plus PNG; tables are LaTeX (`longtable`/`booktabs`) plus numeric CSV. The
 report retains **mean** economic performance, including poor seeds, because
 that is the expected-value estimand. It does not substitute an IQM or a maximum
 validation score for held-out economic performance. Small plot markers expose
 every seed; 95% intervals resample training-seed means, not individual test
-episodes as independent training replications. Five seeds still limit precision.
+episodes as independent training replications. Ten seeds still limit precision.
 
 The paired treatment figure/table covers H/anchor at both shaping levels,
 shaping at both H/anchor levels, the full auction-aware versus bundled
-no-auction comparator, and cancellation on minus off. The separate auction
+no-auction comparator, pure auction access under matched H-off/shaping-off
+settings, and cancellation on minus off. The separate auction
 mechanism figure derives the exact same-CLOB no-order counterfactual from
 saved accounting, separating execution price edge, fees and inventory-risk
 relief. It does not reinterpret the bundled no-auction treatment as a pure
@@ -346,7 +363,7 @@ review step.
 For a synthetic DQN run named `dqn_seed42`:
 
 ```bash
-RUN=results/revision_v17/synthetic_rough_heston/dqn_seed42
+RUN=results/revision_v18/synthetic_rough_heston/dqn_seed42
 
 python3 -m lmm.experiments.train \
   --config configs/base.yaml \
@@ -382,7 +399,7 @@ Every completed run contains the following raw and provenance artifacts:
 - `eval/policy_difference_{as,twap}.csv`.
 
 The canonical launcher writes one report under
-`results/revision_v17/_publication/`: `index.html`, `README.md`,
+`results/revision_v18/_publication/`: `index.html`, `README.md`,
 `figures/{economic_performance,learning,auction_mechanism,treatments}.{pdf,png}`,
 `tables/{economic_performance,auction_mechanism,treatments}.{tex,csv}`,
 `audit/` with seed-level estimates and validation series, and `manifest.json`

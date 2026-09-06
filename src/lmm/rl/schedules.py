@@ -30,6 +30,8 @@ def learning_conditioning_contract(rl):
             extra['market_control_reference'] = rl.market_control_reference
     if rl.structured_warmup_episodes:
         extra['structured_warmup_episodes'] = rl.structured_warmup_episodes
+    if rl.learning_starts_after_warmup:
+        extra['learning_starts_after_warmup'] = True
     if rl.learning_rate_half_life_episodes:
         extra['learning_rate_schedule'] = [rl.learning_rate_half_life_episodes, rl.learning_rate_min_fraction]
     return extra

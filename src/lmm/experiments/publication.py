@@ -30,6 +30,7 @@ import numpy as np
 import pandas as pd
 
 from lmm.config import ExperimentConfig, load_config, to_dict
+from lmm.experiments.protocol import PUBLICATION_SEEDS
 from lmm.experiments.plotting import (
     ALGO_ORDER,
     HISTORICAL_SETTING,
@@ -54,7 +55,6 @@ __all__ = [
 
 
 HEADLINE_TREATMENT = "headline"
-PUBLICATION_SEEDS = (42, 7, 99, 123, 2024)
 COMPLETION_MANIFEST_NAME = "pipeline_complete.json"
 COMPLETION_MANIFEST_SCHEMA = "lmm-pipeline-completion-v3"
 DISK_SAFE_CHECKPOINT_INTERVAL_EPISODES = 10_000_000
@@ -213,6 +213,12 @@ TREATMENT_CONTRASTS = (
         "no_auction",
     ),
     (
+        "auction_access_h_off_shaping_off",
+        "Auction access, H/anchor and shaping off (on - off)",
+        "h_off_shaping_off",
+        "no_auction",
+    ),
+    (
         "cancellation",
         "Cancellation effect (on - off)",
         HEADLINE_TREATMENT,
@@ -243,7 +249,9 @@ def _sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _completion_manifest_payload(run_dir: Path) -> dict[str, Any]:
+def _completion_manifest_payload(run_dir: Path, *, checkpoint: str = "best") -> dict[str, Any]:
+    if checkpoint not in {"best", "best_mature"}:
+        raise ValueError("completion checkpoint must be best or best_mature")
     config_path = run_dir / "config_resolved.yaml"
     if not config_path.is_file():
         raise ValueError(
@@ -258,7 +266,9 @@ def _completion_manifest_payload(run_dir: Path) -> dict[str, Any]:
             f"{run_dir}: cannot build completion manifest from its resolved config"
         ) from exc
 
-    required = (*_COMPLETION_REQUIRED_FILES, *(
+    required = (*(p for p in _COMPLETION_REQUIRED_FILES if checkpoint == "best" or p not in {
+        "checkpoints/best.pt", "checkpoints/best_selection.yaml"
+    }), *(
         f"eval/traces/{policy}_ep0.csv"
         for policy in (learned_policy, "initial", "as", "twap")
     ))
@@ -514,7 +524,14 @@ def validate_publication_runs(
 
     runs = list(runs)
     errors: list[str] = []
-    if expected_git_sha is None:
+    from lmm.experiments.mature_reporting import load_protocol, validate_protocol_run
+    protocol = load_protocol(runs)
+    if protocol is not None:
+        protocol_sha = protocol["training_git_sha"]
+        if expected_git_sha is not None and expected_git_sha != protocol_sha:
+            errors.append("requested training revision disagrees with reporting amendment")
+        expected_git_sha = protocol_sha
+    elif expected_git_sha is None:
         try:
             expected_git_sha = _clean_head_sha()
         except ValueError as exc:
@@ -523,7 +540,7 @@ def validate_publication_runs(
     expected_master_seeds = set(PUBLICATION_SEEDS)
     if observed_master_seeds != expected_master_seeds:
         errors.append(
-            "master-seed set is not the canonical five-seed publication set: "
+            "master-seed set is not the canonical ten-seed publication set: "
             f"expected {list(PUBLICATION_SEEDS)!r}, got "
             f"{sorted(observed_master_seeds)!r}"
         )
@@ -547,7 +564,7 @@ def validate_publication_runs(
             extra = sorted(observed_identities - expected_identities, key=repr)
             errors.append(
                 "canonical synthetic publication matrix must contain exactly "
-                "four algorithms x five seeds "
+                "four algorithms x ten seeds "
                 f"(missing={missing!r}, extra={extra!r})"
             )
     elif settings == {HISTORICAL_SETTING}:
@@ -582,7 +599,7 @@ def validate_publication_runs(
             extra = sorted(observed_identities - expected_identities, key=repr)
             errors.append(
                 "canonical historical publication matrix must contain exactly "
-                "four algorithms x five configured symbols x five seeds "
+                "four algorithms x five configured symbols x ten seeds "
                 f"(missing={missing[:8]!r}, extra={extra[:8]!r})"
             )
     elif settings != treatment_settings:
@@ -630,9 +647,15 @@ def validate_publication_runs(
                 f"{prefix}: resolved experiment.seeds={tuple(cfg.experiment.seeds)!r}, "
                 f"expected ({run.seed},)"
             )
-        if not (Path(run.run_dir) / "checkpoints" / "best.pt").is_file():
+        checkpoint_name = "best"
+        if protocol is not None:
+            try:
+                checkpoint_name = validate_protocol_run(protocol, run)
+            except (KeyError, TypeError, ValueError) as exc:
+                errors.append(f"{prefix}: {exc}")
+        if not (Path(run.run_dir) / "checkpoints" / f"{checkpoint_name}.pt").is_file():
             errors.append(f"{prefix}: missing mature reportable checkpoints/best.pt")
-        expected_checkpoint = (Path(run.run_dir) / "checkpoints" / "best.pt").resolve()
+        expected_checkpoint = (Path(run.run_dir) / "checkpoints" / f"{checkpoint_name}.pt").resolve()
         recorded_checkpoint = run.metadata.get("checkpoint")
         if recorded_checkpoint is None:
             errors.append(f"{prefix}: eval metadata is missing checkpoint provenance")
@@ -646,13 +669,14 @@ def validate_publication_runs(
                     f"{prefix}: eval metadata checkpoint={recorded_checkpoint!r}, "
                     f"expected {str(Path(run.run_dir) / 'checkpoints' / 'best.pt')!r}"
                 )
-        if run.metadata.get("early_stopping") is not True:
+        if checkpoint_name == "best" and run.metadata.get("early_stopping") is not True:
             errors.append(
                 f"{prefix}: eval metadata early_stopping must be true "
                 "(publication evaluation must use best.pt)"
             )
         try:
-            validate_completion_manifest(run.run_dir)
+            if checkpoint_name == "best":
+                validate_completion_manifest(run.run_dir)
         except ValueError as exc:
             errors.append(str(exc))
         for benchmark in ("as", "twap"):

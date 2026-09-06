@@ -86,13 +86,13 @@ def test_config_binding_values_synthetic() -> None:
     assert (
         cfg.rl.checkpoint_min_clob_updates,
         cfg.rl.checkpoint_min_auction_updates,
-    ) == (5000, 2000)
-    assert cfg.rl.checkpoint_require_initial_improvement
+    ) == (2000, 2000)
+    assert not cfg.rl.checkpoint_require_initial_improvement
     assert cfg.reward.d == 0.001 and cfg.reward.lambda_inv == 0.01 and cfg.reward.q == 0.0
     assert cfg.reward.shaping_enabled and cfg.reward.clawback_shaping
     assert cfg.reward.k_star == 10000 and cfg.grid.alpha == 0.01
     assert cfg.reward.numerical_guard is False  # D8: default OFF
-    assert cfg.clob_flow.lambda0 == 1.0 and cfg.experiment.episodes == 800
+    assert cfg.clob_flow.lambda0 == 0.5 and cfg.experiment.episodes == 800
     assert (cfg.clob_flow.V_inf, cfg.clob_flow.rho_lob, cfg.clob_flow.L_max) == (
         2.0,
         0.96,
@@ -119,7 +119,7 @@ def test_config_binding_values_synthetic() -> None:
 
 def test_config_binding_values_historical() -> None:
     cfg = load_config(CONFIGS / "base.yaml", CONFIGS / "historical_sp500_midquotes.yaml")
-    assert cfg.clob_flow.lambda0 == 1.0 and cfg.experiment.episodes == 800
+    assert cfg.clob_flow.lambda0 == 0.5 and cfg.experiment.episodes == 800
     assert cfg.grid.time_unit == "minutes"
     assert (cfg.grid.tau_op, cfg.grid.tau_cl, cfg.grid.h) == (120, 150, 30)
     assert cfg.algo1.tau == 0.95  # D15: legacy historical 0.99 NOT reproduced

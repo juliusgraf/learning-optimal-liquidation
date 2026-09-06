@@ -1,0 +1,5 @@
+{
+  "jobs": 440,
+  "workers": 10,
+  "threads_per_worker": 1
+}

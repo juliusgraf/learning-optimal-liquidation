@@ -7,7 +7,7 @@ Section 4):
   phase-specific approximation.
 - Uniform replay (one buffer per phase), exactly one eligible minibatch update
   from the current transition's phase, and phase-local target updates,
-  epsilon-greedy with the configured schedule, Huber loss, Adam, gradient
+  epsilon-greedy with the configured schedule, configured loss/optimizer, gradient
   clipping, eval mode (epsilon = 0, no_grad), checkpointing, full seeding
   (D10: private exploration/replay generators from the SeedBundle; no global
   RNG).
@@ -99,11 +99,20 @@ class DQNHyperparams:
     # those transitions.  At the boundary the complete admissible auction
     # action/cancellation set is unlocked.
     auction_learning_start_episode: int = 0
-    # False-only compatibility fields for bounded development checkpoints.
-    # The active implementation retains the original structured architecture.
+    # Retired development options remain false-only. LayerNorm is the v18
+    # bounded-representation repair and retains the exact discrete grid.
     fixed_action_features: bool = False
     layer_norm: bool = False
     dueling: bool = False
+    weight_decay: float = 0.0
+    # Conditional on epsilon exploration: reserve probability mass for the
+    # economically distinct zero-slope controls (wait / cancel without a new
+    # order). Uniform sampling over 1,346 grid entries almost never tries them.
+    # The remaining mass samples every admissible action uniformly.
+    auction_control_exploration_probability: float = 0.0
+    reference_centered_phases: tuple[str, ...] = ()
+    # Inactive rejected diagnostic, retained to reproduce its saved checkpoints.
+    known_auction_fee: bool = False
 
 
 class DQNAgent(Agent):
@@ -113,9 +122,26 @@ class DQNAgent(Agent):
         if cfg.algo is None or cfg.algo.name != "dqn":
             raise ValueError("DQNAgent requires algo.name == 'dqn' in the config")
         self.cfg = cfg
-        self.hp: DQNHyperparams = build_hyperparams(DQNHyperparams, cfg.algo.hyperparams)
-        if self.hp.fixed_action_features or self.hp.layer_norm or self.hp.dueling:
+        hyperparams = dict(cfg.algo.hyperparams)
+        # Read the temporary all-phase development setting without changing
+        # the saved configuration of those archived diagnostic candidates.
+        if 'reference_centered_advantage' in hyperparams:
+            enabled = hyperparams.pop('reference_centered_advantage')
+            if not isinstance(enabled, bool):
+                raise ValueError('legacy reference_centered_advantage must be boolean')
+            if 'reference_centered_phases' in hyperparams:
+                raise ValueError('specify reference_centered_phases only')
+            hyperparams['reference_centered_phases'] = ['clob','auction'] if enabled else []
+        self.hp: DQNHyperparams = build_hyperparams(DQNHyperparams, hyperparams)
+        if self.hp.fixed_action_features or self.hp.dueling:
             raise ValueError("retired development architectures are not supported")
+        if not np.isfinite(self.hp.weight_decay) or self.hp.weight_decay < 0:
+            raise ValueError("weight_decay must be finite and nonnegative")
+        if not 0 <= self.hp.auction_control_exploration_probability < 1:
+            raise ValueError("auction_control_exploration_probability must lie in [0,1)")
+        if (set(self.hp.reference_centered_phases) - {'clob','auction'}
+                or len(set(self.hp.reference_centered_phases)) != len(self.hp.reference_centered_phases)):
+            raise ValueError('reference_centered_phases must be a subset of clob, auction')
         if not 0.0 <= self.hp.epsilon_auction_scale <= 1.0:
             raise ValueError("epsilon_auction_scale must lie in [0,1]")
         if self.hp.safe_auction_noop_margin < 0.0:
@@ -134,6 +160,9 @@ class DQNAgent(Agent):
 
         self.clob_grid = ClobActionGrid(cfg.actions)
         self.auction_grid = AuctionActionGrid(cfg.actions)
+        self._auction_control_indices = np.array([
+            i for i, action in enumerate(self.auction_grid.actions) if action.K_a == 0
+        ], dtype=np.int64)
         self._obs_dim = {"clob": len(cfg.features.clob), "auction": len(cfg.features.auction)}
         self._n_actions = {"clob": len(self.clob_grid), "auction": len(self.auction_grid)}
         mask_dim = max(self._n_actions.values())
@@ -167,6 +196,13 @@ class DQNAgent(Agent):
         }
 
         def make_pair(phase: str) -> tuple[StructuredDiscreteQ, StructuredDiscreteQ]:
+            # Q = learned residual - known immediate cancellation fee.
+            # Both regression and Bellman action selection use this full Q;
+            # rewards, admissibility and the optimization criterion are unchanged.
+            known_cost = None
+            if phase == 'auction' and self.hp.known_auction_fee:
+                known_cost = (cfg.reward.d * cfg.grid.tau_cl * self.hp.reward_scale,
+                              -cfg.reward.d * cfg.grid.tau_op * self.hp.reward_scale)
             safe_margin = (
                 self.hp.safe_auction_noop_margin
                 if phase == "auction" and self.hp.safe_auction_initialization
@@ -180,6 +216,9 @@ class DQNAgent(Agent):
                 act_cls,
                 noop_index=0,
                 initial_noop_margin=safe_margin,
+                layer_norm=self.hp.layer_norm,
+                reference_centered=phase in self.hp.reference_centered_phases,
+                known_action_cost=known_cost,
             ).to(self.device)
             tgt = StructuredDiscreteQ(
                 self._obs_dim[phase],
@@ -189,6 +228,9 @@ class DQNAgent(Agent):
                 act_cls,
                 noop_index=0,
                 initial_noop_margin=safe_margin,
+                layer_norm=self.hp.layer_norm,
+                reference_centered=phase in self.hp.reference_centered_phases,
+                known_action_cost=known_cost,
             ).to(self.device)
             tgt.load_state_dict(q.state_dict())
             for p in tgt.parameters():
@@ -200,7 +242,12 @@ class DQNAgent(Agent):
         self.optim = {}
         for phase in ("clob", "auction"):
             self.q[phase], self.q_target[phase] = make_pair(phase)
-            self.optim[phase] = torch.optim.Adam(self.q[phase].parameters(), lr=self.hp.lr)
+            self.optim[phase] = torch.optim.AdamW(
+                self.q[phase].parameters(), lr=self.hp.lr,
+                weight_decay=self.hp.weight_decay,
+            ) if self.hp.weight_decay else torch.optim.Adam(
+                self.q[phase].parameters(), lr=self.hp.lr,
+            )
 
         loss_fns = {"huber": nn.SmoothL1Loss(), "mse": nn.MSELoss()}
         if self.hp.loss not in loss_fns:
@@ -273,8 +320,8 @@ class DQNAgent(Agent):
     # -- acting ----------------------------------------------------------------
 
     def act(self, obs: np.ndarray, mask: np.ndarray, phase: str, *, eval_mode: bool = False) -> int:
-        """Masked epsilon-greedy: with prob epsilon a UNIFORM draw over the
-        admissible actions, else the masked greedy argmax (-inf on
+        """Masked epsilon-greedy: exploration over admissible actions, with
+        optional auction control coverage, else the masked greedy argmax (-inf on
         inadmissible entries). Eval mode is fully greedy and consumes no
         exploration randomness (the stream stays aligned across eval calls).
         """
@@ -292,6 +339,11 @@ class DQNAgent(Agent):
                 raise AssertionError("canonical auction no-op was masked")
             return 0
         if explore and self._explore_rng.random() < self.epsilon_for_phase(phase):
+            if (phase == "auction" and self.hp.auction_control_exploration_probability > 0
+                    and self._explore_rng.random() < self.hp.auction_control_exploration_probability):
+                controls = self._auction_control_indices[mask[self._auction_control_indices]]
+                if len(controls):
+                    return int(controls[self._explore_rng.integers(len(controls))])
             admissible = np.flatnonzero(mask)
             return int(admissible[self._explore_rng.integers(len(admissible))])
         with torch.no_grad():
@@ -369,6 +421,9 @@ class DQNAgent(Agent):
         self._pending_update_phase = None
         if phase not in self.replay:
             raise ValueError(f"unknown phase {phase!r}")
+        if (self.cfg.rl.learning_starts_after_warmup
+                and self._episode < self.cfg.rl.structured_warmup_episodes):
+            return {}
         phase_min_buffer = getattr(self.hp, f"min_buffer_{phase}")
         if phase_min_buffer is None:
             phase_min_buffer = self.hp.min_buffer
@@ -439,6 +494,8 @@ class DQNAgent(Agent):
         actions = torch.as_tensor(batch.action, dtype=torch.int64, device=self.device)
         q_pred = self.q[phase](obs, actions)
         loss = self._loss_fn(q_pred, y)
+        if not torch.isfinite(loss):
+            raise FloatingPointError(f"non-finite DQN {phase} loss; refusing a corrupt update")
         self.optim[phase].zero_grad()
         for group in self.optim[phase].param_groups:
             group['lr'] = self.hp.lr * learning_rate_factor(self.cfg.rl, self._episode)
@@ -514,7 +571,8 @@ class DQNAgent(Agent):
         state = {
             "artifact_schema_version": self.artifact_schema_version,
             "environment_contract": ENVIRONMENT_CONTRACT,
-            "q_architecture": StructuredDiscreteQ.ARCHITECTURE,
+            "q_architecture": self.q["clob"].architecture,
+            "q_architectures": {phase: network.architecture for phase, network in self.q.items()},
             "dqn_contract": self._checkpoint_contract(),
             "feature_normalizer": self._feature_normalizer_state(),
             "hyperparams": self.hp.__dict__,
@@ -552,12 +610,25 @@ class DQNAgent(Agent):
                 "checkpoint environment contract mismatch; old auction/grid "
                 "checkpoints cannot be loaded by the revised pipeline"
             )
-        if state.get("q_architecture") != StructuredDiscreteQ.ARCHITECTURE:
+        if state.get("q_architecture") != self.q["clob"].architecture:
             raise ValueError(
                 "checkpoint DQN architecture mismatch; this checkpoint predates "
                 "the action-coordinate-conditioned Q network"
             )
+        if ('q_architectures' in state and state['q_architectures'] !=
+                {phase: network.architecture for phase, network in self.q.items()}):
+            raise ValueError('checkpoint DQN phase architecture mismatch')
         contract = state.get("dqn_contract")
+        if isinstance(contract, dict):
+            contract.get('hyperparams_except_device', {}).setdefault('weight_decay', 0.0)
+            contract.get('hyperparams_except_device', {}).setdefault('auction_control_exploration_probability', 0.0)
+            contract.get('hyperparams_except_device', {}).setdefault('known_auction_fee', False)
+            hp_contract = contract.get('hyperparams_except_device', {})
+            legacy_centering = hp_contract.pop('reference_centered_advantage', False)
+            hp_contract.setdefault('reference_centered_phases', ('clob','auction') if legacy_centering else ())
+            historical = contract.get('midprice', {}).get('historical')
+            if isinstance(historical, dict):
+                historical.setdefault('training_pool', 'symbol')
         if isinstance(contract, dict) and isinstance(contract.get('reward'), dict):
             contract['reward'].setdefault('auction_shaping_weight', 1.0)
         if contract != self._checkpoint_contract():

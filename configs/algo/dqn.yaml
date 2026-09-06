@@ -1,23 +1,28 @@
 # One-step Double DQN on the exact action grid. MSE retains the contribution
 # of rare inventory losses; phase junctions use the auction target network.
 # The 5/95-episode exploration schedule is fixed, not stretched with run length.
-# Full production budget remains 800 episodes; bounded verification uses 180.
+# Full production budget remains 800 episodes; bounded verification uses <=200.
 
 algo:
   name: dqn
   hyperparams:
     buffer_size: 50000
     min_buffer: 5000
-    min_buffer_clob: 2500
-    min_buffer_auction: 960
+    min_buffer_clob: 512
+    min_buffer_auction: 512
     batch_size: 128
     lr: 0.00015
     loss: mse
-    grad_clip_norm: 1.0
+    grad_clip_norm: 10.0
     hidden_layers:
     - 256
     - 256
     action_embedding_dim: 32
+    layer_norm: true
+    weight_decay: 0.0001
+    auction_control_exploration_probability: 0.5
+    reference_centered_phases:
+    - auction
     safe_auction_initialization: false
     target_update_interval: 1000
     target_soft_tau: 0.005
@@ -37,3 +42,5 @@ algo:
     auction_learning_start_episode: 0
 rl:
   n_step: 1
+  phase_normalization: true
+  auction_inventory_asinh: true

@@ -68,6 +68,11 @@ class StructuredDiscreteQ(nn.Module):
 
         Q(s, a) = V(s) + <q(s), e(a)> / sqrt(r) + w_prior 1{a != a_noop}.
 
+    With ``reference_centered``, use ``e(a)-e(a_noop)`` and, absent a special
+    initialization, fix ``w_prior=0``. The reference Q is then exactly V(s).
+    The optional known-action-cost decomposition is retained for a rejected
+    diagnostic and is inactive in the production configuration.
+
     ``forward(obs)`` retains the ordinary vector-valued DQN interface.  Passing
     one action index per observation evaluates only the sampled entries, which
     avoids materializing a batch-by-grid tensor during the gradient step.  The
@@ -93,6 +98,9 @@ class StructuredDiscreteQ(nn.Module):
         *,
         noop_index: int = 0,
         initial_noop_margin: float | None = None,
+        layer_norm: bool = False,
+        reference_centered: bool = False,
+        known_action_cost: tuple[float, float] | None = None,
     ) -> None:
         super().__init__()
         coordinates = np.asarray(action_coordinates, dtype=np.float32)
@@ -118,6 +126,18 @@ class StructuredDiscreteQ(nn.Module):
         self.action_dim = int(coordinates.shape[1])
         self.action_embedding_dim = rank
         self.noop_index = int(noop_index)
+        self.layer_norm = bool(layer_norm)
+        self.reference_centered = bool(reference_centered)
+        if known_action_cost is not None and (
+            coordinates.shape[1] != 3 or not np.isfinite(known_action_cost).all()
+        ):
+            raise ValueError('known action cost requires three auction coordinates and finite coefficients')
+        self.known_action_cost = known_action_cost
+        self.architecture = ("coordinate_conditioned_reference_v3" if reference_centered
+                             else "coordinate_conditioned_normalized_v2" if layer_norm
+                             else self.ARCHITECTURE)
+        if known_action_cost is not None:
+            self.architecture += "_known_fee_v4"
         self.register_buffer(
             "action_coordinates", torch.as_tensor(coordinates, dtype=torch.float32)
         )
@@ -128,7 +148,10 @@ class StructuredDiscreteQ(nn.Module):
         trunk: list[nn.Module] = []
         previous = int(obs_dim)
         for width in widths:
-            trunk.extend((nn.Linear(previous, width), activation()))
+            trunk.append(nn.Linear(previous, width))
+            if layer_norm:
+                trunk.append(nn.LayerNorm(width, elementwise_affine=False))
+            trunk.append(activation())
             previous = width
         self.state_trunk = nn.Sequential(*trunk)
         self.value_head = nn.Linear(previous, 1)
@@ -137,9 +160,16 @@ class StructuredDiscreteQ(nn.Module):
             nn.Linear(self.action_dim, rank),
             activation(),
             nn.Linear(rank, rank),
+            # Bound the learned action representation, not rewards or Q values.
+            # Otherwise the two learned factors can magnify one another under
+            # undiscounted off-policy bootstrapping. The output remains linear
+            # in unrestricted state-query/value heads and retains every action.
+            *([nn.LayerNorm(rank, elementwise_affine=False), nn.Tanh()]
+              if layer_norm else []),
         )
         prior = 0.0 if initial_noop_margin is None else -float(initial_noop_margin)
-        self.nonnoop_prior = nn.Parameter(torch.tensor(prior, dtype=torch.float32))
+        self.nonnoop_prior = nn.Parameter(torch.tensor(prior, dtype=torch.float32),
+            requires_grad=not reference_centered or initial_noop_margin is not None)
 
         if initial_noop_margin is not None:
             # Preserve the exact safe auction policy at initialization without
@@ -165,8 +195,15 @@ class StructuredDiscreteQ(nn.Module):
 
         if action_indices is None:
             embedding = self.action_encoder(self.action_coordinates)
+            if self.reference_centered:
+                embedding = embedding - embedding[self.noop_index:self.noop_index+1]
             advantage = query @ embedding.transpose(0, 1) / scale
-            return value.unsqueeze(1) + advantage + self.nonnoop_prior * self._nonnoop
+            result = value.unsqueeze(1) + advantage + self.nonnoop_prior * self._nonnoop
+            if self.known_action_cost is not None:
+                rate, offset = self.known_action_cost
+                fee = (obs[:, 0] * rate + offset).clamp_min(0.)
+                result = result - fee.unsqueeze(1) * self.action_coordinates[:, 2]
+            return result
 
         indices = action_indices.to(device=obs.device, dtype=torch.int64)
         if indices.ndim != 1 or indices.shape[0] != obs.shape[0]:
@@ -177,8 +214,19 @@ class StructuredDiscreteQ(nn.Module):
         if bool(((indices < 0) | (indices >= self.n_actions)).any()):
             raise ValueError("action_indices contains an index outside the action grid")
         embedding = self.action_encoder(self.action_coordinates[indices])
+        if self.reference_centered:
+            embedding = embedding - self.action_encoder(self.action_coordinates[self.noop_index:self.noop_index+1])
+            # GEMM/GEMV roundoff can leave a tiny nonzero difference for the
+            # identical reference action. Adam can amplify that spurious
+            # gradient. The defining reference advantage is exactly zero.
+            embedding = embedding.masked_fill((indices == self.noop_index).unsqueeze(1), 0.)
         advantage = (query * embedding).sum(dim=1) / scale
-        return value + advantage + self.nonnoop_prior * self._nonnoop[indices]
+        result = value + advantage + self.nonnoop_prior * self._nonnoop[indices]
+        if self.known_action_cost is not None:
+            rate, offset = self.known_action_cost
+            fee = (obs[:, 0] * rate + offset).clamp_min(0.)
+            result = result - fee * self.action_coordinates[indices, 2]
+        return result
 
 
 def _trunk(in_dim: int, hidden: Sequence[int], activation: type[nn.Module]) -> tuple[nn.Sequential, int]:

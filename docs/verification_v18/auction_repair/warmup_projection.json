@@ -1,0 +1,520 @@
+{
+  "purpose": "Reconstruct the previous zero-slope projection with exactly its RNG draws; evaluation does not use warm-up.",
+  "unique_seeds": 64,
+  "no_order_episodes_per_seed": 8,
+  "phantom_order_seeds": 53,
+  "examples": [
+    {
+      "seed": 0,
+      "intended_slope": 0,
+      "old_offset": -2,
+      "old_action": 18,
+      "old_executed_slope": 0.25,
+      "fixed_action": 0
+    },
+    {
+      "seed": 1,
+      "intended_slope": 0,
+      "old_offset": -3,
+      "old_action": 16,
+      "old_executed_slope": 0.25,
+      "fixed_action": 0
+    },
+    {
+      "seed": 2,
+      "intended_slope": 0,
+      "old_offset": -8,
+      "old_action": 6,
+      "old_executed_slope": 0.25,
+      "fixed_action": 0
+    },
+    {
+      "seed": 3,
+      "intended_slope": 0,
+      "old_offset": 0,
+      "old_action": 0,
+      "old_executed_slope": 0.0,
+      "fixed_action": 0
+    },
+    {
+      "seed": 4,
+      "intended_slope": 0,
+      "old_offset": -10,
+      "old_action": 2,
+      "old_executed_slope": 0.25,
+      "fixed_action": 0
+    },
+    {
+      "seed": 5,
+      "intended_slope": 0,
+      "old_offset": -8,
+      "old_action": 6,
+      "old_executed_slope": 0.25,
+      "fixed_action": 0
+    },
+    {
+      "seed": 6,
+      "intended_slope": 0,
+      "old_offset": -8,
+      "old_action": 6,
+      "old_executed_slope": 0.25,
+      "fixed_action": 0
+    },
+    {
+      "seed": 7,
+      "intended_slope": 0,
+      "old_offset": -3,
+      "old_action": 16,
+      "old_executed_slope": 0.25,
+      "fixed_action": 0
+    },
+    {
+      "seed": 8,
+      "intended_slope": 0,
+      "old_offset": -1,
+      "old_action": 0,
+      "old_executed_slope": 0.0,
+      "fixed_action": 0
+    },
+    {
+      "seed": 9,
+      "intended_slope": 0,
+      "old_offset": -8,
+      "old_action": 6,
+      "old_executed_slope": 0.25,
+      "fixed_action": 0
+    },
+    {
+      "seed": 10,
+      "intended_slope": 0,
+      "old_offset": -7,
+      "old_action": 8,
+      "old_executed_slope": 0.25,
+      "fixed_action": 0
+    },
+    {
+      "seed": 11,
+      "intended_slope": 0,
+      "old_offset": -8,
+      "old_action": 6,
+      "old_executed_slope": 0.25,
+      "fixed_action": 0
+    },
+    {
+      "seed": 12,
+      "intended_slope": 0,
+      "old_offset": -7,
+      "old_action": 8,
+      "old_executed_slope": 0.25,
+      "fixed_action": 0
+    },
+    {
+      "seed": 13,
+      "intended_slope": 0,
+      "old_offset": -6,
+      "old_action": 10,
+      "old_executed_slope": 0.25,
+      "fixed_action": 0
+    },
+    {
+      "seed": 14,
+      "intended_slope": 0,
+      "old_offset": -6,
+      "old_action": 10,
+      "old_executed_slope": 0.25,
+      "fixed_action": 0
+    },
+    {
+      "seed": 15,
+      "intended_slope": 0,
+      "old_offset": -10,
+      "old_action": 2,
+      "old_executed_slope": 0.25,
+      "fixed_action": 0
+    },
+    {
+      "seed": 16,
+      "intended_slope": 0,
+      "old_offset": 0,
+      "old_action": 0,
+      "old_executed_slope": 0.0,
+      "fixed_action": 0
+    },
+    {
+      "seed": 17,
+      "intended_slope": 0,
+      "old_offset": 0,
+      "old_action": 0,
+      "old_executed_slope": 0.0,
+      "fixed_action": 0
+    },
+    {
+      "seed": 18,
+      "intended_slope": 0,
+      "old_offset": -5,
+      "old_action": 12,
+      "old_executed_slope": 0.25,
+      "fixed_action": 0
+    },
+    {
+      "seed": 19,
+      "intended_slope": 0,
+      "old_offset": -3,
+      "old_action": 16,
+      "old_executed_slope": 0.25,
+      "fixed_action": 0
+    },
+    {
+      "seed": 20,
+      "intended_slope": 0,
+      "old_offset": -5,
+      "old_action": 12,
+      "old_executed_slope": 0.25,
+      "fixed_action": 0
+    },
+    {
+      "seed": 21,
+      "intended_slope": 0,
+      "old_offset": -8,
+      "old_action": 6,
+      "old_executed_slope": 0.25,
+      "fixed_action": 0
+    },
+    {
+      "seed": 22,
+      "intended_slope": 0,
+      "old_offset": -7,
+      "old_action": 8,
+      "old_executed_slope": 0.25,
+      "fixed_action": 0
+    },
+    {
+      "seed": 23,
+      "intended_slope": 0,
+      "old_offset": -10,
+      "old_action": 2,
+      "old_executed_slope": 0.25,
+      "fixed_action": 0
+    },
+    {
+      "seed": 24,
+      "intended_slope": 0,
+      "old_offset": -5,
+      "old_action": 12,
+      "old_executed_slope": 0.25,
+      "fixed_action": 0
+    },
+    {
+      "seed": 25,
+      "intended_slope": 0,
+      "old_offset": -4,
+      "old_action": 14,
+      "old_executed_slope": 0.25,
+      "fixed_action": 0
+    },
+    {
+      "seed": 26,
+      "intended_slope": 0,
+      "old_offset": -2,
+      "old_action": 18,
+      "old_executed_slope": 0.25,
+      "fixed_action": 0
+    },
+    {
+      "seed": 27,
+      "intended_slope": 0,
+      "old_offset": -2,
+      "old_action": 18,
+      "old_executed_slope": 0.25,
+      "fixed_action": 0
+    },
+    {
+      "seed": 28,
+      "intended_slope": 0,
+      "old_offset": -5,
+      "old_action": 12,
+      "old_executed_slope": 0.25,
+      "fixed_action": 0
+    },
+    {
+      "seed": 29,
+      "intended_slope": 0,
+      "old_offset": -1,
+      "old_action": 0,
+      "old_executed_slope": 0.0,
+      "fixed_action": 0
+    },
+    {
+      "seed": 30,
+      "intended_slope": 0,
+      "old_offset": -7,
+      "old_action": 8,
+      "old_executed_slope": 0.25,
+      "fixed_action": 0
+    },
+    {
+      "seed": 31,
+      "intended_slope": 0,
+      "old_offset": -7,
+      "old_action": 8,
+      "old_executed_slope": 0.25,
+      "fixed_action": 0
+    },
+    {
+      "seed": 32,
+      "intended_slope": 0,
+      "old_offset": -2,
+      "old_action": 18,
+      "old_executed_slope": 0.25,
+      "fixed_action": 0
+    },
+    {
+      "seed": 33,
+      "intended_slope": 0,
+      "old_offset": -3,
+      "old_action": 16,
+      "old_executed_slope": 0.25,
+      "fixed_action": 0
+    },
+    {
+      "seed": 34,
+      "intended_slope": 0,
+      "old_offset": -5,
+      "old_action": 12,
+      "old_executed_slope": 0.25,
+      "fixed_action": 0
+    },
+    {
+      "seed": 35,
+      "intended_slope": 0,
+      "old_offset": -4,
+      "old_action": 14,
+      "old_executed_slope": 0.25,
+      "fixed_action": 0
+    },
+    {
+      "seed": 36,
+      "intended_slope": 0,
+      "old_offset": -1,
+      "old_action": 0,
+      "old_executed_slope": 0.0,
+      "fixed_action": 0
+    },
+    {
+      "seed": 37,
+      "intended_slope": 0,
+      "old_offset": -6,
+      "old_action": 10,
+      "old_executed_slope": 0.25,
+      "fixed_action": 0
+    },
+    {
+      "seed": 38,
+      "intended_slope": 0,
+      "old_offset": -5,
+      "old_action": 12,
+      "old_executed_slope": 0.25,
+      "fixed_action": 0
+    },
+    {
+      "seed": 39,
+      "intended_slope": 0,
+      "old_offset": -9,
+      "old_action": 4,
+      "old_executed_slope": 0.25,
+      "fixed_action": 0
+    },
+    {
+      "seed": 40,
+      "intended_slope": 0,
+      "old_offset": 0,
+      "old_action": 0,
+      "old_executed_slope": 0.0,
+      "fixed_action": 0
+    },
+    {
+      "seed": 41,
+      "intended_slope": 0,
+      "old_offset": -5,
+      "old_action": 12,
+      "old_executed_slope": 0.25,
+      "fixed_action": 0
+    },
+    {
+      "seed": 42,
+      "intended_slope": 0,
+      "old_offset": -10,
+      "old_action": 2,
+      "old_executed_slope": 0.25,
+      "fixed_action": 0
+    },
+    {
+      "seed": 43,
+      "intended_slope": 0,
+      "old_offset": -5,
+      "old_action": 12,
+      "old_executed_slope": 0.25,
+      "fixed_action": 0
+    },
+    {
+      "seed": 44,
+      "intended_slope": 0,
+      "old_offset": -5,
+      "old_action": 12,
+      "old_executed_slope": 0.25,
+      "fixed_action": 0
+    },
+    {
+      "seed": 45,
+      "intended_slope": 0,
+      "old_offset": 0,
+      "old_action": 0,
+      "old_executed_slope": 0.0,
+      "fixed_action": 0
+    },
+    {
+      "seed": 46,
+      "intended_slope": 0,
+      "old_offset": -5,
+      "old_action": 12,
+      "old_executed_slope": 0.25,
+      "fixed_action": 0
+    },
+    {
+      "seed": 47,
+      "intended_slope": 0,
+      "old_offset": -6,
+      "old_action": 10,
+      "old_executed_slope": 0.25,
+      "fixed_action": 0
+    },
+    {
+      "seed": 48,
+      "intended_slope": 0,
+      "old_offset": -1,
+      "old_action": 0,
+      "old_executed_slope": 0.0,
+      "fixed_action": 0
+    },
+    {
+      "seed": 49,
+      "intended_slope": 0,
+      "old_offset": -7,
+      "old_action": 8,
+      "old_executed_slope": 0.25,
+      "fixed_action": 0
+    },
+    {
+      "seed": 50,
+      "intended_slope": 0,
+      "old_offset": -6,
+      "old_action": 10,
+      "old_executed_slope": 0.25,
+      "fixed_action": 0
+    },
+    {
+      "seed": 51,
+      "intended_slope": 0,
+      "old_offset": -1,
+      "old_action": 0,
+      "old_executed_slope": 0.0,
+      "fixed_action": 0
+    },
+    {
+      "seed": 52,
+      "intended_slope": 0,
+      "old_offset": -9,
+      "old_action": 4,
+      "old_executed_slope": 0.25,
+      "fixed_action": 0
+    },
+    {
+      "seed": 53,
+      "intended_slope": 0,
+      "old_offset": -6,
+      "old_action": 10,
+      "old_executed_slope": 0.25,
+      "fixed_action": 0
+    },
+    {
+      "seed": 54,
+      "intended_slope": 0,
+      "old_offset": -6,
+      "old_action": 10,
+      "old_executed_slope": 0.25,
+      "fixed_action": 0
+    },
+    {
+      "seed": 55,
+      "intended_slope": 0,
+      "old_offset": -9,
+      "old_action": 4,
+      "old_executed_slope": 0.25,
+      "fixed_action": 0
+    },
+    {
+      "seed": 56,
+      "intended_slope": 0,
+      "old_offset": -4,
+      "old_action": 14,
+      "old_executed_slope": 0.25,
+      "fixed_action": 0
+    },
+    {
+      "seed": 57,
+      "intended_slope": 0,
+      "old_offset": -3,
+      "old_action": 16,
+      "old_executed_slope": 0.25,
+      "fixed_action": 0
+    },
+    {
+      "seed": 58,
+      "intended_slope": 0,
+      "old_offset": -4,
+      "old_action": 14,
+      "old_executed_slope": 0.25,
+      "fixed_action": 0
+    },
+    {
+      "seed": 59,
+      "intended_slope": 0,
+      "old_offset": 0,
+      "old_action": 0,
+      "old_executed_slope": 0.0,
+      "fixed_action": 0
+    },
+    {
+      "seed": 60,
+      "intended_slope": 0,
+      "old_offset": -7,
+      "old_action": 8,
+      "old_executed_slope": 0.25,
+      "fixed_action": 0
+    },
+    {
+      "seed": 61,
+      "intended_slope": 0,
+      "old_offset": -8,
+      "old_action": 6,
+      "old_executed_slope": 0.25,
+      "fixed_action": 0
+    },
+    {
+      "seed": 62,
+      "intended_slope": 0,
+      "old_offset": -10,
+      "old_action": 2,
+      "old_executed_slope": 0.25,
+      "fixed_action": 0
+    },
+    {
+      "seed": 63,
+      "intended_slope": 0,
+      "old_offset": -7,
+      "old_action": 8,
+      "old_executed_slope": 0.25,
+      "fixed_action": 0
+    }
+  ]
+}

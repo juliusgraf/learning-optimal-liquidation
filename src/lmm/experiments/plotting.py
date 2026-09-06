@@ -277,6 +277,15 @@ def collect_runs(run_dirs) -> list[RunInfo]:
             warnings.warn(f"skipping {rd}: no config_resolved.yaml", stacklevel=2)
             continue
         cfg = load_config(cfg_path)
+        if not (rd / "eval" / "metadata.yaml").is_file():
+            failure = rd / "checkpoints" / "selection_failure.yaml"
+            detail = (
+                " Training finished but checkpoint selection failed; see "
+                "checkpoints/selection_failure.yaml. A non-improving mature policy "
+                "needs an explicit reporting-protocol amendment and evaluation."
+                if failure.is_file() else " Complete evaluation before reporting."
+            )
+            raise ValueError(f"{rd}: missing eval/metadata.yaml.{detail}")
         meta = read_metadata(rd)
         if meta.get("environment_contract") != ENVIRONMENT_CONTRACT:
             raise ValueError(

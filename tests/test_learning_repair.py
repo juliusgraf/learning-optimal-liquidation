@@ -340,6 +340,7 @@ def test_sb3_save_load_policy_and_replay(tmp_path, algo):
 @pytest.mark.parametrize('algo', ['ddpg', 'td3', 'sac'])
 def test_sb3_native_update_and_resume_preserve_next_update(tmp_path, algo):
     cfg = config(algo)
+    cfg = replace(cfg, rl=replace(cfg.rl, structured_warmup_episodes=0))
     cfg = replace(cfg, algo=replace(cfg.algo, hyperparams={
         **cfg.algo.hyperparams, 'batch_size': 4,
         'min_buffer_clob': 4, 'min_buffer_auction': 4,
@@ -391,7 +392,7 @@ def test_optional_optimizer_settings_survive_native_rate_reset_and_load(tmp_path
 @pytest.mark.parametrize('phase_normalization', [False, True])
 def test_enabled_conditioning_and_warmup_resume_exact_episode(tmp_path, algo, phase_normalization):
     cfg = config(algo)
-    cfg = replace(cfg, rl=replace(cfg.rl, normalizer_fit_episodes=4,
+    cfg = replace(cfg, rl=replace(cfg.rl, normalizer_fit_episodes=4, structured_warmup_episodes=1,
                                  phase_normalization=phase_normalization,
                                  auction_inventory_asinh=phase_normalization),
                   algo=replace(cfg.algo, hyperparams={**cfg.algo.hyperparams,

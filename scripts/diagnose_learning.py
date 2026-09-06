@@ -32,6 +32,8 @@ def main():
     p.add_argument('--config', action='append', default=[])
     p.add_argument('--resolved-config', type=Path,
                    help='Load a saved complete config alone, without inheriting current base defaults.')
+    p.add_argument('--save-stress-checkpoint', action='store_true',
+                   help='Save final DQN replay for a bounded offline stability stress test.')
     args = p.parse_args()
     if not 1 <= args.episodes <= 200:
         p.error('This diagnostic is capped at 200 episodes; use the production trainer for full runs.')
@@ -86,8 +88,12 @@ def main():
 
     validations, training = [], []
     best = -float('inf')
+    mature_evaluated = False
     for e in range(args.episodes + 1):
-        if e % args.every == 0 or e == args.episodes:
+        phase_mature = (agent.checkpoint_update_counts['clob'] >= cfg.rl.checkpoint_min_clob_updates
+                        and (not cfg.experiment.auction_enabled or
+                             agent.checkpoint_update_counts['auction'] >= cfg.rl.checkpoint_min_auction_updates))
+        if e % args.every == 0 or e == args.episodes or (e and phase_mature and not mature_evaluated):
             rows = evaluate(agent, val_env, val_seeds, args.algo)
             mean = pd.DataFrame(rows).drop(columns=['env_seed']).select_dtypes('number').mean().to_dict()
             mean.update(episode=e, updates=agent.checkpoint_update_counts)
@@ -98,6 +104,7 @@ def main():
                              agent.checkpoint_update_counts['auction'] >= cfg.rl.checkpoint_min_auction_updates))
             eligible = eligible and (not cfg.rl.checkpoint_require_initial_improvement
                                      or mean['objective'] > validations[0]['objective'])
+            mature_evaluated = mature_evaluated or (e > 0 and phase_mature)
             if e and eligible and mean['objective'] > best:
                 best = mean['objective']
                 agent.save(args.output / 'best.pt')
@@ -118,6 +125,10 @@ def main():
                              terminal_inventory=r.i_final, auction_qty=r.auction_exec_qty,
                              **r.diagnostics))
     pd.DataFrame(training).to_csv(args.output / 'training.csv', index=False)
+    if args.save_stress_checkpoint:
+        if args.algo != 'dqn':
+            raise ValueError('replay stress checkpoint currently supports DQN only')
+        agent.save(args.output / 'stress_start.pt', include_replay=True)
     if not (args.output / 'best.pt').exists():
         raise RuntimeError('No maturity-eligible checkpoint: inspect validation.json; increase the bounded budget or explicitly use smoke maturity thresholds.')
     agent.load(args.output / 'best.pt')

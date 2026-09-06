@@ -229,6 +229,9 @@ class HistoricalParams:
     price_type: str = ""
     quote_feed: str = ""
     artifact_normalization: str = ""
+    # Pool only the configured training dates across rebased symbols. Each
+    # validation/test environment still replays its requested symbol alone.
+    training_pool: str = "symbol"
 
 
 @dataclass(frozen=True)
@@ -320,6 +323,7 @@ class RLParams:
     auction_inventory_asinh: bool = False
     market_return_control_variate: bool = False
     structured_warmup_episodes: int = 0
+    learning_starts_after_warmup: bool = False
     market_control_reference: str = 'linear'
     learning_rate_half_life_episodes: float = 0.0
     learning_rate_min_fraction: float = 0.1
@@ -343,6 +347,7 @@ class RLParams:
     # a mature candidate to improve on it before being reportable.
     checkpoint_require_initial_improvement: bool = False
     test_size: int = 100
+    test_seed_namespace: int = 0
     h_cl_feature_enabled: bool = True
 
 
@@ -807,6 +812,8 @@ def _validate_experiment_config(cfg: ExperimentConfig) -> ExperimentConfig:
         raise ConfigError("experiment.episodes must be positive")
     if cfg.rl.n_step < 1:
         raise ConfigError("rl.n_step must be positive")
+    if cfg.rl.test_seed_namespace < 0:
+        raise ConfigError("rl.test_seed_namespace must be nonnegative")
     if cfg.rl.auction_exposure_features and not cfg.rl.relative_price_features:
         raise ConfigError('auction exposure coordinates require relative prices')
     if cfg.rl.auction_inventory_asinh and not cfg.rl.auction_exposure_features:
@@ -1011,6 +1018,10 @@ def _validate_experiment_config(cfg: ExperimentConfig) -> ExperimentConfig:
             historical.symbols
         ):
             raise ConfigError("historical symbols must be nonempty and unique")
+        if historical.training_pool not in ("symbol", "all_symbols"):
+            raise ConfigError("historical training_pool must be symbol or all_symbols")
+        if historical.training_pool == "all_symbols" and historical.path_policy == "fixed":
+            raise ConfigError("all_symbols training requires path_policy=split_pool")
         ranges = {
             "train_date_range": _parse_date_range(
                 "train_date_range",

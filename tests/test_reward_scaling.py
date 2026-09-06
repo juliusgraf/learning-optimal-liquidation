@@ -206,6 +206,7 @@ def test_gradient_updates_stay_finite_under_paper_scale_rewards(algo):
     per-update losses / TD errors / gradient norms finite and non-divergent."""
     cfg, agent = build_agent(
         algo,
+        "rl.learning_starts_after_warmup=false",
         "algo.hyperparams.min_buffer=32",
         "algo.hyperparams.min_buffer_clob=32",
         "algo.hyperparams.min_buffer_auction=32",

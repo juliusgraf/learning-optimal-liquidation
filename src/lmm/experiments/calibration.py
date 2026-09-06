@@ -12,6 +12,8 @@ from lmm.config import ExperimentConfig, load_config
 def calibration_scales(cfg: ExperimentConfig) -> dict[str, float | str | None]:
     s, alpha = cfg.grid.S0, cfg.grid.alpha
     weight = cfg.reward.auction_shaping_weight
+    expected_buy = cfg.clob_flow.lambda0*cfg.grid.tau_op*pareto_capped_mean(
+        cfg.clob_flow.v_m,cfg.clob_flow.gamma_m,cfg.clob_flow.V_max)
     return {
         'interpretation': 'dimensional diagnostics, not estimates of exchange liquidity',
         'model_tick_bps': 10000*alpha/s,
@@ -21,6 +23,11 @@ def calibration_scales(cfg: ExperimentConfig) -> dict[str, float | str | None]:
         'clob_clipping_distance_bps': 10000*cfg.reward.k_star*alpha/s,
         'clob_clipping_distance_fraction_of_S0': cfg.reward.k_star*alpha/s,
         'clob_penalty_per_unit_price_gap_at_S0': s/(cfg.reward.k_star*alpha),
+        'k_star_interpretation': 'derived shaping preference S0/(alpha*eta_C), not a quote distance',
+        'q_interpretation': 'fraction of negative fictive cash attenuated; no market subsidy',
+        'beta_units': 'inventory units per model price unit',
+        'expected_buy_volume_per_parent': expected_buy/cfg.grid.I0,
+        'parent_fraction_of_expected_buy_volume': cfg.grid.I0/expected_buy,
         'clob_deduction_per_unit_at_one_tick_gap_and_S0': s/cfg.reward.k_star,
         'purchase_subsidy_per_unit_at_S0': weight*cfg.reward.q*s,
         'auction_fictive_sale_credit_per_unit_at_S0': weight*s,
@@ -34,8 +41,11 @@ def calibration_scales(cfg: ExperimentConfig) -> dict[str, float | str | None]:
         'nominal_max_schedule_local_quantity': cfg.actions.auction_K_grid_max*alpha*cfg.actions.B_max,
         'nominal_max_schedule_fraction_of_initial_inventory': cfg.actions.auction_K_grid_max*alpha*cfg.actions.B_max/cfg.grid.I0,
         'nominal_all_slots_local_quantity': cfg.grid.h*cfg.actions.auction_K_grid_max*alpha*cfg.actions.B_max,
-        'maximum_cancellation_cost_bps_of_initial_notional': 10000*(cfg.grid.h-1)*cfg.reward.d/(s*cfg.grid.I0),
-        'expected_clob_buy_volume_unconditional': cfg.clob_flow.lambda0*cfg.grid.tau_op*pareto_capped_mean(cfg.clob_flow.v_m,cfg.clob_flow.gamma_m,cfg.clob_flow.V_max),
+        'maximum_single_cancellation_cost_bps_of_initial_notional': 10000*(cfg.grid.h-1)*cfg.reward.d/(s*cfg.grid.I0),
+        # d_j = j*d, so repeatedly cancel/replacing a live schedule accumulates
+        # the triangular sum, not just the last decision's fee.
+        'maximum_cancellation_cost_bps_of_initial_notional': 10000*cfg.grid.h*(cfg.grid.h-1)/2*cfg.reward.d/(s*cfg.grid.I0),
+        'expected_clob_buy_volume_unconditional': expected_buy,
     }
 
 

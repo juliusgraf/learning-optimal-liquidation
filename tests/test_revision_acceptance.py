@@ -175,7 +175,7 @@ def test_historical_dataset_has_verified_disjoint_nonempty_pools():
     assert pools[0].isdisjoint(pools[2])
     assert pools[1].isdisjoint(pools[2])
 
-    for split, expected_count in (("train", 10), ("validation", 5), ("test", 5)):
+    for split, expected_count in (("train", 50), ("validation", 5), ("test", 5)):
         env = mdp_module.make_env(
             cfg,
             symbol="MSFT",
@@ -487,6 +487,7 @@ def test_one_update_opportunity_and_common_unclipped_scaled_reward(algo):
         *o,
     )
     cfg = loader(
+        "rl.learning_starts_after_warmup=false",
         "algo.hyperparams.min_buffer=1",
         "algo.hyperparams.min_buffer_clob=1",
         "algo.hyperparams.min_buffer_auction=1",

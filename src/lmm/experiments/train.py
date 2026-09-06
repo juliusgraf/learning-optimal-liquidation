@@ -746,7 +746,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         eval_checkpoint_eligible: Optional[bool] = None
         eval_checkpoint_reportable: Optional[bool] = None
         stop_after_episode = False
-        if (episode + 1) % cfg.rl.validation_frequency_episodes == 0:
+        # Evaluate the first eligible policy immediately. With multi-step
+        # replay, the auction threshold can be crossed just after a periodic
+        # checkpoint; waiting another 50 episodes needlessly discards that
+        # part of the learned trajectory. This rule is independent of scores.
+        first_mature = (best_mature_episode is None
+                        and _checkpoint_eligibility(cfg, agent)["eligible"])
+        if (episode + 1) % cfg.rl.validation_frequency_episodes == 0 or first_mature:
             validation = _run_eval(
                 validation_env, agent, eval_seeds, chi, checkpoint_metric
             )

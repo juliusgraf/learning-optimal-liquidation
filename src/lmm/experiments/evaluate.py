@@ -179,6 +179,16 @@ def _record_row(policy: str, episode: int, res: EpisodeResult) -> list[str]:
     ]
 
 
+def final_evaluation_rng(cfg, seeds):
+    """Version final simulation streams without perturbing training or pairing."""
+    namespace = cfg.rl.test_seed_namespace
+    if namespace == 0:
+        return seeds.generators['env_final_eval']
+    return np.random.default_rng(np.random.SeedSequence([
+        cfg.experiment.master_seed, namespace, 791923,
+    ]))
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="lmm-evaluate",
@@ -225,8 +235,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         else int(cfg.rl.test_size)
     )
 
-    selection_path = run_dir / "checkpoints" / "best_selection.yaml"
+    selection_name = "best_mature" if args.checkpoint == "best_mature" else "best"
+    selection_path = run_dir / "checkpoints" / f"{selection_name}_selection.yaml"
     selection = yaml.safe_load(selection_path.read_text()) if selection_path.exists() else None
+    if args.checkpoint == "best_mature":
+        from lmm.experiments.mature_reporting import validate_mature_selection
+        validate_mature_selection(run_dir, cfg)
     if args.checkpoint == "best":
         if not isinstance(selection, dict):
             raise ValueError(
@@ -249,7 +263,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     # Disjoint final-eval seed stream (D10); the SAME list for every policy
     # is the CRN coupling (the env's exogenous draws are policy-independent).
-    eval_rng = seeds.generators["env_final_eval"]
+    eval_rng = final_evaluation_rng(cfg, seeds)
     eval_seeds = [draw_seed(eval_rng) for _ in range(n_episodes)]
 
     # Every policy is replayed on the same economic-only reward contract. The
@@ -600,9 +614,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 rec.write(traces_dir / f"{name}_ep{episode}.csv")
 
     metadata = {
+        "test_seed_namespace": cfg.rl.test_seed_namespace,
         "master_seed": master_seed,
         "checkpoint": str(run_dir / "checkpoints" / f"{args.checkpoint}.pt"),
         "early_stopping": args.checkpoint == "best",
+        "checkpoint_selection_rule": (
+            "best-mature-regardless-of-initial-improvement"
+            if args.checkpoint == "best_mature" else "configured-reportability"
+        ),
         "n_episodes": n_episodes,
         "policies": list(policies),
         "learned_policy_label": learned_name,

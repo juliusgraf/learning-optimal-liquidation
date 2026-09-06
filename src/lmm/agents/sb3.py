@@ -190,6 +190,9 @@ class SB3Agent(Agent):
             raise ValueError("update phase differs from the observed transition")
         self._pending_update_phase = None
         model = self.models[pending]
+        if (self.cfg.rl.learning_starts_after_warmup
+                and self._episode < self.cfg.rl.structured_warmup_episodes):
+            return {}
         if len(self.replay[pending]) < model.learning_starts:
             return {}
         # TD3 does not update the actor on every critic step; avoid logging
@@ -248,6 +251,10 @@ class SB3Agent(Agent):
     def load(self, path):
         state = torch.load(Path(path), map_location=self.device, weights_only=False)
         contract = state.get("contract")
+        if isinstance(contract, dict):
+            historical = contract.get('midprice', {}).get('historical')
+            if isinstance(historical, dict):
+                historical.setdefault('training_pool', 'symbol')
         if isinstance(contract, dict) and isinstance(contract.get('reward'), dict):
             contract['reward'].setdefault('auction_shaping_weight', 1.0)
         if contract != self._contract():

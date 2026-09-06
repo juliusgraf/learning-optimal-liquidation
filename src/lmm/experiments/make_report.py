@@ -30,17 +30,35 @@ CAPTIONS = {
     "economic_performance": "Held-out economic performance. Points and 95% percentile bootstrap intervals summarize the mean of training-seed test means. Small points show every seed. AS and TWAP are stylized reference policies. All outcomes are basis points of initial notional, not dollar forecasts. Each market is reported separately; horizontal scales may differ.",
     "learning": "Economic validation during training on shaped J. Thin lines show each seed; stars mark the actual selected mature checkpoint. Heavy lines and pointwise 95% seed-bootstrap bands use only checkpoints observed for every requested seed. Individual traces continue after that common support ends. There is no smoothing, best-so-far envelope, or extrapolation after early stopping. Episode zero is the untrained diagnostic. Test outcomes are never used in these curves.",
     "auction_mechanism": "Closing-auction contribution with the CLOB trajectory held fixed. Total value equals signed execution price edge minus cancellation fees plus terminal inventory-risk relief, relative to submitting no auction orders. The cash component excludes risk relief. Inventory panels report mean absolute exposure as a percentage of initial inventory at auction open and after clearing. Historical panels average the fixed reported tickers equally within each seed before resampling seeds. This is a policy decomposition, not the effect of retraining without an auction.",
-    "treatments": "Paired synthetic treatment effects on held-out economic objective, first condition minus second. Differences are paired by environment seed before averaging within training seed; intervals resample those seed means. H changes both the observed indicative signal and action anchoring. The full-versus-no-auction contrast bundles auction access, H/anchor and shaping. It does not isolate auction access. Negative effects are retained. These are pointwise, exploratory intervals, without familywise significance claims.",
+    "treatments": "Paired synthetic treatment effects on held-out economic objective, first condition minus second. Differences are paired by environment seed before averaging within training seed; intervals resample those seed means. H changes both the observed indicative signal and action anchoring. The full-versus-no-auction contrast bundles auction access, H/anchor and shaping. The H-off/shaping-off auction-on minus no-auction contrast isolates access under matched H/shaping settings. Negative effects are retained. These are pointwise, exploratory intervals, without familywise significance claims.",
 }
 TABLE_CAPTIONS = {
     "economic_performance": "Held-out net PnL and economic objective in basis points of initial notional. Cells show equal-seed means with 95% seed-bootstrap intervals below. Objective differences against DQN, AS and TWAP are paired by episode and environment seed. PnL includes fees; objective additionally subtracts terminal inventory penalty. Neither includes training shaping.",
     "auction_mechanism": "Auction contribution by market and learned policy. Total value equals execution price edge minus fees (Cash) plus terminal inventory-risk relief, relative to no auction orders with the CLOB trajectory fixed. Open and final inventory are mean absolute exposure as a percentage of initial inventory. Cells show equal-seed means with 95% seed-bootstrap intervals below. Contributions are in basis points of initial notional.",
-    "treatments": "Paired synthetic treatment effects on the held-out economic objective in basis points of initial notional. Positive values favor the first condition. Cells show equal-seed means with pointwise 95% seed-bootstrap intervals below. H changes both observation and anchoring; the full/no-auction contrast bundles auction access, H/anchor and shaping. No familywise significance claim is made.",
+    "treatments": "Paired synthetic treatment effects on the held-out economic objective in basis points of initial notional. Positive values favor the first condition. Cells show equal-seed means with pointwise 95% seed-bootstrap intervals below. H changes both observation and anchoring; the full/no-auction contrast bundles auction access, H/anchor and shaping. The matched H-off/shaping-off contrast isolates auction access. No familywise significance claim is made.",
 }
-METHODS = """The estimand is expected risk-adjusted PnL (economic bar-J-lambda after subtracting initial inventory value), in basis points of initial notional. Net PnL includes cancellation fees and excludes shaping; objective subtracts terminal inventory penalty. Shaped J is used only for training. For each market and policy, average test episodes within each training seed, then give each seed equal weight. Pair comparisons by episode AND environment seed before averaging. Intervals are deterministic 95% percentile bootstrap intervals of seed means (10,000 resamples). Evaluation paths are not independent training replications. Reference policies are checked across algorithm runs and included once per seed. Historical macro summaries keep the observed ticker set fixed and resample seed blocks jointly, preserving cross-ticker dependence. They do not estimate performance on unseen stocks or dates. Five seeds give limited precision; show every seed, avoid significance stars and universal rankings. One-seed development reports omit uncertainty intervals. Learning bands are pointwise and stop when common observed support ends. Algorithm comparisons include the declared preprocessing differences. All figures come from saved records; no policy is retrained, reselected or re-evaluated by this report.
+METHODS = """The estimand is expected risk-adjusted PnL (economic bar-J-lambda after subtracting initial inventory value), in basis points of initial notional. Net PnL includes cancellation fees and excludes shaping; objective subtracts terminal inventory penalty. Shaped J is used only for training. For each market and policy, average test episodes within each training seed, then give each seed equal weight. Pair comparisons by episode AND environment seed before averaging. Intervals are deterministic 95% percentile bootstrap intervals of seed means (10,000 resamples). Evaluation paths are not independent training replications. Reference policies are checked across algorithm runs and included once per seed. Historical macro summaries keep the observed ticker set fixed and resample seed blocks jointly, preserving cross-ticker dependence. They do not estimate performance on unseen stocks or dates. Small seed counts limit precision; show every seed, avoid significance stars and universal rankings. One-seed development reports omit uncertainty intervals. Learning bands are pointwise and stop when common observed support ends. Algorithm comparisons include the declared preprocessing differences. All figures come from saved records; no policy is retrained, reselected or re-evaluated by this report.
 
 Reporting choices follow Agarwal et al., NeurIPS 2021 (https://papers.neurips.cc/paper_files/paper/2021/hash/f514cec81cb148559cf475e7426eed5e-Abstract.html) on interval estimates and uncertainty, and Patterson et al., JMLR 2024 (https://www.jmlr.org/papers/v25/23-0183.html) on empirical design. A mean is retained here because it is the stated economic estimand; no poor seeds are trimmed out. The five historical tickers are not a broad RL benchmark suite requiring a performance-profile plot.
 """
+
+
+def experiment_scope(runs):
+    """Expose training and held-out scope from the resolved run specifications."""
+    historical = [r for r in runs if r.setting == P.HISTORICAL_SETTING]
+    if not historical:
+        return ""
+    pooled = [r for r in historical if r.cfg.midprice.historical.training_pool == "all_symbols"]
+    text = ("Historical training pools all configured stocks on training dates only. "
+            "Validation and evaluation remain stock-specific on their separate date partitions. "
+            if len(pooled) == len(historical) else
+            "Historical training-pool choices are recorded in each resolved configuration. ")
+    if any(r.cfg.rl.test_seed_namespace == 18001 for r in historical):
+        text += ("V18 uses fresh simulated evaluation streams (namespace 18001), but the "
+                 "August 24–28, 2026 historical test dates were previously inspected in v17. "
+                 "These dates are a reused holdout, not a new untouched historical sample. "
+                 "Additional training seeds do not add independent historical dates.")
+    return text
 
 
 def mean_interval(values, *, n_boot=BOOTSTRAP_REPLICATES):
@@ -208,8 +226,8 @@ def auction_groups(seed_data):
     return pd.concat(parts, ignore_index=True)
 
 
-def _axes(names, *, height=3.2):
-    cols = min(3, len(names))
+def _axes(names, *, height=3.2, max_cols=3):
+    cols = min(max_cols, len(names))
     fig, axes = P.plt.subplots(math.ceil(len(names) / cols), cols,
                               figsize=(4.4 * cols, height * math.ceil(len(names) / cols)), squeeze=False)
     for ax in axes.flat[len(names):]:
@@ -297,10 +315,13 @@ def treatment_figure(data, out):
         "h_anchor_shaping_on": "H/anchor on − off\nShaping on",
         "shaping_h_off": "Shaped − economic training\nH/anchor off",
         "shaping_h_on": "Shaped − economic training\nH/anchor on",
+        "auction_access_h_off_shaping_off": "Auction access on − off\nH/anchor off, shaping off",
         "auction_aware_vs_no_auction": "Full − no-auction comparator\nBundled H/anchor + shaping + auction",
         "cancellation": "Cancellation on − off",
     }
-    fig, axes = _axes(list(labels), height=3.4)
+    if set(data.contrast_key) != set(labels):
+        raise ValueError("treatment figure must cover every recorded contrast exactly")
+    fig, axes = _axes(list(labels), height=3.1, max_cols=2)
     for (key, label), ax in zip(labels.items(), axes):
         for y, algo in enumerate(ALGOS):
             sub = data.loc[(data.contrast_key == key) & (data.algorithm == algo)]
@@ -340,11 +361,6 @@ def write_table(summary, out, name, keys, metrics, caption):
         metrics = {algo: algo.upper() for algo in ALGOS}
     # Fixed-width columns and two-line estimates fit the manuscript's portrait
     # text width. Captions are not escaped by pandas.to_latex.
-    def tex(value):
-        replacements = {"\\": r"\textbackslash{}", "&": r"\&", "%": r"\%",
-                        "_": r"\_", "#": r"\#", "$": r"\$", "{": r"\{", "}": r"\}"}
-        return "".join(replacements.get(c, c) for c in str(value))
-
     key_widths = [.11, .08] if keys[0] == "market" else [.32]
     cell_width = (.90 - sum(key_widths)) / len(metrics)
     widths = [*key_widths, *([cell_width] * len(metrics))]
@@ -367,6 +383,12 @@ def write_table(summary, out, name, keys, metrics, caption):
         lines.append(" & ".join(r"\raggedright " + c for c in cells) + r" \tabularnewline")
     lines.extend([r"\end{longtable}", r"\endgroup"])
     (out / f"{name}.tex").write_text("\n".join(lines) + "\n")
+
+
+def tex(value):
+    replacements = {"\\": r"\textbackslash{}", "&": r"\&", "%": r"\%",
+                    "_": r"\_", "#": r"\#", "$": r"\$", "{": r"\{", "}": r"\}"}
+    return "".join(replacements.get(c, c) for c in str(value))
 
 
 def discover(root, seeds, *, complete=False, symbol=None, treatments=False):
@@ -411,6 +433,8 @@ def generate(root, seeds, *, publication_mode=False, complete=False, symbol=None
             raise ValueError("publication requires the canonical seeds and all historical tickers")
         complete = treatments = True
     runs, headline, synthetic = discover(root, seeds, complete=complete, symbol=symbol, treatments=treatments)
+    from lmm.experiments.mature_reporting import load_protocol, RELATIVE_PATH
+    protocol = load_protocol(runs)
     if publication_mode:
         publication.validate_publication_runs(synthetic)
         publication.validate_publication_runs([r for r in runs if r.setting == P.HISTORICAL_SETTING])
@@ -439,6 +463,21 @@ def generate(root, seeds, *, publication_mode=False, complete=False, symbol=None
         figures, tables, audit = [stage / name for name in ("figures", "tables", "audit")]
         for path in (figures, tables, audit):
             path.mkdir()
+        disclosure = ""
+        if protocol is not None:
+            selection_rows = [{"run": name, **{k: entry[k] for k in (
+                "selected_episode", "validation_score", "initial_validation_score",
+                "improved_over_initial", "evaluated_checkpoint")}}
+                for name, entry in sorted(protocol["runs"].items())]
+            pd.DataFrame(selection_rows).to_csv(audit / "checkpoint_selection.csv", index=False)
+            (audit / "reporting_protocol.json").write_text((root / RELATIVE_PATH).read_text())
+            non_improving = [r for r in selection_rows if not r["improved_over_initial"]]
+            disclosure = protocol["disclosure"] + f" {len(non_improving)} of {len(selection_rows)} runs did not improve on initialization."
+            for row in non_improving:
+                label = row['run'].split('/')[-1].replace('__', ', ').replace('_', ' ')
+                disclosure += (f" {label}: selected validation objective {row['validation_score']:.6f},"
+                               f" initial {row['initial_validation_score']:.6f}; selected episode {row['selected_episode'] + 1}.")
+            (audit / "reporting_amendment.tex").write_text(tex(disclosure) + "\n")
         data.to_csv(audit / "economic_by_seed.csv", index=False)
         learning.to_csv(audit / "validation_by_seed.csv", index=False)
         curves.to_csv(audit / "validation_common_support.csv", index=False)
@@ -456,12 +495,17 @@ def generate(root, seeds, *, publication_mode=False, complete=False, symbol=None
             names.append("treatments")
         status = "Publication matrix" if publication_mode else "DEVELOPMENT ONLY — not publication evidence"
         intro = f"{status}. {len(runs)} runs; master seeds {', '.join(map(str, seeds))}."
-        readme = f"# Research results\n\n{intro}\n\n{METHODS}\n"
+        methods = METHODS + "\n" + experiment_scope(runs)
+        readme = f"# Research results\n\n{intro}\n\n{methods}\n"
+        if disclosure:
+            readme += f"\n## Reporting protocol amendment\n\n{disclosure}\n\nSee audit/checkpoint_selection.csv for all 220 decisions and audit/reporting_protocol.json for the bound provenance. Include audit/reporting_amendment.tex in the paper when using these results.\n"
         for name in names:
             readme += f"\n## {name.replace('_', ' ').title()}\n\n{CAPTIONS[name]}\n\n![{name}](figures/{name}.png)\n"
         readme += "\nTables are longtable/booktabs LaTeX and numeric long-form CSV (mean, CI limits and seed count). Include with \\input; longtable cannot be nested inside a table float. CSVs under audit contain every contributing seed estimate and validation point. Source configs, raw episode records, selection details and checkpoint hashes remain in the run directories listed in manifest.json. This report does not copy anything to paper/results or edit the manuscript.\n"
         (stage / "README.md").write_text(readme)
-        page = '<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Research results</title><style>body{font:16px/1.55 system-ui;max-width:1200px;margin:36px auto;padding:0 24px;color:#20242b}img{width:100%;height:auto}h1,h2{line-height:1.2}p{max-width:100ch}a{color:#0072B2}</style><h1>Research results</h1><p>' + html.escape(intro) + '</p><p>' + html.escape(METHODS).replace('\n\n', '</p><p>') + '</p>'
+        page = '<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Research results</title><style>body{font:16px/1.55 system-ui;max-width:1200px;margin:36px auto;padding:0 24px;color:#20242b}img{width:100%;height:auto}h1,h2{line-height:1.2}p{max-width:100ch}a{color:#0072B2}</style><h1>Research results</h1><p>' + html.escape(intro) + '</p><p>' + html.escape(methods).replace('\n\n', '</p><p>') + '</p>'
+        if disclosure:
+            page += '<h2>Reporting protocol amendment</h2><p>' + html.escape(disclosure) + '</p><p><a href="audit/checkpoint_selection.csv">All checkpoint decisions</a> · <a href="audit/reporting_amendment.tex">LaTeX disclosure</a></p>'
         for name in names:
             page += f'<h2>{name.replace("_", " ").title()}</h2><p>{html.escape(CAPTIONS[name])}</p><a href="figures/{name}.pdf">Vector PDF</a>'
             if name != "learning":
@@ -472,11 +516,13 @@ def generate(root, seeds, *, publication_mode=False, complete=False, symbol=None
         inputs = []
         for run in sorted(runs, key=lambda r: str(r.run_dir)):
             paths = ["config_resolved.yaml", "seed.txt", "git_sha.txt", "metrics.csv", "eval/records.csv", "eval/metadata.yaml",
-                     "checkpoints/initial_validation.yaml", "checkpoints/best_selection.yaml", publication.COMPLETION_MANIFEST_NAME]
+                     "checkpoints/initial_validation.yaml", "checkpoints/best_selection.yaml",
+                     "checkpoints/best_mature_selection.yaml", publication.COMPLETION_MANIFEST_NAME]
             inputs.append({"run_dir": str(run.run_dir.resolve()), "algorithm": run.algo, "seed": run.seed,
                            "setting": run.setting, "symbol": run.symbol,
                            "files": {p: publication._sha256_file(run.run_dir / p) for p in paths if (run.run_dir / p).is_file()}})
         manifest = {"schema": "lmm-focused-report-v1", "publication": publication_mode,
+                    "reporting_amendment": disclosure or None,
                     "seeds": seeds, "runs": inputs, "estimand": "equal-seed mean of episode means",
                     "interval": "95% percentile bootstrap of training-seed blocks", "bootstrap_replicates": BOOTSTRAP_REPLICATES,
                     "bootstrap_seed": 0, "captions": {n: CAPTIONS[n] for n in names},

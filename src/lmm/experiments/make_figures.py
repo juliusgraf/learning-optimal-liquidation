@@ -103,6 +103,13 @@ def _reportable_best_episode(run: P.RunInfo) -> int | None:
     mark an ineligible or non-reportable policy.
     """
 
+    if run.metadata.get("checkpoint_selection_rule") == "best-mature-regardless-of-initial-improvement":
+        from lmm.experiments.mature_reporting import load_protocol, validate_protocol_run
+        protocol = load_protocol([run])
+        if protocol is None:
+            raise ValueError("best_mature learning marker requires an audited reporting amendment")
+        validate_protocol_run(protocol, run)
+        return int(run.metadata["checkpoint_selection"]["episode"])
     checkpoint = run.run_dir / "checkpoints" / "best.pt"
     if not checkpoint.is_file():
         return None

@@ -93,7 +93,7 @@ def test_run_multiseed_default_is_full_five_seed_treatment_publication(tmp_path)
     calls = _child_calls(tmp_path, "run_multiseed.sh")
     assert len(calls) == 1
     assert "lmm.experiments.run_matrix" in calls[0]
-    assert calls[0].endswith("--seeds 42 7 99 123 2024 --jobs 1 --threads-per-job 2")
+    assert calls[0].endswith("--seeds 42 7 99 123 2024 314 577 811 1618 2718 --jobs 1 --threads-per-job 2")
 
 
 def test_run_multiseed_parallel_workers_leave_shared_outputs_serial(tmp_path):

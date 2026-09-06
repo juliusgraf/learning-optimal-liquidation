@@ -1,0 +1,13 @@
+Traceback (most recent call last):
+  File "/Users/juliusgraf/Learning-Market-Making/scripts/diagnose_dqn_auction_values.py", line 87, in <module>
+    if __name__ == '__main__': main()
+                               ~~~~^^
+  File "/Users/juliusgraf/Learning-Market-Making/scripts/diagnose_dqn_auction_values.py", line 69, in main
+    result = run_episode(env, agent, episode_seed, chi=1., train=False)
+  File "/Users/juliusgraf/Learning-Market-Making/src/lmm/rl/loops.py", line 204, in run_episode
+    a = (agent.act(obs, mask, phase, eval_mode=not train) if warmup is None
+         ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/juliusgraf/Learning-Market-Making/scripts/diagnose_dqn_auction_values.py", line 47, in act
+    action = learner.auction_grid[chosen]
+             ~~~~~~~~~~~~~~~~~~~~^^^^^^^^
+TypeError: 'AuctionActionGrid' object is not subscriptable

@@ -1,0 +1,12 @@
+# Both phase learners start after the same 32 complete exploratory episodes.
+# The minimum replay size protects minibatch diversity without delaying the
+# lower-frequency CLOB phase to >100 episodes in a thin market.
+rl:
+  learning_starts_after_warmup: true
+  checkpoint_min_clob_updates: 2000
+  checkpoint_min_auction_updates: 2000
+  checkpoint_require_initial_improvement: false
+algo:
+  hyperparams:
+    min_buffer_clob: 512
+    min_buffer_auction: 512

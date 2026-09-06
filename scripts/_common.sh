@@ -18,7 +18,7 @@ cd "$REPO_ROOT"
 # A scratch/CI caller may isolate artifacts without editing the publication
 # configuration.  The same value is also forwarded into the resolved config
 # below, so the launcher's filesystem path and train.py's path cannot diverge.
-RESULTS_ROOT="${LMM_RESULTS_ROOT:-results/revision_v17}"
+RESULTS_ROOT="${LMM_RESULTS_ROOT:-results/revision_v18}"
 
 # Keep Matplotlib's font/config cache reusable across the many short reporting
 # processes launched by a full matrix.  This also makes the pipeline work when
@@ -82,6 +82,7 @@ run_experiment() {
       -o rl.checkpoint_min_auction_updates=0
       -o rl.checkpoint_require_initial_improvement=false
       -o rl.normalizer_fit_episodes=2
+      -o rl.structured_warmup_episodes=0
       -o algo.hyperparams.checkpoint_interval_episodes=2
       -o algo.hyperparams.min_buffer=1
       -o algo.hyperparams.min_buffer_clob=1

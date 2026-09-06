@@ -3,7 +3,7 @@
 # auditable seed estimates. Legacy comprehensive outputs are opt-in diagnostics.
 # Reads each run's seed from seed.txt and includes only the requested seeds.
 #
-# Usage: scripts/make_multiseed_outputs.sh [--seeds "42 7 99 123 2024"]
+# Usage: scripts/make_multiseed_outputs.sh [--seeds "42 7 99 123 2024 314 577 811 1618 2718"]
 #          [--require-complete] [--publication] [--symbol TICKER] [--diagnostics]
 set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -11,7 +11,7 @@ cd "$REPO_ROOT"
 export MPLCONFIGDIR="${MPLCONFIGDIR:-$REPO_ROOT/.cache/matplotlib}"
 mkdir -p "$MPLCONFIGDIR"
 
-SEEDS="42 7 99 123 2024"
+SEEDS="42 7 99 123 2024 314 577 811 1618 2718"
 REQUIRE_COMPLETE=0
 PUBLICATION=0
 SYMBOL=""
@@ -26,7 +26,7 @@ while [[ $# -gt 0 ]]; do
     --symbol) SYMBOL="${2:-}"; shift 2 ;;
     --symbol=*) SYMBOL="${1#*=}"; shift ;;
     -h|--help)
-      echo "usage: $0 [--seeds \"42 7 99 123 2024\"] [--require-complete] [--publication] [--symbol TICKER] [--diagnostics]"
+      echo "usage: $0 [--seeds \"42 7 99 123 2024 314 577 811 1618 2718\"] [--require-complete] [--publication] [--symbol TICKER] [--diagnostics]"
       exit 0
       ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
@@ -59,18 +59,18 @@ if [[ "$requested_seed_count" -lt 2 ]]; then
 fi
 if [[ "$PUBLICATION" -eq 1 ]]; then
   canonical_count=0
-  for canonical_seed in 42 7 99 123 2024; do
+  for canonical_seed in 42 7 99 123 2024 314 577 811 1618 2718; do
     case " $SEEDS " in
       *" $canonical_seed "*) canonical_count=$((canonical_count + 1)) ;;
     esac
   done
-  if [[ "$requested_seed_count" -ne 5 || "$canonical_count" -ne 5 ]]; then
-    echo "--publication requires exactly the canonical seeds: 42 7 99 123 2024" >&2
+  if [[ "$requested_seed_count" -ne 10 || "$canonical_count" -ne 10 ]]; then
+    echo "--publication requires exactly the canonical seeds: 42 7 99 123 2024 314 577 811 1618 2718" >&2
     exit 2
   fi
 fi
 
-RESULTS_ROOT="${LMM_RESULTS_ROOT:-results/revision_v17}"
+RESULTS_ROOT="${LMM_RESULTS_ROOT:-results/revision_v18}"
 [[ -d "$RESULTS_ROOT" ]] || { echo "no $RESULTS_ROOT directory" >&2; exit 1; }
 if [[ "$DIAGNOSTICS" -eq 0 ]]; then
   REPORT_ARGS=(--root "$RESULTS_ROOT" --seeds $SEEDS)

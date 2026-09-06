@@ -15,6 +15,7 @@ experiment:
 midprice:
   model: historical
   historical:
+    training_pool: all_symbols
     csv_path: data/historical_sp500_midquotes_1m.csv
     symbols: [MSFT, JPM, PG, GOOGL, CAT]
     normalize_first: 100.0       # model transform only; source CSV is raw USD

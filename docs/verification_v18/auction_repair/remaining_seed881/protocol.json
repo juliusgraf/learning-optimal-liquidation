@@ -1,0 +1,16 @@
+{
+  "purpose": "Quick read-only follow-up on the remaining negative synthetic DQN seed; no new training and no production selection change.",
+  "source_run": "results/_auction_repair_v18/one_step881",
+  "source_paths": "results/_auction_repair_v18/one_fixed_paths881",
+  "master_seed": 881,
+  "path_seed": 942287,
+  "paths": 512,
+  "best_episode": 150,
+  "later_episode": 200,
+  "helper_sha256": "2e07e7fe7fe10da257738095dc5e35909debff431caefde9fe85bcbdf6557f8c",
+  "launch_dryrun": {
+    "runs": 440,
+    "workers": 10,
+    "threads_per_worker": 1
+  }
+}

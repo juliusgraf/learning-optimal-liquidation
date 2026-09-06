@@ -45,7 +45,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-RESULTS_ROOT="${LMM_RESULTS_ROOT:-results/revision_v17}"
+RESULTS_ROOT="${LMM_RESULTS_ROOT:-results/revision_v18}"
 if [[ ! -d "$RESULTS_ROOT" ]]; then
   echo "no $RESULTS_ROOT directory; run a run_*.sh script first" >&2
   exit 1

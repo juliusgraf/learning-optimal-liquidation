@@ -25,6 +25,10 @@ class PersistentWarmup:
         self.ell=int(rng.integers(cfg.actions.B_max+1))*(1 if mode==2 else -1)
         self.cancel=int(mode==3)
         if mode==0: self.K=0
+        # Zero slope has only the canonical zero offset in the action grid.
+        # Leaving a random ell here makes the distance projection prefer a
+        # positive slope at that ell over the intended no-order action.
+        if self.K==0: self.ell=0
         self.clob=ClobActionGrid(cfg.actions)
         self.auction=AuctionActionGrid(cfg.actions)
 

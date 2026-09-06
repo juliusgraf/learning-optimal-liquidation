@@ -1,9 +1,9 @@
 # Launch and research outputs
 
-The full launcher trains the current v17 specification and then produces a
+The full launcher trains the current v18 specification and then produces a
 focused research report. Training uses the approved weighted shaped J;
 checkpoint selection and final comparisons use the economic objective.
-The production experiment has not been run in this output-refinement task.
+The v18 production experiment has not been run in this repair task.
 Short launcher tests check operation, not the eventual scientific conclusions.
 
 After reviewing/committing the changes and leaving the tree clean, run:
@@ -15,27 +15,27 @@ unset LMM_RESULTS_ROOT
 scripts/run_multiseed.sh --jobs 10 --threads-per-job 1
 ```
 
-Use the normal `results/revision_v17` namespace; unset `LMM_RESULTS_ROOT` first
+Use the normal `results/revision_v18` namespace; unset `LMM_RESULTS_ROOT` first
 if your shell has a development override. Ten workers each have one numerical
 thread, a starting point for the current 15-core Apple M5 Pro with 24 GB RAM.
 The queue assigns individual experiments across all seeds, algorithms, tickers
 and treatments; a worker immediately takes another experiment when it finishes.
-`--jobs` is no longer capped by the five master seeds. Lower it to eight if other
+`--jobs` is no longer capped by the master-seed count. Lower it to eight if other
 applications need resources. More workers are supported but do not guarantee
 more throughput once CPU or memory bandwidth is saturated. Keep the commit/configuration
 unchanged during the experiment. No API credentials or new quote download are
 needed: historical runs consume the frozen repository inputs.
 
-The matrix contains 220 learned-policy runs:
+The matrix contains 440 learned-policy runs:
 
 | Block | Runs |
 |---|---:|
-| Synthetic headline: four algorithms × five seeds | 20 |
-| Historical headline: four algorithms × five tickers × five seeds | 100 |
-| Five additional synthetic treatments × four algorithms × five seeds | 100 |
+| Synthetic headline: four algorithms × ten seeds | 40 |
+| Historical headline: four algorithms × five tickers × ten seeds | 200 |
+| Five additional synthetic treatments × four algorithms × ten seeds | 200 |
 
-Seeds are 42, 7, 99, 123, 2024; tickers are MSFT, JPM, PG, GOOGL and CAT.
-Each run has an 800-episode maximum, 100-path validation every 100 episodes,
+Seeds are 42, 7, 99, 123, 2024, 314, 577, 811, 1618, 2718; tickers are MSFT, JPM, PG, GOOGL and CAT.
+Each run has an 800-episode maximum, 128-path validation every 50 episodes,
 and 100 test episodes. Early stopping can end training sooner. Initial
 validation, feature fitting and benchmark calibration are additional work.
 The short queue smoke checks verify scheduling and complete output generation;
@@ -43,8 +43,10 @@ they do not establish steady-state speedup for 800-episode training.
 
 The headline supplies the H-on/shaping-on factorial cell, so it is not trained
 twice. Representation controls remain optional development experiments, outside
-this publication matrix. DDPG/TD3 retain their declared phase/asinh preprocessing;
-DQN/SAC retain their validated preprocessing. The comparison includes those
+this publication matrix. DQN/DDPG/TD3 use phase/asinh preprocessing;
+SAC retains pooled standardization. DQN uses the normalized Q representation
+and one-step replay detailed in [the auction follow-up](dqn_auction_repair_v18.md).
+The comparison includes those
 implementation choices.
 
 The launcher requires a clean commit. It skips an existing run only after
@@ -54,12 +56,18 @@ run for diagnosis and restart the command; there is no automatic partial
 checkpoint resume. A failed training seed is not dropped or replaced by a
 hand-picked seed. Failures stop new dispatch; already running jobs finish.
 Ctrl-C terminates active worker process groups. A kernel lock prevents two
-launchers writing the same results root, including during final reporting. If any run has no mature checkpoint improving on its initial
-economic validation, the full publication report will not be generated.
+launchers writing the same results root, including during final reporting. Every seed is retained even if it does not improve on initialization.
+Only an absent mature checkpoint or invalid/incomplete artifacts prevent
+reporting. The first maturity-eligible checkpoint is evaluated immediately;
+four eligible evaluations without improvement stop training. For the archived
+v17 campaign only, use the explicit, matrix-wide
+[best-mature reporting amendment](reporting_amendment_v17.md). It retains the
+non-improving result and evaluates its saved checkpoint without retraining or
+altering the other completed runs. Do not restart training to resolve that gate.
 
-## Local concurrency check
+## Prior local concurrency check
 
-The queue was checked on the current 15-core/24-GB Mac using the same 56-job
+The prior v17 queue was checked on the current 15-core/24-GB Mac using the same 56-job
 smoke matrix with four training episodes per job and three evaluation episodes:
 
 | Resource configuration | Training/evaluation queue | Through final report |
@@ -77,7 +85,7 @@ cleanup, exclusive results-root locking, and one final report. Evidence is in
 
 ## What to open
 
-Start with **`results/revision_v17/_publication/index.html`**. It is a local,
+Start with **`results/revision_v18/_publication/index.html`**. It is a local,
 static report with all figures, interpretation, and download links. The same
 material is in `README.md`. The output bundle is deliberately small:
 
@@ -86,7 +94,7 @@ material is in `README.md`. The output bundle is deliberately small:
 | `economic_performance` | How do DQN, DDPG, TD3 and SAC compare with AS/TWAP on the economic objective in synthetic data and each historical ticker? The table also shows net PnL and paired objective differences against DQN and both references. | Figure PDF/PNG; table TeX/CSV |
 | `learning` | Does economic validation improve during shaped training? Are there late regressions or seed instability? Which checkpoint was actually selected? | Figure PDF/PNG |
 | `auction_mechanism` | How much does auction participation add with the CLOB policy fixed? How much is execution price edge net of fees versus inventory-risk relief? How much inventory reaches the auction and remains afterward? | Figure PDF/PNG; table TeX/CSV |
-| `treatments` | What changes when shaping, the H/anchor bundle or cancellation is switched? How does the full model compare with the bundled no-auction specification? | Figure PDF/PNG; table TeX/CSV |
+| `treatments` | What changes when shaping, the H/anchor bundle or cancellation is switched? What is the matched H-off/shaping-off auction-access effect, and the bundled full-model/no-auction difference? | Figure PDF/PNG; table TeX/CSV |
 
 Figures live in `figures/`, tables in `tables/`. Colorblind-safe colors identify
 algorithms consistently; figures use dots/intervals or learning curves, readable
@@ -114,8 +122,11 @@ algorithm runs and are counted once per seed. Comparisons pair both episode
 number and environment seed before forming within-seed differences. Treatment
 contrasts use the same pairing. Cross-ticker auction means average the fixed
 reported ticker set within each seed and resample whole seed blocks, preserving
-cross-ticker dependence. There is no claim of population uncertainty over new
-stocks, new dates, or all market regimes. Five training seeds provide limited
+cross-ticker dependence. Historical training now pools all 50 training stock--sessions, while
+validation/evaluation are stock-specific. The final simulation seed namespace
+is fresh, but the historical test week was already inspected in v17. There is
+no claim of population uncertainty over new stocks, fresh dates, or all market
+regimes. Ten training seeds still provide limited
 precision; intervals are pointwise and exploratory, with no multiple-testing
 significance stars. Do not infer pairwise significance from overlapping or
 non-overlapping separate-policy intervals; use the paired-difference columns.
@@ -144,7 +155,9 @@ same policy-independent mark and incurs no auction cancellation fees. It does
 not require another simulation. Inventory plots show **mean absolute** exposure,
 so short and long positions cannot cancel in the average. The bundled
 no-auction treatment separately changes training and observables; it must not
-be described as isolating auction participation alone.
+be described as isolating auction participation alone. The seventh treatment
+contrast isolates auction access by comparing the H-off/shaping-off auction-on
+arm against the no-auction arm, using already-required training runs.
 
 These reporting choices use the emphasis on uncertainty and raw run variability
 in [Agarwal et al., NeurIPS 2021](https://papers.neurips.cc/paper_files/paper/2021/hash/f514cec81cb148559cf475e7426eed5e-Abstract.html)
@@ -171,12 +184,20 @@ validates the existing run completion manifests, including checkpoint contents,
 exact configs and clean Git commit. Older result namespaces are never mixed in.
 No result or checkpoint is re-evaluated by output generation.
 
+The explicit v17 reporting amendment preserves the saved training commit and
+original completion manifests, verifies unchanged execution sources outside the
+declared reporting modules, and binds the exact amended source snapshot. This
+allows reporting after committing those same reporting changes. Amended bundles
+also contain `checkpoint_selection.csv`, `reporting_protocol.json` and a
+ready-to-include `reporting_amendment.tex` in `audit/`; see the amendment document
+for the required disclosure and the separate, evaluation-only recovery command.
+
 The raw run directories are unchanged:
 
 ```text
-results/revision_v17/synthetic_rough_heston/<algo>_seed<seed>/
-results/revision_v17/historical_sp500_midquotes/<algo>_<ticker>_seed<seed>/
-results/revision_v17/synthetic_rough_heston__<arm>/<algo>__<arm>_seed<seed>/
+results/revision_v18/synthetic_rough_heston/<algo>_seed<seed>/
+results/revision_v18/historical_sp500_midquotes/<algo>_<ticker>_seed<seed>/
+results/revision_v18/synthetic_rough_heston__<arm>/<algo>__<arm>_seed<seed>/
 ```
 
 Each contains resolved configuration/seed/commit/runtime provenance,
@@ -191,7 +212,7 @@ The results-root lock file may remain after completion; kernel locking, not
 its mere existence, determines whether another launcher is active. Periodic replay-heavy resume snapshots are suppressed by the full
 launcher; selected and final policies remain available.
 
-Inspect the full 220-job command plan without training (works before committing):
+Inspect the full 440-job command plan without training (works before committing):
 
 ```bash
 scripts/run_multiseed.sh --jobs 10 --threads-per-job 1 --dry-run
@@ -219,7 +240,7 @@ multiseed report is under `_development/` and clearly labelled as such.
 
 `paper/main.tex` and `paper/results/tables_params/params_generative.tex` remain
 untouched. The existing calibration/reward recommendations in
-`docs/manuscript_recommendations_v17.patch` remain separate from output inclusion.
+`docs/manuscript_recommendations_v18.patch` remain separate from output inclusion.
 Do not treat the old parameter table as the active run specification.
 
 The current manuscript has no result figure inclusions to replace. After
@@ -237,7 +258,7 @@ select mature checkpoints using economic validation performance. Held-out
 comparisons report economic risk-adjusted PnL in basis points of initial
 notional. We average episodes within each training seed and then average
 seeds equally. Intervals are pointwise 95\% percentile bootstrap intervals
-of seed means; five seeds limit inferential precision. AS and TWAP are
+of seed means; ten seeds still limit inferential precision. AS and TWAP are
 stylized references. The algorithm implementations include the declared
 preprocessing choices. No test outcomes enter checkpoint selection.
 
@@ -288,5 +309,5 @@ are pointwise, with no familywise significance claim.}
 The three tables are multipage `longtable` environments; do not wrap them in
 `table` floats. They can instead be placed in an appendix if journal page limits
 favor the four figures in the main text. For the protected generative-parameter
-table, use the exact numerical recommendations in the existing v17 patch;
+table, use the exact numerical recommendations in the v18 review patch;
 output generation does not require modifying that file.

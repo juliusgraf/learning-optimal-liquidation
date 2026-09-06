@@ -130,6 +130,15 @@ def test_means_retain_bad_seeds_and_single_seed_has_no_interval():
     assert R.mean_interval([1., 4., -2.]) == R.mean_interval([-2., 1., 4.])
 
 
+def test_scope_discloses_training_pool_and_reused_historical_holdout(tmp_path):
+    run = example_run(tmp_path, symbol="MSFT", setting=R.P.HISTORICAL_SETTING)
+    scope = R.experiment_scope([run])
+    assert "training dates only" in scope
+    assert "reused holdout" in scope
+    assert "Additional training seeds do not add independent historical dates" in scope
+    assert R.experiment_scope([example_run(tmp_path)]) == ""
+
+
 @pytest.mark.parametrize("has_actor", [False, True])
 def test_training_row_covers_current_schema_including_actor_rates(has_actor):
     from lmm.experiments.train import METRICS_COLUMNS, _metrics_row
@@ -165,15 +174,37 @@ def test_learning_aggregate_never_forward_fills_stopped_seeds():
     assert list(out["mean"]) == [2., 3.]
 
 
-def test_complete_curated_bundle_and_read_only_inputs(tmp_path):
+def test_treatment_figure_includes_pure_auction_access(tmp_path, monkeypatch):
+    data = pd.DataFrame([dict(contrast_key=key, algorithm=algo, mean_difference=1.)
+                         for key, *_ in publication.TREATMENT_CONTRASTS for algo in R.ALGOS])
+    figures = []
+    monkeypatch.setattr(R, '_finish', lambda fig, *args: figures.append(fig))
+    R.treatment_figure(data, tmp_path)
+    visible = [a for a in figures[0].axes if a.get_visible()]
+    assert len(visible) == len(publication.TREATMENT_CONTRASTS)
+    assert any('Auction access on' in a.get_title() for a in visible)
+    R.P.plt.close(figures[0])
+
+
+@pytest.mark.parametrize("amended", [False, True])
+def test_complete_curated_bundle_and_read_only_inputs(tmp_path, monkeypatch, amended):
     materialize_matrix(tmp_path)
+    if amended:
+        from lmm.experiments import mature_reporting as M
+        protocol = {"disclosure": M.NOTE, "runs": {"synthetic/dqn__no_auction_seed123": {
+            "selected_episode": 499, "validation_score": 12., "initial_validation_score": 13.,
+            "improved_over_initial": False, "evaluated_checkpoint": "best_mature"}}}
+        monkeypatch.setattr(M, "load_protocol", lambda runs: protocol)
+        path = tmp_path / M.RELATIVE_PATH
+        path.parent.mkdir()
+        path.write_text(json.dumps(protocol))
     inputs = {p: hashlib.sha256(p.read_bytes()).hexdigest() for p in tmp_path.rglob("*") if p.is_file()}
     out = R.generate(tmp_path, [9501, 9502], complete=True, treatments=True)
     assert len(list((out / "figures").glob("*.pdf"))) == 4
     assert len(list((out / "figures").glob("*.png"))) == 4
     assert len(list((out / "tables").glob("*.tex"))) == 3
     assert len(pd.read_csv(out / "audit/economic_by_seed.csv")) == 6*6*2
-    assert len(pd.read_csv(out / "audit/treatments_by_seed.csv")) == 6*4*2
+    assert len(pd.read_csv(out / "audit/treatments_by_seed.csv")) == 7*4*2
     manifest = json.loads((out / "manifest.json").read_text())
     assert manifest["publication"] is False
     assert len(manifest["runs"]) == 88
@@ -182,6 +213,10 @@ def test_complete_curated_bundle_and_read_only_inputs(tmp_path):
     for name, digest in manifest["outputs"].items():
         assert hashlib.sha256((out / name).read_bytes()).hexdigest() == digest
     assert "DEVELOPMENT ONLY" in (out / "index.html").read_text()
+    if amended:
+        assert "Post-run reporting amendment" in (out / "index.html").read_text()
+        assert "initial 13.000000" in (out / "audit/reporting_amendment.tex").read_text()
+        assert len(pd.read_csv(out / "audit/checkpoint_selection.csv")) == 1
     assert "longtable" in (out / "tables/economic_performance.tex").read_text()
     assert r"95\%" in (out / "tables/economic_performance.tex").read_text()
     if shutil.which("pdflatex"):
@@ -189,6 +224,8 @@ def test_complete_curated_bundle_and_read_only_inputs(tmp_path):
                     r"\usepackage[T1]{fontenc}\usepackage{booktabs,longtable}\begin{document}" + "\n")
         for name in ("economic_performance", "auction_mechanism", "treatments"):
             document += "\\input{" + str(out / "tables" / f"{name}.tex") + "}\\clearpage\n"
+        if amended:
+            document += "\\input{" + str(out / "audit/reporting_amendment.tex") + "}\n"
         (tmp_path / "verify.tex").write_text(document + r"\end{document}")
         compiled = subprocess.run(["pdflatex", "-interaction=nonstopmode", "-halt-on-error", "verify.tex"],
                                   cwd=tmp_path, capture_output=True, text=True)

@@ -189,6 +189,7 @@ def test_auction_curriculum_holds_noop_then_unlocks_full_policy():
 
 def test_checkpoint_maturity_excludes_auction_updates_before_unlock():
     cfg = load_dqn_cfg(
+        "rl.learning_starts_after_warmup=false",
         "algo.hyperparams.auction_learning_start_episode=10",
         "algo.hyperparams.min_buffer=1",
         "algo.hyperparams.min_buffer_auction=1",
@@ -490,6 +491,9 @@ def test_greedy_ties_use_first_lexicographic_action(dqn_cfg):
 
 def test_checkpoint_round_trip(dqn_cfg, tmp_path):
     cfg = load_dqn_cfg(
+        "rl.learning_starts_after_warmup=false",
+        "rl.phase_normalization=false",
+        "rl.auction_inventory_asinh=false",
         "algo.hyperparams.min_buffer=8",
         "algo.hyperparams.min_buffer_clob=8",
         "algo.hyperparams.min_buffer_auction=8",
@@ -600,6 +604,7 @@ def test_dqn_converges_on_deterministic_bandit():
         "algo.hyperparams.min_buffer_auction=64",
         "algo.hyperparams.batch_size=64",
         "algo.hyperparams.lr=3.0e-3",
+        "rl.structured_warmup_episodes=0",
     )
     agent = make_agent(cfg, master_seed=11)
     clob_dim = len(cfg.features.clob)
@@ -611,10 +616,9 @@ def test_dqn_converges_on_deterministic_bandit():
     for _ in range(2000):
         ctx = int(rng.integers(2))
         a = int(rng.integers(n_arms))
-        # Agent replay applies the manuscript-wide 1e-3 reward scale.  Use a
-        # 1,000-unit bandit payoff so this remains a unit-scale regression
-        # target rather than a numerical tie between near-zero Q values.
-        r = 1000.0 if a == best[ctx] else 0.0
+        # The active replay reward scale is one. This fixture exercises
+        # supervised TD learning directly, without episodic exploration.
+        r = 1.0 if a == best[ctx] else 0.0
         agent.observe(
             Transition(
                 obs=x0 if ctx == 0 else x1,
@@ -628,6 +632,7 @@ def test_dqn_converges_on_deterministic_bandit():
             )
         )
         agent.update()
+    assert agent.checkpoint_update_counts['clob'] == 2000-64+1
     mask = np.zeros(len(agent.clob_grid), dtype=bool)
     mask[:n_arms] = True
     assert agent.act(x0, mask, "clob", eval_mode=True) == best[0]

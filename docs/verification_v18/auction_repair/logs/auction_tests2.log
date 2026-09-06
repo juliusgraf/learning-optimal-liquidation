@@ -1,0 +1,19 @@
+............F........................................                    [100%]
+=================================== FAILURES ===================================
+_________ test_reference_value_cannot_drift_through_the_action_encoder _________
+
+    def test_reference_value_cannot_drift_through_the_action_encoder():
+        cfg = load_dqn_cfg('algo.hyperparams.reference_centered_advantage=true')
+        q = DQNAgent(cfg, seed_everything(919,SEED_COMPONENTS)).q['auction']
+        obs = torch.randn(8,18)
+        zero = torch.zeros(8,dtype=torch.int64)
+        torch.testing.assert_close(q(obs,zero),q.value_head(q.state_trunk(obs)).squeeze(-1))
+        q(obs,zero).sum().backward()
+>       assert all(p.grad is None or torch.count_nonzero(p.grad)==0 for p in q.action_encoder.parameters())
+E       assert False
+E        +  where False = all(<generator object test_reference_value_cannot_drift_through_the_action_encoder.<locals>.<genexpr> at 0x1212fe500>)
+
+tests/test_v18_repairs.py:127: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_v18_repairs.py::test_reference_value_cannot_drift_through_the_action_encoder
+1 failed, 52 passed in 8.76s

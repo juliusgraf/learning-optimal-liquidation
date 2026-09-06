@@ -1,0 +1,14 @@
+{
+  "pnl": 7.412723996763204,
+  "objective": 5.526337615628811,
+  "inventory": 7.657864722330817,
+  "auction_qty": 0.2835796965113304,
+  "inventory_at_auction_open": 7.941444418842145,
+  "clob_qty": 92.05855558115785,
+  "cancels": 4.625,
+  "episode": 200,
+  "updates": {
+    "clob": 6652,
+    "auction": 4704
+  }
+}

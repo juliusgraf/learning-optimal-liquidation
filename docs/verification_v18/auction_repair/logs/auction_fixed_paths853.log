@@ -1,0 +1,18 @@
+env_seed             1.062987e+09
+pnl                  2.865087e+00
+objective            2.081853e+00
+opening_inventory    4.516083e+00
+final_inventory      3.154021e+00
+price_edge          -8.566575e-02
+risk_relief          9.006617e-02
+fees                 5.465039e-02
+auction_value       -5.024996e-02
+       predicted_advantage  shaped_advantage  economic_advantage
+count           512.000000        512.000000          512.000000
+mean              0.193200          0.005857            0.005184
+std               0.341513          0.069307            0.068451
+min               0.000000         -0.518615           -0.522629
+25%               0.000000         -0.003754           -0.003892
+50%               0.070033          0.000000            0.000000
+75%               0.245408          0.002079            0.002091
+max               2.996632          0.415981            0.411230

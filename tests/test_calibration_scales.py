@@ -39,6 +39,30 @@ def test_k_star_is_tick_count_but_local_deduction_depends_on_price_level():
     assert clob_reward(500, 2, 500.5, 10000, .05) == pytest.approx(5*clob_reward(100, 2, 100.1, 10000, .01))
 
 
+def test_cancellation_bound_matches_a_feasible_cancel_replace_episode():
+    from lmm.env.action_spaces import ClobAction, AuctionAction
+    from lmm.env.mdp import make_env
+    cfg = load_config('configs/base.yaml', 'configs/synthetic_rough_heston.yaml')
+    env = make_env(cfg)
+    env.reset(seed=31)
+    fees = []
+    while True:
+        if env.phase == 'clob':
+            action = ClobAction(0, 0)
+        else:
+            # Every cancellation leaves a fresh live schedule for the next slot.
+            action = AuctionAction(cfg.actions.beta, 0, int(bool(fees)))
+        _, _, done, _, info = env.step(action)
+        if info['phase'] == 'auction':
+            fees.append(info['cancellation_fee'])
+        if done:
+            break
+    scales = calibration_scales(cfg)
+    bps = 10000/(cfg.grid.S0*cfg.grid.I0)
+    assert max(fees)*bps == pytest.approx(scales['maximum_single_cancellation_cost_bps_of_initial_notional'])
+    assert sum(fees)*bps == pytest.approx(scales['maximum_cancellation_cost_bps_of_initial_notional'])
+
+
 @pytest.mark.parametrize('half_life', ['.nan', '.inf', '-1'])
 def test_invalid_learning_rate_schedule_rejected(half_life):
     with pytest.raises(ConfigError, match='half life'):

@@ -10,12 +10,12 @@ import pytest
 from lmm.experiments import run_matrix as M
 
 
-def test_matrix_contains_exactly_220_unique_experiments():
-    jobs = M.build_jobs([42, 7, 99, 123, 2024])
-    assert len(jobs) == len({j.name for j in jobs}) == 220
-    assert sum(j.block == "synthetic" for j in jobs) == 20
-    assert sum(j.block in M.TICKERS for j in jobs) == 100
-    assert sum(j.block in M.ARMS for j in jobs) == 100
+def test_matrix_contains_exactly_440_unique_experiments():
+    jobs = M.build_jobs(M.PUBLICATION_SEEDS)
+    assert len(jobs) == len({j.name for j in jobs}) == 440
+    assert sum(j.block == "synthetic" for j in jobs) == 40
+    assert sum(j.block in M.TICKERS for j in jobs) == 200
+    assert sum(j.block in M.ARMS for j in jobs) == 200
     assert all("shaping_on_shaping_on" not in j.block for j in jobs)
     assert len(M.build_jobs([9001, 9002], "MSFT")) == 56
 
@@ -136,9 +136,9 @@ def test_report_runs_once_after_success_and_not_after_failure(tmp_path, monkeypa
 
 
 def test_dry_run_has_no_training_or_filesystem_side_effects(tmp_path, capsys):
-    assert M.main(['--seeds','42','7','99','123','2024','--jobs','10',
+    assert M.main(['--seeds', *map(str, M.PUBLICATION_SEEDS), '--jobs','10',
                    '--threads-per-job','1','--dry-run','--root',str(tmp_path)]) == 0
     plan = json.loads(capsys.readouterr().out)
-    assert plan['jobs'] == 220 and plan['workers'] == 10
-    assert len(plan['commands']) == 220
+    assert plan['jobs'] == 440 and plan['workers'] == 10
+    assert len(plan['commands']) == 440
     assert not list(tmp_path.iterdir())

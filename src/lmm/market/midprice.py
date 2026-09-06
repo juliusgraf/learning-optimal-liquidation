@@ -455,5 +455,10 @@ def build_midprice(
         )
         if sym not in paths:
             raise KeyError(f"symbol {sym!r} not in {list(paths)}")
+        if data_split == "train" and mp.historical.training_pool == "all_symbols":
+            # Whole sessions preserve intraday dependence and volatility; no
+            # validation/test date or future observation enters training.
+            pooled = np.concatenate([np.atleast_2d(paths[s]) for s in mp.historical.symbols])
+            return HistoricalMidPrice(mp.historical, cfg.grid, pooled)
         return HistoricalMidPrice(mp.historical, cfg.grid, paths[sym])
     raise ValueError(f"unknown midprice.model {mp.model!r}")

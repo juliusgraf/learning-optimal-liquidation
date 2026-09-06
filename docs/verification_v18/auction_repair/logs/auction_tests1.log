@@ -1,0 +1,54 @@
+.....................................F..............                     [100%]
+=================================== FAILURES ===================================
+__________________ test_dqn_converges_on_deterministic_bandit __________________
+
+    @pytest.mark.slow
+    def test_dqn_converges_on_deterministic_bandit():
+        """Two-context deterministic bandit fed through replay + update(): the
+        greedy policy must recover the optimal action per context (Bellman
+        targets reduce to y = r on done rows; pure regression sanity)."""
+        cfg = load_dqn_cfg(
+            "algo.hyperparams.min_buffer=64",
+            "algo.hyperparams.min_buffer_clob=64",
+            "algo.hyperparams.min_buffer_auction=64",
+            "algo.hyperparams.batch_size=64",
+            "algo.hyperparams.lr=3.0e-3",
+        )
+        agent = make_agent(cfg, master_seed=11)
+        clob_dim = len(cfg.features.clob)
+        x0 = np.zeros(clob_dim, dtype=np.float32)
+        x1 = np.ones(clob_dim, dtype=np.float32)
+        n_arms = 10  # bandit over the first 10 grid actions (admissibility mask)
+        best = {0: 5, 1: 7}
+        rng = np.random.default_rng(3)
+        for _ in range(2000):
+            ctx = int(rng.integers(2))
+            a = int(rng.integers(n_arms))
+            # Agent replay applies the manuscript-wide 1e-3 reward scale.  Use a
+            # 1,000-unit bandit payoff so this remains a unit-scale regression
+            # target rather than a numerical tie between near-zero Q values.
+            r = 1000.0 if a == best[ctx] else 0.0
+            agent.observe(
+                Transition(
+                    obs=x0 if ctx == 0 else x1,
+                    action=a,
+                    reward=r,
+                    next_obs=x0,
+                    done=True,
+                    phase="clob",
+                    next_phase="clob",
+                    next_mask=None,
+                )
+            )
+            agent.update()
+        mask = np.zeros(len(agent.clob_grid), dtype=bool)
+        mask[:n_arms] = True
+>       assert agent.act(x0, mask, "clob", eval_mode=True) == best[0]
+E       AssertionError: assert 1 == 5
+E        +  where 1 = act(array([0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,\n       0.], dtype=float32), array([ True,  True,  True,  True,  True,  True,  True,  True,  True,\n        True, False, False, False, False, False,...False, False,\n       False, False, False, False, False, False, False, False, False,\n       False, False, False, False]), 'clob', eval_mode=True)
+E        +    where act = <lmm.agents.dqn.DQNAgent object at 0x1243abce0>.act
+
+tests/test_dqn.py:637: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_dqn.py::test_dqn_converges_on_deterministic_bandit - Assert...
+1 failed, 51 passed in 6.49s

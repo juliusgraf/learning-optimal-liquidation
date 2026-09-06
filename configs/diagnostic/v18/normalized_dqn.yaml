@@ -1,0 +1,9 @@
+# Single representation repair, evaluated before changing economic calibration.
+algo:
+  hyperparams:
+    layer_norm: true
+    weight_decay: 0.0001
+rl:
+  phase_normalization: true
+  auction_inventory_asinh: true
+  checkpoint_require_initial_improvement: false

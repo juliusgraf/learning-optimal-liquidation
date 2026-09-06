@@ -8,8 +8,8 @@ algo:
   backend: sb3
   hyperparams:
     buffer_size: 50000
-    min_buffer_clob: 2500
-    min_buffer_auction: 960
+    min_buffer_clob: 512
+    min_buffer_auction: 512
     batch_size: 128
     hidden_layers:
     - 256

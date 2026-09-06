@@ -1,0 +1,86 @@
+[
+  {
+    "pnl": 5.589162875629643,
+    "objective": -0.46952891584907847,
+    "inventory": 17.45809913081117,
+    "auction_qty": 2.8548376981841526,
+    "inventory_at_auction_open": 20.312936828995326,
+    "clob_qty": 79.68706317100467,
+    "cancels": 4.9453125,
+    "episode": 0,
+    "updates": {
+      "clob": 0,
+      "auction": 0
+    }
+  },
+  {
+    "pnl": 8.025793990519205,
+    "objective": 5.620420881472118,
+    "inventory": 4.412813738060615,
+    "auction_qty": 12.440351772462307,
+    "inventory_at_auction_open": 16.853165510522928,
+    "clob_qty": 83.14683448947707,
+    "cancels": 3.2734375,
+    "episode": 50,
+    "updates": {
+      "clob": 712,
+      "auction": 540
+    }
+  },
+  {
+    "pnl": 8.783023681707602,
+    "objective": 8.094494178400392,
+    "inventory": 4.540919296652283,
+    "auction_qty": 0.8984849322717704,
+    "inventory_at_auction_open": 5.439404228924054,
+    "clob_qty": 94.56059577107595,
+    "cancels": 6.4453125,
+    "episode": 99,
+    "updates": {
+      "clob": 2722,
+      "auction": 2010
+    }
+  },
+  {
+    "pnl": 8.544468412493613,
+    "objective": 7.939003862854225,
+    "inventory": 4.1580467343806795,
+    "auction_qty": 0.7066777063001868,
+    "inventory_at_auction_open": 4.864724440680865,
+    "clob_qty": 95.13527555931913,
+    "cancels": 5.3671875,
+    "episode": 100,
+    "updates": {
+      "clob": 2763,
+      "auction": 2040
+    }
+  },
+  {
+    "pnl": 9.238695048222905,
+    "objective": 8.412799224811586,
+    "inventory": 3.968751346860275,
+    "auction_qty": 1.3128691543716529,
+    "inventory_at_auction_open": 5.281620501231929,
+    "clob_qty": 94.71837949876806,
+    "cancels": 3.09375,
+    "episode": 150,
+    "updates": {
+      "clob": 4880,
+      "auction": 3540
+    }
+  },
+  {
+    "pnl": 8.915895290616177,
+    "objective": 8.282273815351743,
+    "inventory": 3.6524690929528845,
+    "auction_qty": 0.5795387559562335,
+    "inventory_at_auction_open": 4.232007848909118,
+    "clob_qty": 95.76799215109088,
+    "cancels": 5.5078125,
+    "episode": 200,
+    "updates": {
+      "clob": 6928,
+      "auction": 5040
+    }
+  }
+]

@@ -17,12 +17,13 @@ from pathlib import Path
 import signal
 import subprocess
 import time
+from lmm.experiments.protocol import PUBLICATION_SEEDS, RESULTS_ROOT
 
 ALGOS = ("dqn", "ddpg", "td3", "sac")
 TICKERS = ("MSFT", "JPM", "PG", "GOOGL", "CAT")
 ARMS = ("ablation_h_off_shaping_off", "ablation_h_off_shaping_on",
         "ablation_h_on_shaping_off", "no_auction", "no_cancellation")
-CANONICAL_SEEDS = {42, 7, 99, 123, 2024}
+CANONICAL_SEEDS = set(PUBLICATION_SEEDS)
 
 
 @dataclass(frozen=True)
@@ -161,7 +162,7 @@ def main(argv=None):
     parser.add_argument("--seeds", nargs="+", required=True, type=int)
     parser.add_argument("--jobs", type=int, default=1)
     parser.add_argument("--threads-per-job", type=int, default=2)
-    parser.add_argument("--root", type=Path, default=Path("results/revision_v17"))
+    parser.add_argument("--root", type=Path, default=Path(RESULTS_ROOT))
     parser.add_argument("--symbol", choices=TICKERS)
     parser.add_argument("--smoke", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
@@ -174,7 +175,7 @@ def main(argv=None):
     if args.smoke and CANONICAL_SEEDS.intersection(args.seeds):
         parser.error("smoke runs must use noncanonical seeds")
     if not args.smoke and (set(args.seeds) != CANONICAL_SEEDS or args.symbol):
-        parser.error("publication requires all five canonical seeds and tickers")
+        parser.error("publication requires all ten canonical seeds and five tickers")
     try:
         jobs = build_jobs(args.seeds, args.symbol)
         if args.dry_run:
