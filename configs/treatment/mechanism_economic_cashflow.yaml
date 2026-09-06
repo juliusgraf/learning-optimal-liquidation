@@ -1,0 +1,22 @@
+# Author-requested follow-up: literal economic cash-flow rewards, H retained
+# both in observations and as the headline auction action-grid anchor.
+# No intermediate reward potentials, control variates or execution centering.
+# Sum of rewards = economic objective + initial inventory value (a constant).
+# This compares complete training schemes, not only manuscript preferences.
+experiment:
+  ablation_label: mechanism_economic_cashflow
+actions:
+  auction_anchor: indicative
+rl:
+  h_cl_feature_enabled: true
+  learning_credit_baseline: false
+  learning_clob_inventory_potential: false
+  learning_auction_inventory_potential: false
+  market_return_control_variate: false
+reward:
+  shaping_enabled: false
+  clob_shaping_enabled: false
+  auction_shaping_enabled: false
+  clawback_shaping: false
+  learning_potential: false
+  center_initial_inventory_value: false
