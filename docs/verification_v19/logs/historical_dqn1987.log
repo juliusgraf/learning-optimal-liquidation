@@ -1,0 +1,10 @@
+{"pnl": 10.416831133263877, "objective": -82.88396511994667, "inventory": 96.19779445074904, "auction_qty": -0.36523673590047717, "inventory_at_auction_open": 95.83255771484856, "clob_qty": 4.167442285151437, "cancels": 1.953125, "episode": 0, "updates": {"clob": 0, "auction": 0}}
+{"pnl": 1.338333465471707, "objective": 1.0412554675457941, "inventory": 0.6921495361618843, "auction_qty": 2.2869397549988206, "inventory_at_auction_open": 2.979089291160708, "clob_qty": 97.0209107088393, "cancels": 1.703125, "episode": 50, "updates": {"clob": 729, "auction": 540}}
+{"pnl": 0.9085877976698897, "objective": 0.7034502483485273, "inventory": 2.3351935746511687, "auction_qty": -0.25680391283183224, "inventory_at_auction_open": 2.0783896618193345, "clob_qty": 97.92161033818066, "cancels": 11.859375, "episode": 99, "updates": {"clob": 2742, "auction": 2010}}
+{"pnl": 0.9488393760577932, "objective": 0.7496754884382196, "inventory": 2.5404577439477207, "auction_qty": -0.38030570250465784, "inventory_at_auction_open": 2.160152041443059, "clob_qty": 97.83984795855694, "cancels": 7.453125, "episode": 100, "updates": {"clob": 2779, "auction": 2040}}
+{"pnl": 3.965244675848633, "objective": 2.4717744231450487, "inventory": 7.213526665997683, "auction_qty": 0.03638990873721629, "inventory_at_auction_open": 7.249916574734895, "clob_qty": 92.7500834252651, "cancels": 3.015625, "episode": 150, "updates": {"clob": 4830, "auction": 3540}}
+             pnl  objective  inventory  auction_qty   clob_qty   cancels
+policy                                                                  
+as      4.874484   1.323625  12.478829     0.028362  87.492809  0.000000
+dqn     4.177698   2.285079   8.473067     0.616503  90.910429  3.265625
+twap    3.454783  -3.303725  24.666576     0.058937  75.274487  0.000000

@@ -1,0 +1,11 @@
+{"pnl": 6.723894472359864, "objective": 4.72590787664492, "inventory": 8.110960637142666, "auction_qty": 0.08385432468435747, "inventory_at_auction_open": 8.194814961827024, "clob_qty": 91.80518503817297, "cancels": 26.265625, "episode": 0, "updates": {"clob": 0, "auction": 0}}
+{"pnl": 6.394641989387678, "objective": 2.553329329319158, "inventory": -0.9030126219327517, "auction_qty": 13.460024928355576, "inventory_at_auction_open": 12.557012306422823, "clob_qty": 87.44298769357718, "cancels": 0.421875, "episode": 50, "updates": {"clob": 729, "auction": 540}}
+{"pnl": 5.958126329182327, "objective": 2.986486231330732, "inventory": 9.671581028482201, "auction_qty": 1.4502328881065794, "inventory_at_auction_open": 11.121813916588778, "clob_qty": 88.87818608341122, "cancels": 5.046875, "episode": 99, "updates": {"clob": 2802, "auction": 2010}}
+{"pnl": 6.373018874150297, "objective": 3.4141438513937805, "inventory": 9.994195819072475, "auction_qty": 2.4025735610936723, "inventory_at_auction_open": 12.396769380166146, "clob_qty": 87.60323061983385, "cancels": 3.984375, "episode": 100, "updates": {"clob": 2848, "auction": 2040}}
+{"pnl": 5.755849655088578, "objective": 3.0031782501210262, "inventory": 10.121300880411404, "auction_qty": 0.8370078491012363, "inventory_at_auction_open": 10.958308729512641, "clob_qty": 89.04169127048736, "cancels": 0.8125, "episode": 150, "updates": {"clob": 4828, "auction": 3540}}
+{"pnl": 6.362640047788297, "objective": 3.446336451690951, "inventory": 8.22453650435946, "auction_qty": 4.116217128941762, "inventory_at_auction_open": 12.340753633301217, "clob_qty": 87.65924636669878, "cancels": 0.171875, "episode": 200, "updates": {"clob": 6943, "auction": 5040}}
+             pnl  objective  inventory  auction_qty   clob_qty  cancels
+policy                                                                 
+as      6.863716   2.758231  13.147143     0.026253  86.826605   0.0000
+ddpg    5.999469   2.870024   8.471673     4.449593  87.078734   0.1875
+twap   -0.910223  -6.638214  22.761068     0.091031  77.147902   0.0000

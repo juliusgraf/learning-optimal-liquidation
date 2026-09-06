@@ -1,0 +1,11 @@
+{"pnl": 6.706765592029523, "objective": 4.692477534871895, "inventory": 8.127844616983653, "auction_qty": 0.09742862416847262, "inventory_at_auction_open": 8.225273241152125, "clob_qty": 91.77472675884788, "cancels": 26.53125, "episode": 0, "updates": {"clob": 0, "auction": 0}}
+{"pnl": 4.344923630482935, "objective": -6.910726181073241, "inventory": 26.171909683309686, "auction_qty": 17.29034082085878, "inventory_at_auction_open": 43.46225050416845, "clob_qty": 56.53774949583154, "cancels": 5.5, "episode": 50, "updates": {"clob": 729, "auction": 540}}
+{"pnl": 6.647141145287435, "objective": 2.094165165507232, "inventory": 15.266737101759736, "auction_qty": -3.402320774246326, "inventory_at_auction_open": 11.86441632751341, "clob_qty": 88.13558367248659, "cancels": 0.0, "episode": 99, "updates": {"clob": 2802, "auction": 2010}}
+{"pnl": 7.316737812261181, "objective": 1.5757860989458752, "inventory": 17.939420673357986, "auction_qty": -2.559662406133951, "inventory_at_auction_open": 15.379758267224029, "clob_qty": 84.62024173277597, "cancels": 0.0, "episode": 100, "updates": {"clob": 2848, "auction": 2040}}
+{"pnl": 6.36791343851101, "objective": 2.228915984837073, "inventory": 10.259776010939984, "auction_qty": 4.066638670438817, "inventory_at_auction_open": 14.326414681378804, "clob_qty": 85.6735853186212, "cancels": 0.0, "episode": 150, "updates": {"clob": 4828, "auction": 3540}}
+{"pnl": 6.880500583669922, "objective": 4.6554106592475994, "inventory": 8.7494904804994, "auction_qty": 5.280024882806474, "inventory_at_auction_open": 14.029515363305872, "clob_qty": 85.97048463669412, "cancels": 0.03125, "episode": 200, "updates": {"clob": 6943, "auction": 5040}}
+             pnl  objective  inventory  auction_qty   clob_qty  cancels
+policy                                                                 
+as      6.863716   2.758231  13.147143     0.026253  86.826605  0.00000
+ddpg    6.439129   4.089451   7.692787     6.839257  85.467956  0.15625
+twap   -0.910223  -6.638214  22.761068     0.091031  77.147902  0.00000

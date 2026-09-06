@@ -1,0 +1,127 @@
+........................................................................ [ 12%]
+........................................................................ [ 24%]
+........................................................................ [ 36%]
+........................................................................ [ 48%]
+........F......................F........................................ [ 60%]
+........................................................................ [ 72%]
+........................................................................ [ 84%]
+........................................................................ [ 96%]
+...................                                                      [100%]
+=================================== FAILURES ===================================
+__ test_treatment_launcher_reuses_shaped_headline_instead_of_retraining_alias __
+
+    def test_treatment_launcher_reuses_shaped_headline_instead_of_retraining_alias():
+        script = (REPO / "scripts" / "run_synthetic_treatments.sh").read_text()
+        arms = script.split("ARMS=(", 1)[1].split(")", 1)[0]
+        assert "ablation_h_on_shaping_on" not in arms
+        assert "mechanism_economic_sparse" in arms
+>       assert "canonical synthetic headline" in script
+E       assert 'canonical synthetic headline' in '#!/usr/bin/env bash\n# Run seven non-headline synthetic mechanisms for all four learners.\n# Headline is reused; the ... \\\n      configs/synthetic_rough_heston.yaml \\\n      "configs/algo/${algo}.yaml" \\\n      "$algo"\n  done\ndone\n'
+
+tests/test_pipeline_launchers.py:149: AssertionError
+______ test_synthetic_and_historical_differ_only_in_midprice_and_identity ______
+
+    def test_synthetic_and_historical_differ_only_in_midprice_and_identity():
+        for algo in ("dqn", "ddpg", "td3", "sac"):
+            synthetic = load_config(
+                REPO_ROOT / "configs/base.yaml",
+                REPO_ROOT / "configs/synthetic_rough_heston.yaml",
+                REPO_ROOT / f"configs/algo/{algo}.yaml",
+            )
+            historical = load_config(
+                REPO_ROOT / "configs/base.yaml",
+                REPO_ROOT / "configs/historical_sp500_midquotes.yaml",
+                REPO_ROOT / f"configs/algo/{algo}.yaml",
+            )
+            for cfg in (synthetic, historical):
+                assert cfg.grid.time_unit == "minutes"
+                assert cfg.grid.physical_time_per_grid_unit == pytest.approx(1.0)
+                assert cfg.grid.tau_op == 120
+                assert cfg.grid.tau_cl == 150
+                assert cfg.grid.h == 30
+            assert synthetic.midprice.rough_heston.s_star == pytest.approx(252 * 6.5 * 60)
+            assert synthetic.experiment.episodes == historical.experiment.episodes == 800
+            for section in (
+                "grid",
+                "clob_flow",
+                "auction_flow",
+                "algo1",
+                "reward",
+                "rl",
+                "actions",
+                "features",
+                "benchmark",
+                "algo",
+            ):
+>               assert getattr(synthetic, section) == getattr(historical, section), (
+                    algo,
+                    section,
+                )
+E               AssertionError: ('dqn', 'algo1')
+E               assert Algo1Params(H...559859516085)) == Algo1Params(H...308476764042))
+E                 
+E                 Omitting 2 identical items, use -vv to show
+E                 Differing attributes:
+E                 ['clob_forecast_weights']
+E                 
+E                 Drill down into differing attribute clob_forecast_weights:
+E                   clob_forecast_weights: (0.0, 0.19015297415681834, 0.2345652342449872, 0.4142559859516085) != (0.1927835944860103, 0.31404426670363056, 0.38617992636298226, 0.5256308476764042)
+E                   At index 0 diff: 0.0 != 0.1927835944860103
+E                   Use -v to get more diff
+
+tests/test_revision_acceptance.py:149: AssertionError
+=============================== warnings summary ===============================
+tests/audit/test_legacy_characterization.py::test_synthetic_fixed_policy[101]
+  main.py[truncated]:65: SyntaxWarning: "\m" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\m"? A raw string is also an option.
+
+tests/audit/test_legacy_characterization.py::test_synthetic_fixed_policy[101]
+  main.py[truncated]:80: SyntaxWarning: "\m" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\m"? A raw string is also an option.
+
+tests/audit/test_legacy_characterization.py::test_synthetic_fixed_policy[101]
+  main.py[truncated]:103: SyntaxWarning: "\d" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\d"? A raw string is also an option.
+
+tests/audit/test_legacy_characterization.py::test_synthetic_fixed_policy[101]
+  main.py[truncated]:1391: SyntaxWarning: "\m" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\m"? A raw string is also an option.
+
+tests/test_make_figures.py::test_missing_requested_trace_returns_nonzero
+tests/test_make_figures.py::test_missing_requested_trace_returns_nonzero
+  /Users/juliusgraf/Learning-Market-Making/src/lmm/experiments/plotting.py:139: UserWarning: missing /private/var/folders/b_/d4crx28d0235248h85260x280000gn/T/pytest-of-juliusgraf/pytest-553/test_missing_requested_trace_r0/run_dqn/eval/traces/dqn_ep0.csv
+    return _read_csv(Path(run_dir) / "eval" / "traces" / f"{policy}_ep{episode}.csv")
+
+tests/test_make_figures.py::test_missing_requested_trace_returns_nonzero
+  /Users/juliusgraf/Learning-Market-Making/tests/test_make_figures.py:156: UserWarning: missing or empty required input artifact: /private/var/folders/b_/d4crx28d0235248h85260x280000gn/T/pytest-of-juliusgraf/pytest-553/test_missing_requested_trace_r0/run_dqn/eval/traces/dqn_ep0.csv
+    rc = make_figures.main(
+
+tests/test_make_figures.py::test_missing_requested_trace_returns_nonzero
+  /Users/juliusgraf/Learning-Market-Making/tests/test_make_figures.py:156: UserWarning: figure 'episode_anatomy' did not generate required artifact /private/var/folders/b_/d4crx28d0235248h85260x280000gn/T/pytest-of-juliusgraf/pytest-553/test_missing_requested_trace_r0/out/episode_anatomy.pdf
+    rc = make_figures.main(
+
+tests/test_make_figures.py::test_missing_requested_trace_returns_nonzero
+  /Users/juliusgraf/Learning-Market-Making/tests/test_make_figures.py:156: UserWarning: figure 'episode_anatomy' did not generate required artifact /private/var/folders/b_/d4crx28d0235248h85260x280000gn/T/pytest-of-juliusgraf/pytest-553/test_missing_requested_trace_r0/out/episode_anatomy.png
+    rc = make_figures.main(
+
+tests/test_make_figures.py::test_missing_requested_trace_returns_nonzero
+  /Users/juliusgraf/Learning-Market-Making/tests/test_make_figures.py:156: UserWarning: figure 'cancellation_strategy' did not generate required artifact /private/var/folders/b_/d4crx28d0235248h85260x280000gn/T/pytest-of-juliusgraf/pytest-553/test_missing_requested_trace_r0/out/cancellation_strategy.pdf
+    rc = make_figures.main(
+
+tests/test_make_figures.py::test_missing_requested_trace_returns_nonzero
+  /Users/juliusgraf/Learning-Market-Making/tests/test_make_figures.py:156: UserWarning: figure 'cancellation_strategy' did not generate required artifact /private/var/folders/b_/d4crx28d0235248h85260x280000gn/T/pytest-of-juliusgraf/pytest-553/test_missing_requested_trace_r0/out/cancellation_strategy.png
+    rc = make_figures.main(
+
+tests/test_make_tables.py::test_generation_failure_returns_nonzero
+  /Users/juliusgraf/Learning-Market-Making/tests/test_make_tables.py:92: UserWarning: table 'eval_summary[synthetic_rough_heston]' failed: "all revised artifacts must contain 'risk_adjusted_pnl'"
+    rc = make_tables.main(
+
+tests/test_make_tables.py::test_multiseed_request_requires_two_seeds
+  /Users/juliusgraf/Learning-Market-Making/tests/test_make_tables.py:99: UserWarning: --multiseed: synthetic_rough_heston has <2 seeds
+    rc = make_tables.main(
+
+tests/test_make_tables.py::test_multiseed_request_requires_two_seeds
+  /Users/juliusgraf/Learning-Market-Making/tests/test_make_tables.py:99: UserWarning: no multiseed table artifacts were generated
+    rc = make_tables.main(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/test_pipeline_launchers.py::test_treatment_launcher_reuses_shaped_headline_instead_of_retraining_alias
+FAILED tests/test_revision_acceptance.py::test_synthetic_and_historical_differ_only_in_midprice_and_identity
+2 failed, 593 passed, 23 deselected, 14 warnings in 178.06s (0:02:58)

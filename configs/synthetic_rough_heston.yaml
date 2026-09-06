@@ -16,3 +16,8 @@ midprice:
     varsigma: 0.3         # mean reversion
     nu: 0.3               # vol-of-vol
     s_star: 98280.0       # 252 * 6.5 * 60 trading minutes/year
+
+# Frozen from independent training paths, not policy/test PnL.
+# See docs/verification_v19/forecast_synthetic/protocol.json.
+algo1:
+  clob_forecast_weights: [0.0, 0.19015297415681834, 0.2345652342449872, 0.4142559859516085]

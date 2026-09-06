@@ -22,6 +22,9 @@ data/*.meta.json
 !data/historical_sp500_midquotes_1m.csv
 !data/historical_sp500_midquotes_1m.csv.meta.json
 .cache/
+# Bounded verification keeps numeric evidence, not binary model weights.
+/docs/verification_v19/**/*.pt
+/docs/verification_v19/forecast_*/forecasts.csv
 
 # LaTeX build intermediates; keep the manuscript PDF and figure/table inputs.
 /paper/*.aux

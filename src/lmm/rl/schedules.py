@@ -22,6 +22,8 @@ def learning_conditioning_contract(rl):
         extra['learning_credit_baseline'] = True
     if rl.learning_clob_inventory_potential:
         extra['learning_clob_inventory_potential'] = True
+    if not rl.learning_auction_inventory_potential:
+        extra['learning_auction_inventory_potential'] = False
     if rl.auction_exposure_features:
         extra['auction_exposure_features'] = True
     if rl.market_return_control_variate:

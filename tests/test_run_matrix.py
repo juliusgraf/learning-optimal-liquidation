@@ -8,6 +8,7 @@ import time
 import pytest
 
 from lmm.experiments import run_matrix as M
+from lmm.experiments import publication
 
 
 def test_matrix_contains_exactly_440_unique_experiments():
@@ -16,7 +17,8 @@ def test_matrix_contains_exactly_440_unique_experiments():
     assert sum(j.block == "synthetic" for j in jobs) == 40
     assert sum(j.block in M.TICKERS for j in jobs) == 200
     assert sum(j.block in M.ARMS for j in jobs) == 200
-    assert all("shaping_on_shaping_on" not in j.block for j in jobs)
+    assert set(M.ARMS) == set(publication.TREATMENT_SPECS)-{'headline'}
+    assert not {"mechanism_clob_shaping", "mechanism_auction_shaping"}.intersection(j.block for j in jobs)
     assert len(M.build_jobs([9001, 9002], "MSFT")) == 56
 
 

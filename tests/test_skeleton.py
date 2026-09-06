@@ -206,15 +206,10 @@ def test_auction_anchor_is_explicit_and_coherent_with_h_treatment() -> None:
     assert not h_off.rl.h_cl_feature_enabled
     assert h_off.actions.auction_anchor == "frozen_mid"
 
-    with pytest.raises(ConfigError, match="actions.auction_anchor must be"):
-        _load_synthetic(overrides=["actions.auction_anchor=frozen_mid"])
-    with pytest.raises(ConfigError, match="actions.auction_anchor must be"):
-        _load_synthetic(
-            overrides=[
-                "rl.h_cl_feature_enabled=false",
-                "actions.auction_anchor=indicative",
-            ]
-        )
+    # V19 separates information from the geometry of the local price grid.
+    assert _load_synthetic(overrides=["actions.auction_anchor=frozen_mid"]).rl.h_cl_feature_enabled
+    assert _load_synthetic(overrides=["rl.h_cl_feature_enabled=false",
+        "actions.auction_anchor=indicative"]).actions.auction_anchor == "indicative"
 
 
 @pytest.mark.parametrize(

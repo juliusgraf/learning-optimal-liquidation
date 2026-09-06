@@ -249,6 +249,9 @@ class Algo1Params:
 
     H0: float  # explicit initial signal; revised baseline => 100
     eta_H: float  # smoothing coefficient; revised baseline => 0.95
+    # Optional training-fitted reliability of the raw projected book signal
+    # in four equal CLOB time bins. Empty preserves the original estimator.
+    clob_forecast_weights: tuple[float, ...] = ()
 
     @property
     def tau(self) -> float:
@@ -318,6 +321,9 @@ class RLParams:
     n_step: int = 1
     learning_credit_baseline: bool = False
     learning_clob_inventory_potential: bool = False
+    # Independent auction credit-assignment ablation. The mark-to-mid part
+    # and CLOB conditioning remain common when this component is disabled.
+    learning_auction_inventory_potential: bool = True
     auction_exposure_features: bool = False
     phase_normalization: bool = False
     auction_inventory_asinh: bool = False
@@ -814,6 +820,9 @@ def _validate_experiment_config(cfg: ExperimentConfig) -> ExperimentConfig:
         raise ConfigError("rl.n_step must be positive")
     if cfg.rl.test_seed_namespace < 0:
         raise ConfigError("rl.test_seed_namespace must be nonnegative")
+    weights = cfg.algo1.clob_forecast_weights
+    if weights and (len(weights) != 4 or any(not math.isfinite(w) or not 0 <= w <= 1 for w in weights)):
+        raise ConfigError('algo1.clob_forecast_weights must be empty or four values in [0,1]')
     if cfg.rl.auction_exposure_features and not cfg.rl.relative_price_features:
         raise ConfigError('auction exposure coordinates require relative prices')
     if cfg.rl.auction_inventory_asinh and not cfg.rl.auction_exposure_features:
@@ -927,16 +936,9 @@ def _validate_experiment_config(cfg: ExperimentConfig) -> ExperimentConfig:
         raise ConfigError("actions.auction_cancel_mode must be enabled|never")
     if cfg.actions.auction_anchor not in ("indicative", "frozen_mid"):
         raise ConfigError("actions.auction_anchor must be indicative|frozen_mid")
-    expected_auction_anchor = (
-        "indicative" if cfg.rl.h_cl_feature_enabled else "frozen_mid"
-    )
-    if cfg.actions.auction_anchor != expected_auction_anchor:
-        raise ConfigError(
-            "actions.auction_anchor must be 'indicative' when "
-            "rl.h_cl_feature_enabled=true and 'frozen_mid' when it is false; "
-            f"got {cfg.actions.auction_anchor!r} with "
-            f"h_cl_feature_enabled={cfg.rl.h_cl_feature_enabled}"
-        )
+    # Observation information and action-domain geometry are independent
+    # treatments. An H-off/indicative arm still uses H through its anchor;
+    # only a fixed-anchor comparison identifies the observation effect.
     if not cfg.experiment.auction_enabled and (
         cfg.rl.h_cl_feature_enabled
         or cfg.reward.effective_clob_shaping

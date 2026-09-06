@@ -18,12 +18,9 @@ from lmm.experiments.plotting import ALGO_ORDER, RunInfo
 
 
 _ARM_LEVEL = {
-    "headline": 100.0,
-    "h_off_shaping_off": 10.0,
-    "h_on_shaping_off": 30.0,
-    "h_off_shaping_on": 50.0,
-    "no_auction": 20.0,
-    "no_cancellation": 80.0,
+    "headline": 100.0, "mechanism_fixed_anchor": 90.0,
+    "mechanism_economic_dense": 30.0, "mechanism_economic_sparse": 10.0,
+    "mechanism_h_feature_off": 20.0, "no_auction": 15.0,
 }
 _REPO = Path(__file__).resolve().parents[1]
 
@@ -146,19 +143,17 @@ def test_cross_treatment_table_reports_explicit_paired_contrasts():
     table, provenance = T.build_synthetic_treatment_contrasts(_matrix(), n_boot=100)
 
     assert table.columns == ["DQN", "DDPG", "TD3", "SAC"]
-    assert len(table.rows) == 7
-    assert provenance.shape[0] == 7 * 4 * 5
+    assert len(table.rows) == 5
+    assert provenance.shape[0] == 5 * 4 * 5
     assert set(provenance["n_episodes"]) == {4}
     assert provenance["evaluation_seed_sha256"].str.len().eq(64).all()
 
     expected = {
-        "H/anchor effect, shaping off (on - off)": 20.0,
-        "H/anchor effect, shaping on (on - off)": 50.0,
-        "Shaping effect, H/anchor off (on - off)": 40.0,
-        "Shaping effect, H/anchor on (on - off)": 70.0,
-        "Full auction-aware treatment vs no-auction comparator": 80.0,
-        "Cancellation effect (on - off)": 20.0,
-        "Auction access, H/anchor and shaping off (on - off)": -10.0,
+        "Dense auction credit (on - off)": 20.,
+        "H observation, fixed anchor and economic training (on - off)": 10.,
+        "Auction anchor (indicative - frozen mid)": 10.,
+        "Combined manuscript preferences (on - off)": 60.,
+        "Auction access, matched information and economic training (on - off)": 5.,
     }
     for row in table.rows:
         assert row.label in expected
@@ -167,7 +162,7 @@ def test_cross_treatment_table_reports_explicit_paired_contrasts():
             assert lo == pytest.approx(expected[row.label])
             assert hi == pytest.approx(expected[row.label])
     assert "first-named condition minus second-named condition" in table.caption
-    assert "H/anchor-on, shaping-on, auction-on baseline" in table.caption
+    assert "matched controls separate credit assignment, information, anchoring and preferences" in table.caption
 
 
 def test_cross_treatment_pairing_rejects_env_seed_mismatch():
@@ -175,7 +170,7 @@ def test_cross_treatment_pairing_rejects_env_seed_mismatch():
     target = next(
         run
         for run in runs
-        if run.setting.endswith("ablation_h_off_shaping_on")
+        if run.setting.endswith("mechanism_economic_sparse")
         and run.algo == "dqn"
         and run.seed == 42
     )
@@ -236,7 +231,7 @@ def configured_treatment_matrix() -> list[RunInfo]:
     [
         ("synthetic_rough_heston", {"clob_shaping_enabled": False}),
         (
-            "synthetic_rough_heston__ablation_h_off_shaping_off",
+            "synthetic_rough_heston__mechanism_economic_sparse",
             {"clawback_shaping": False},
         ),
     ],

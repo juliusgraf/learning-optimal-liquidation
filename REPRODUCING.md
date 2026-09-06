@@ -1,11 +1,18 @@
-# Current v18 workflow
+# Current v19 workflow
 
 The active contracts and algorithm details are in `docs/rl_design.md` and
-`docs/pathology_repair_v18.md`. The headline is H-on/shaping-on, trained on the
+`docs/pathology_repair_v19.md`. The headline is H-on/shaping-on, trained on the
 author-approved weighted J and
-selected/evaluated on economic risk-adjusted PnL. Use a fresh results/revision_v18
+selected/evaluated on economic risk-adjusted PnL. Use a fresh results/revision_v19
 namespace; older outputs remain diagnosis inputs only. Stable-Baselines3 2.7.1
 is installed by the project dependency metadata.
+
+V19 retains weighted shaped J and its preferences. It adds training-only
+CLOB forecast reliability calibration and critic LayerNorm for native SB3 DDPG.
+Its six-cell synthetic matrix separates dense auction credit, H information,
+anchoring, combined reward preferences and auction access. All 43 bounded
+learning checks are recorded in `docs/verification_v19/learning_summary.csv`;
+they are development evidence, not full ten-seed results.
 
 Bounded development verification (180 episodes, no final-test paths):
 
@@ -39,7 +46,7 @@ matrix. No production run was launched as part of the repair.
 This repository implements the revised manuscript environment for the
 synthetic rough-Heston setting and the historical-midprice setting, with DQN
 and the DDPG/TD3/SAC continuous-action relaxations. Current artifacts use
-schema 15, are written below `results/revision_v18/`, and carry environment
+schema 15, are written below `results/revision_v19/`, and carry environment
 contract `shaped-j-economic-eval-sb3-2026-09-05-v15`; checkpoints and results
 from earlier contracts are rejected.
 
@@ -227,7 +234,7 @@ For isolated development or CI runs, set `LMM_RESULTS_ROOT` to an absolute
 scratch directory. Every launcher and report generator honors the override,
 and training records the same path in `config_resolved.yaml`, so discovery and
 provenance cannot disagree. Leave it unset for the canonical
-`results/revision_v18/` layout. For example:
+`results/revision_v19/` layout. For example:
 
 ```bash
 LMM_RESULTS_ROOT=/absolute/scratch/lmm-results \
@@ -240,38 +247,24 @@ A short pipeline smoke is available and is not a training result:
 scripts/reproduce_all.sh --smoke --symbol MSFT --seed 9001
 ```
 
-The non-headline synthetic treatment runs—three additional H/anchor-bundle by shaping
-arms, no auction, and no cancellation for all four learners—are launched with:
+The five additional synthetic mechanism cells for all four learners run with:
 
 ```bash
 scripts/run_synthetic_treatments.sh --seed 42
-# or exercise only the pipeline:
+# To exercise only the pipeline:
 scripts/run_synthetic_treatments.sh --smoke --seed 9001
 ```
 
-The remaining H/anchor-bundle by shaping cell (`H` on, shaping on) is exactly the canonical
-synthetic headline configuration. The treatment launcher therefore does not
-train it again: paired reporting reuses `synthetic_rough_heston/*_seed<N>` as
-that arm. Run the canonical synthetic launchers (or `reproduce_all.sh`) for the
-same seed before aggregating treatments.
+The canonical synthetic headline is reused, so run it for the same seed before
+aggregating treatments. The cells and five matched contrasts are specified
+in [the learning contract](docs/rl_design.md#selection-and-treatments).
+The headline retains both manuscript preferences and the indicative anchor.
+Fixed-anchor controls isolate H observation, combined manuscript shaping
+and dense-versus-sparse auction credit. The no-auction arm is compared
+with economic H-off auction-on training. Legacy bundled H/shaping and
+no-cancellation controls remain available outside the default matrix. Shaped J
+and the economic criterion remain different objectives even with q=0.
 
-The shaping-on arms share exactly the same parameters as the headline.
-Signed fictive submission credit need not equal eventual execution cash;
-cancellation reverses only the original credits of schedules actually canceled.
-Therefore shaped J and the economic criterion are different objectives even
-with q=0. The matched shaping contrasts measure this distinction. The
-`ablation_h_on_shaping_on.yaml` overlay remains an alias for the headline and
-is not separately launched.
-
-The no-cancellation treatment gives DQN 673 auction actions; the enabled
-regime has 1,346. Continuous agents use two or three normalized auction
-proposal coordinates respectively while keeping the same 18-feature network
-input.
-
-The no-auction treatment removes both terminal auction participation and every
-auction-derived training input: it disables auction shaping and the projected
-clearing feature in addition to terminating at auction open. It is therefore a
-comparison against a policy that does not anticipate the modeled auction.
 
 The canonical ten-seed publication command covers the headline, historical,
 and complete synthetic treatment matrix, then generates the focused report:
@@ -323,8 +316,8 @@ To regenerate reports without training:
 scripts/make_multiseed_outputs.sh --publication
 ```
 
-Open `results/revision_v18/_publication/index.html` after completion. It contains
-four figures and three tables, with captions and methods. Figures are vector
+Open `results/revision_v19/_publication/index.html` after completion. It contains
+five figures and three tables, with captions and methods. Figures are vector
 PDF plus PNG; tables are LaTeX (`longtable`/`booktabs`) plus numeric CSV. The
 report retains **mean** economic performance, including poor seeds, because
 that is the expected-value estimand. It does not substitute an IQM or a maximum
@@ -332,14 +325,13 @@ validation score for held-out economic performance. Small plot markers expose
 every seed; 95% intervals resample training-seed means, not individual test
 episodes as independent training replications. Ten seeds still limit precision.
 
-The paired treatment figure/table covers H/anchor at both shaping levels,
-shaping at both H/anchor levels, the full auction-aware versus bundled
-no-auction comparator, pure auction access under matched H-off/shaping-off
-settings, and cancellation on minus off. The separate auction
-mechanism figure derives the exact same-CLOB no-order counterfactual from
-saved accounting, separating execution price edge, fees and inventory-risk
-relief. It does not reinterpret the bundled no-auction treatment as a pure
-auction-access experiment. Negative contributions are shown unchanged.
+The treatment figure/table shows five effects: dense auction credit,
+H observation, anchoring, combined preferences and auction access. A fifth figure, `credit_assignment`, shows
+raw dense-minus-sparse economic validation curves on common observed budgets.
+It does not carry stopped seeds forward or replace raw scores with a running
+maximum. The auction mechanism figure derives a same-CLOB no-order
+counterfactual from saved accounting, separating execution price edge, fees
+and inventory-risk relief. Negative contributions remain visible.
 
 All headline comparisons use basis points of initial notional. Historical
 markets are shown individually; the auction summary additionally uses the
@@ -363,7 +355,7 @@ review step.
 For a synthetic DQN run named `dqn_seed42`:
 
 ```bash
-RUN=results/revision_v18/synthetic_rough_heston/dqn_seed42
+RUN=results/revision_v19/synthetic_rough_heston/dqn_seed42
 
 python3 -m lmm.experiments.train \
   --config configs/base.yaml \
@@ -399,8 +391,8 @@ Every completed run contains the following raw and provenance artifacts:
 - `eval/policy_difference_{as,twap}.csv`.
 
 The canonical launcher writes one report under
-`results/revision_v18/_publication/`: `index.html`, `README.md`,
-`figures/{economic_performance,learning,auction_mechanism,treatments}.{pdf,png}`,
+`results/revision_v19/_publication/`: `index.html`, `README.md`,
+`figures/{economic_performance,learning,auction_mechanism,treatments,credit_assignment}.{pdf,png}`,
 `tables/{economic_performance,auction_mechanism,treatments}.{tex,csv}`,
 `audit/` with seed-level estimates and validation series, and `manifest.json`
 with input and output hashes. Per-run figures, critic-loss plots, cumulative

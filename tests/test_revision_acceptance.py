@@ -9,6 +9,7 @@ details from the pre-revision simulator.
 from __future__ import annotations
 
 from dataclasses import replace
+import json
 from pathlib import Path
 
 import numpy as np
@@ -114,7 +115,7 @@ def _flow(cfg, **probabilities) -> ExogenousAuctionFlow:
     return ExogenousAuctionFlow(params, cfg.grid, cfg.clob_flow)
 
 
-def test_synthetic_and_historical_differ_only_in_midprice_and_identity():
+def test_settings_share_economics_but_fit_forecast_reliability_on_own_training_pool():
     for algo in ("dqn", "ddpg", "td3", "sac"):
         synthetic = load_config(
             REPO_ROOT / "configs/base.yaml",
@@ -134,11 +135,18 @@ def test_synthetic_and_historical_differ_only_in_midprice_and_identity():
             assert cfg.grid.h == 30
         assert synthetic.midprice.rough_heston.s_star == pytest.approx(252 * 6.5 * 60)
         assert synthetic.experiment.episodes == historical.experiment.episodes == 800
+        # The raw estimator remains identical. Only its frozen predictive
+        # reliability coefficients differ by the training price distribution.
+        assert replace(synthetic.algo1, clob_forecast_weights=()) == replace(
+            historical.algo1, clob_forecast_weights=())
+        for cfg, setting in ((synthetic, 'synthetic'), (historical, 'historical')):
+            protocol = json.loads((REPO_ROOT / 'docs/verification_v19' /
+                                   ('forecast_'+setting) / 'protocol.json').read_text())
+            assert cfg.algo1.clob_forecast_weights == tuple(protocol['weights'])
         for section in (
             "grid",
             "clob_flow",
             "auction_flow",
-            "algo1",
             "reward",
             "rl",
             "actions",

@@ -30,12 +30,13 @@ CAPTIONS = {
     "economic_performance": "Held-out economic performance. Points and 95% percentile bootstrap intervals summarize the mean of training-seed test means. Small points show every seed. AS and TWAP are stylized reference policies. All outcomes are basis points of initial notional, not dollar forecasts. Each market is reported separately; horizontal scales may differ.",
     "learning": "Economic validation during training on shaped J. Thin lines show each seed; stars mark the actual selected mature checkpoint. Heavy lines and pointwise 95% seed-bootstrap bands use only checkpoints observed for every requested seed. Individual traces continue after that common support ends. There is no smoothing, best-so-far envelope, or extrapolation after early stopping. Episode zero is the untrained diagnostic. Test outcomes are never used in these curves.",
     "auction_mechanism": "Closing-auction contribution with the CLOB trajectory held fixed. Total value equals signed execution price edge minus cancellation fees plus terminal inventory-risk relief, relative to submitting no auction orders. The cash component excludes risk relief. Inventory panels report mean absolute exposure as a percentage of initial inventory at auction open and after clearing. Historical panels average the fixed reported tickers equally within each seed before resampling seeds. This is a policy decomposition, not the effect of retraining without an auction.",
-    "treatments": "Paired synthetic treatment effects on held-out economic objective, first condition minus second. Differences are paired by environment seed before averaging within training seed; intervals resample those seed means. H changes both the observed indicative signal and action anchoring. The full-versus-no-auction contrast bundles auction access, H/anchor and shaping. The H-off/shaping-off auction-on minus no-auction contrast isolates access under matched H/shaping settings. Negative effects are retained. These are pointwise, exploratory intervals, without familywise significance claims.",
+    "credit_assignment": "Does dense auction guidance accelerate learning? Curves show paired economic validation differences between auction-potential-on and auction-potential-off policies at the same training budget. Both optimize the same economic objective with common CLOB conditioning and observations. Thin traces retain every seed; mean bands use common observed support only. This isolates delayed auction credit assignment rather than extra manuscript preferences.",
+    "treatments": "Paired synthetic treatment effects on held-out economic objective, first condition minus second. Differences are paired by environment seed before averaging within training seed; intervals resample those seed means. Forecast information, bounded action anchoring, combined manuscript preferences, invariant auction credit assignment and auction access are separated. Information and access contrasts hold the economic training objective fixed; preference contrasts retain common dense conditioning. Negative effects are retained. These are pointwise, exploratory intervals, without familywise significance claims.",
 }
 TABLE_CAPTIONS = {
     "economic_performance": "Held-out net PnL and economic objective in basis points of initial notional. Cells show equal-seed means with 95% seed-bootstrap intervals below. Objective differences against DQN, AS and TWAP are paired by episode and environment seed. PnL includes fees; objective additionally subtracts terminal inventory penalty. Neither includes training shaping.",
     "auction_mechanism": "Auction contribution by market and learned policy. Total value equals execution price edge minus fees (Cash) plus terminal inventory-risk relief, relative to no auction orders with the CLOB trajectory fixed. Open and final inventory are mean absolute exposure as a percentage of initial inventory. Cells show equal-seed means with 95% seed-bootstrap intervals below. Contributions are in basis points of initial notional.",
-    "treatments": "Paired synthetic treatment effects on the held-out economic objective in basis points of initial notional. Positive values favor the first condition. Cells show equal-seed means with pointwise 95% seed-bootstrap intervals below. H changes both observation and anchoring; the full/no-auction contrast bundles auction access, H/anchor and shaping. The matched H-off/shaping-off contrast isolates auction access. No familywise significance claim is made.",
+    "treatments": "Paired synthetic treatment effects on the held-out economic objective in basis points of initial notional. Positive values favor the first condition. Cells show equal-seed means with pointwise 95% seed-bootstrap intervals below. Forecast information is compared at a fixed anchor and economic objective. Anchoring holds information and shaped J fixed. Dense credit, combined preferences and auction access have matched controls. No familywise significance claim is made.",
 }
 METHODS = """The estimand is expected risk-adjusted PnL (economic bar-J-lambda after subtracting initial inventory value), in basis points of initial notional. Net PnL includes cancellation fees and excludes shaping; objective subtracts terminal inventory penalty. Shaped J is used only for training. For each market and policy, average test episodes within each training seed, then give each seed equal weight. Pair comparisons by episode AND environment seed before averaging. Intervals are deterministic 95% percentile bootstrap intervals of seed means (10,000 resamples). Evaluation paths are not independent training replications. Reference policies are checked across algorithm runs and included once per seed. Historical macro summaries keep the observed ticker set fixed and resample seed blocks jointly, preserving cross-ticker dependence. They do not estimate performance on unseen stocks or dates. Small seed counts limit precision; show every seed, avoid significance stars and universal rankings. One-seed development reports omit uncertainty intervals. Learning bands are pointwise and stop when common observed support ends. Algorithm comparisons include the declared preprocessing differences. All figures come from saved records; no policy is retrained, reselected or re-evaluated by this report.
 
@@ -53,9 +54,9 @@ def experiment_scope(runs):
             "Validation and evaluation remain stock-specific on their separate date partitions. "
             if len(pooled) == len(historical) else
             "Historical training-pool choices are recorded in each resolved configuration. ")
-    if any(r.cfg.rl.test_seed_namespace == 18001 for r in historical):
-        text += ("V18 uses fresh simulated evaluation streams (namespace 18001), but the "
-                 "August 24–28, 2026 historical test dates were previously inspected in v17. "
+    if any(r.cfg.rl.test_seed_namespace in (18001, 19001) for r in historical):
+        text += ("The campaign uses a separate simulated evaluation namespace, but the "
+                 "August 24–28, 2026 historical test dates were previously inspected in v17 and v18. "
                  "These dates are a reused holdout, not a new untouched historical sample. "
                  "Additional training seeds do not add independent historical dates.")
     return text
@@ -311,13 +312,11 @@ def auction_figure(data, out):
 
 def treatment_figure(data, out):
     labels = {
-        "h_anchor_shaping_off": "H/anchor on − off\nShaping off",
-        "h_anchor_shaping_on": "H/anchor on − off\nShaping on",
-        "shaping_h_off": "Shaped − economic training\nH/anchor off",
-        "shaping_h_on": "Shaped − economic training\nH/anchor on",
-        "auction_access_h_off_shaping_off": "Auction access on − off\nH/anchor off, shaping off",
-        "auction_aware_vs_no_auction": "Full − no-auction comparator\nBundled H/anchor + shaping + auction",
-        "cancellation": "Cancellation on − off",
+        "auction_credit": "Dense auction credit on − off\nEconomic objective held fixed",
+        "h_feature": "H observation on − off\nFixed anchor, economic training",
+        "h_anchor": "Indicative − frozen-mid anchor\nH observation and shaped J held fixed",
+        "combined_preferences": "Combined manuscript preferences on − off",
+        "auction_access": "Auction access on − off\nMatched information, economic training",
     }
     if set(data.contrast_key) != set(labels):
         raise ValueError("treatment figure must cover every recorded contrast exactly")
@@ -331,6 +330,47 @@ def treatment_figure(data, out):
                xlabel="Paired test objective difference (bps)")
         ax.invert_yaxis()
     _finish(fig, out, "treatments", "Mean and pointwise 95% seed-bootstrap CI; small points = paired seed means. Positive favors the first condition.")
+
+
+def credit_learning_rows(runs):
+    """Pair raw validation curves at common budgets; never select a time point."""
+    arms = {}
+    path_sets = {}
+    for suffix in ("mechanism_economic_dense", "mechanism_economic_sparse"):
+        selected = [r for r in runs if r.setting == SYNTHETIC + "__" + suffix]
+        arms[suffix] = learning_rows(selected)
+        for r in selected:
+            meta = yaml.safe_load((r.run_dir/'checkpoints/initial_validation.yaml').read_text())
+            paths = meta.get('validation_seeds')
+            if not paths:
+                raise ValueError('credit learning comparison requires recorded validation seeds')
+            key = (r.algo, r.seed)
+            if key in path_sets and path_sets[key] != paths:
+                raise ValueError('credit learning validation CRN mismatch')
+            path_sets[key] = paths
+    key = ['market', 'policy', 'seed', 'episodes_completed']
+    left, right = arms.values()
+    d = left.merge(right, on=key, suffixes=('_dense', '_sparse'), validate='one_to_one')
+    d['objective_bps'] = d.objective_bps_dense-d.objective_bps_sparse
+    return d
+
+
+def credit_learning_figure(data, out):
+    # The paired difference directly answers whether guidance accelerates
+    # economic learning. Untrained initialization stays visible at zero.
+    fig, axes = _axes(ALGOS, height=3.1, max_cols=2)
+    summary = learning_summary(data)
+    for algo, ax in zip(ALGOS, axes):
+        sub = data[data.policy == algo]
+        for _, block in sub.groupby('seed'):
+            block = block.sort_values('episodes_completed')
+            ax.plot(block.episodes_completed, block.objective_bps, color=P.POLICY_COLORS[algo], alpha=.18, lw=.7)
+        block = summary[summary.policy == algo].sort_values('episodes_completed')
+        ax.plot(block.episodes_completed, block['mean'], color=P.POLICY_COLORS[algo])
+        ax.fill_between(block.episodes_completed, block.ci_low, block.ci_high, color=P.POLICY_COLORS[algo], alpha=.2)
+        ax.axhline(0, color='.5', lw=.8)
+        ax.set(title=algo.upper(), xlabel='Training episodes completed', ylabel='Validation difference (bps)')
+    _finish(fig, out, 'credit_assignment', 'Dense − sparse auction credit at common budgets; pointwise seed-bootstrap intervals. Raw validation, with no checkpoint envelope.')
 
 
 def write_table(summary, out, name, keys, metrics, caption):
@@ -493,6 +533,11 @@ def generate(root, seeds, *, publication_mode=False, complete=False, symbol=None
             write_table(contrast_summary, tables, "treatments", ["contrast", "algorithm"],
                         {"effect_bps": "Effect (bps)"}, TABLE_CAPTIONS["treatments"])
             names.append("treatments")
+            credit = credit_learning_rows(synthetic)
+            credit.to_csv(audit/'credit_learning_by_seed.csv', index=False)
+            learning_summary(credit).to_csv(audit/'credit_learning_common_support.csv', index=False)
+            credit_learning_figure(credit, figures)
+            names.append('credit_assignment')
         status = "Publication matrix" if publication_mode else "DEVELOPMENT ONLY — not publication evidence"
         intro = f"{status}. {len(runs)} runs; master seeds {', '.join(map(str, seeds))}."
         methods = METHODS + "\n" + experiment_scope(runs)
@@ -508,7 +553,7 @@ def generate(root, seeds, *, publication_mode=False, complete=False, symbol=None
             page += '<h2>Reporting protocol amendment</h2><p>' + html.escape(disclosure) + '</p><p><a href="audit/checkpoint_selection.csv">All checkpoint decisions</a> · <a href="audit/reporting_amendment.tex">LaTeX disclosure</a></p>'
         for name in names:
             page += f'<h2>{name.replace("_", " ").title()}</h2><p>{html.escape(CAPTIONS[name])}</p><a href="figures/{name}.pdf">Vector PDF</a>'
-            if name != "learning":
+            if name not in ("learning", "credit_assignment"):
                 page += f' · <a href="tables/{name}.tex">LaTeX table</a> · <a href="tables/{name}.csv">Numeric CSV</a>'
             page += f'<img src="figures/{name}.png" alt="{name.replace("_", " ")}">'
         page += '<p><a href="manifest.json">Input/output provenance</a> · <a href="README.md">Methods and inclusion notes</a></p></html>'

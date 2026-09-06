@@ -21,8 +21,8 @@ from lmm.experiments.protocol import PUBLICATION_SEEDS, RESULTS_ROOT
 
 ALGOS = ("dqn", "ddpg", "td3", "sac")
 TICKERS = ("MSFT", "JPM", "PG", "GOOGL", "CAT")
-ARMS = ("ablation_h_off_shaping_off", "ablation_h_off_shaping_on",
-        "ablation_h_on_shaping_off", "no_auction", "no_cancellation")
+ARMS = ("mechanism_fixed_anchor", "mechanism_economic_dense", "mechanism_economic_sparse",
+        "mechanism_h_feature_off", "no_auction")
 CANONICAL_SEEDS = set(PUBLICATION_SEEDS)
 
 

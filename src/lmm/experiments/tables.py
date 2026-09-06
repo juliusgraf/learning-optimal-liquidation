@@ -884,7 +884,8 @@ def build_synthetic_treatment_contrasts(
             "bootstrap CI] of seed-level mean risk-adjusted PnL differences. "
             "The sign is first-named condition minus second-named condition, "
             "so a positive value favors the first-named condition. The headline "
-            "runs supply the H/anchor-on, shaping-on, auction-on baseline."
+            "retains H, shaping and the indicative anchor; matched controls "
+            "separate credit assignment, information, anchoring and preferences."
         ),
         label="tab:synthetic_treatment_contrasts_multiseed",
         row_label_header="Contrast",

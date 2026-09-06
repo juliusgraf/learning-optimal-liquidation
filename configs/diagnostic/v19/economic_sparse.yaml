@@ -1,0 +1,5 @@
+# Remove ONLY auction exposure guidance, keeping CLOB/mark conditioning fixed.
+reward:
+  shaping_enabled: false
+rl:
+  learning_auction_inventory_potential: false

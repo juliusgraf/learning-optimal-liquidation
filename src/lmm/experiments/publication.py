@@ -84,159 +84,42 @@ _COMPLETION_REQUIRED_FILES = (
 # Stable insertion order becomes the expected matrix/discovery order in the
 # shell pipeline.  ``setting`` is the resolved experiment.name/run-directory
 # name; the remaining values are the treatment-defining resolved fields.
-TREATMENT_SPECS: "OrderedDict[str, dict[str, Any]]" = OrderedDict(
-    [
-        (
-            HEADLINE_TREATMENT,
-            {
-                "setting": "synthetic_rough_heston",
-                "ablation_label": "H_on__shaping_on__auction_on",
-                "h_cl": True,
-                "auction_anchor": "indicative",
-                "shaping": True,
-                "clob_shaping": True,
-                "auction_shaping": True,
-                "clawback_shaping": True,
-                "auction": True,
-                "cancellation": True,
-            },
-        ),
-        (
-            "h_off_shaping_off",
-            {
-                "setting": "synthetic_rough_heston__ablation_h_off_shaping_off",
-                "ablation_label": "H_off__shaping_off__auction_on",
-                "h_cl": False,
-                "auction_anchor": "frozen_mid",
-                "shaping": False,
-                "clob_shaping": False,
-                "auction_shaping": False,
-                "clawback_shaping": True,
-                "auction": True,
-                "cancellation": True,
-            },
-        ),
-        (
-            "h_on_shaping_off",
-            {
-                "setting": "synthetic_rough_heston__ablation_h_on_shaping_off",
-                "ablation_label": "H_on__shaping_off__auction_on",
-                "h_cl": True,
-                "auction_anchor": "indicative",
-                "shaping": False,
-                "clob_shaping": False,
-                "auction_shaping": False,
-                "clawback_shaping": True,
-                "auction": True,
-                "cancellation": True,
-            },
-        ),
-        (
-            "h_off_shaping_on",
-            {
-                "setting": "synthetic_rough_heston__ablation_h_off_shaping_on",
-                "ablation_label": "H_off__shaping_on__auction_on",
-                "h_cl": False,
-                "auction_anchor": "frozen_mid",
-                "shaping": True,
-                "clob_shaping": True,
-                "auction_shaping": True,
-                "clawback_shaping": True,
-                "auction": True,
-                "cancellation": True,
-            },
-        ),
-        (
-            "no_auction",
-            {
-                "setting": "synthetic_rough_heston__no_auction",
-                "ablation_label": "H_off__shaping_off__auction_off",
-                "h_cl": False,
-                "auction_anchor": "frozen_mid",
-                "shaping": False,
-                "clob_shaping": False,
-                "auction_shaping": False,
-                "clawback_shaping": False,
-                "auction": False,
-                "cancellation": False,
-            },
-        ),
-        (
-            "no_cancellation",
-            {
-                "setting": "synthetic_rough_heston__no_cancellation",
-                "ablation_label": "H_on__shaping_on__auction_on__cancel_off",
-                "h_cl": True,
-                "auction_anchor": "indicative",
-                "shaping": True,
-                "clob_shaping": True,
-                "auction_shaping": True,
-                "clawback_shaping": True,
-                "auction": True,
-                "cancellation": False,
-            },
-        ),
-    ]
-)
+def _mechanism_spec(name, *, h=True, anchor="frozen_mid", shaping=True,
+                    clob=True, auction_reward=True, credit=True, access=True):
+    return {
+        "setting": "synthetic_rough_heston" if name == "headline" else "synthetic_rough_heston__" + name,
+        "ablation_label": "H_on__shaping_on__auction_on" if name == "headline" else name,
+        "h_cl": h, "auction_anchor": anchor, "shaping": shaping,
+        "clob_shaping": clob, "auction_shaping": auction_reward,
+        "clawback_shaping": True, "auction": access, "cancellation": access,
+        "auction_potential": credit and access,
+    }
 
-# (machine key, publication row label, positive arm, negative arm).  Every
-# reported number has the sign ``positive arm - negative arm``.
+
+# These controls separate forecast information, bounded action geometry,
+# manuscript preferences and delayed economic credit assignment.
+TREATMENT_SPECS = OrderedDict([
+    ("headline", _mechanism_spec("headline", anchor="indicative")),
+    ("mechanism_fixed_anchor", _mechanism_spec("mechanism_fixed_anchor")),
+    ("mechanism_economic_dense", _mechanism_spec("mechanism_economic_dense", shaping=False, clob=False, auction_reward=False)),
+    ("mechanism_economic_sparse", _mechanism_spec("mechanism_economic_sparse", shaping=False, clob=False, auction_reward=False, credit=False)),
+    ("mechanism_h_feature_off", _mechanism_spec("mechanism_h_feature_off", h=False, shaping=False, clob=False, auction_reward=False)),
+    ("no_auction", _mechanism_spec("no_auction", h=False, shaping=False, clob=False, auction_reward=False, access=False)),
+])
+# Preserve the existing comparator's provenance label.
+TREATMENT_SPECS["no_auction"]["ablation_label"] = "H_off__shaping_off__auction_off"
+TREATMENT_SPECS["no_auction"]["clawback_shaping"] = False
+
 TREATMENT_CONTRASTS = (
-    (
-        "h_anchor_shaping_off",
-        "H/anchor effect, shaping off (on - off)",
-        "h_on_shaping_off",
-        "h_off_shaping_off",
-    ),
-    (
-        "h_anchor_shaping_on",
-        "H/anchor effect, shaping on (on - off)",
-        HEADLINE_TREATMENT,
-        "h_off_shaping_on",
-    ),
-    (
-        "shaping_h_off",
-        "Shaping effect, H/anchor off (on - off)",
-        "h_off_shaping_on",
-        "h_off_shaping_off",
-    ),
-    (
-        "shaping_h_on",
-        "Shaping effect, H/anchor on (on - off)",
-        HEADLINE_TREATMENT,
-        "h_on_shaping_off",
-    ),
-    (
-        "auction_aware_vs_no_auction",
-        "Full auction-aware treatment vs no-auction comparator",
-        HEADLINE_TREATMENT,
-        "no_auction",
-    ),
-    (
-        "auction_access_h_off_shaping_off",
-        "Auction access, H/anchor and shaping off (on - off)",
-        "h_off_shaping_off",
-        "no_auction",
-    ),
-    (
-        "cancellation",
-        "Cancellation effect (on - off)",
-        HEADLINE_TREATMENT,
-        "no_cancellation",
-    ),
+    ("auction_credit", "Dense auction credit (on - off)", "mechanism_economic_dense", "mechanism_economic_sparse"),
+    ("h_feature", "H observation, fixed anchor and economic training (on - off)", "mechanism_economic_dense", "mechanism_h_feature_off"),
+    ("h_anchor", "Auction anchor (indicative - frozen mid)", "headline", "mechanism_fixed_anchor"),
+    ("combined_preferences", "Combined manuscript preferences (on - off)", "mechanism_fixed_anchor", "mechanism_economic_dense"),
+    ("auction_access", "Auction access, matched information and economic training (on - off)", "mechanism_h_feature_off", "no_auction"),
 )
 
-_SETTING_TO_TREATMENT = {
-    spec["setting"]: treatment for treatment, spec in TREATMENT_SPECS.items()
-}
-_TREATMENT_OVERLAYS = {
-    HEADLINE_TREATMENT: None,
-    "h_off_shaping_off": "ablation_h_off_shaping_off.yaml",
-    "h_off_shaping_on": "ablation_h_off_shaping_on.yaml",
-    "h_on_shaping_off": "ablation_h_on_shaping_off.yaml",
-    "no_auction": "no_auction.yaml",
-    "no_cancellation": "no_cancellation.yaml",
-}
+_SETTING_TO_TREATMENT = {spec["setting"]: name for name, spec in TREATMENT_SPECS.items()}
+_TREATMENT_OVERLAYS = {name: None if name == "headline" else name + ".yaml" for name in TREATMENT_SPECS}
 _PUBLICATION_EPISODES = 800
 _PUBLICATION_EVAL_EPISODES = 100
 
@@ -791,6 +674,8 @@ def _treatment_defining_values(run: "RunInfo") -> dict[str, Any]:
         "auction_shaping": bool(cfg.reward.effective_auction_shaping),
         "clawback_shaping": bool(cfg.reward.clawback_shaping),
         "auction": bool(cfg.experiment.auction_enabled),
+        "auction_potential": bool(cfg.experiment.auction_enabled and cfg.reward.learning_potential
+                                  and cfg.rl.learning_auction_inventory_potential),
         "cancellation": bool(
             cfg.experiment.auction_enabled
             and cfg.actions.auction_cancel_mode == "enabled"
@@ -807,6 +692,7 @@ def _matched_config_payload(run: "RunInfo") -> dict[str, Any]:
         ("experiment", "ablation_label"),
         ("experiment", "auction_enabled"),
         ("rl", "h_cl_feature_enabled"),
+        ("rl", "learning_auction_inventory_potential"),
         ("reward", "shaping_enabled"),
         ("reward", "clob_shaping_enabled"),
         ("reward", "auction_shaping_enabled"),

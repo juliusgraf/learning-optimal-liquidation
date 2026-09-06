@@ -1,0 +1,4 @@
+# One architecture intervention; native DDPG loss, actor and targets unchanged.
+algo:
+  hyperparams:
+    critic_layer_norm: true

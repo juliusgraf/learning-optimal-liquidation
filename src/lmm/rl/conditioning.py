@@ -19,7 +19,8 @@ def inventory_potential(observation, cfg, *, done=False):
     inventory, mid = x[1], x[3]
     own_slope, own_quote, exo_slope, imbalance, exo_quote = x[13:18]
     quantity, displacement = 0.0, 0.0
-    if x[0] >= cfg.grid.tau_op and exo_slope > 0:
+    auction_credit = cfg.rl.learning_auction_inventory_potential
+    if auction_credit and x[0] >= cfg.grid.tau_op and exo_slope > 0:
         displacement = (
             own_quote - mid * own_slope + exo_quote - mid * exo_slope + imbalance
         ) / (own_slope + exo_slope)
@@ -28,7 +29,7 @@ def inventory_potential(observation, cfg, *, done=False):
     # *all* of it at the terminal quadratic penalty creates a huge artificial
     # value baseline (lambda*I0^2) and swamps tick-sized execution advantages.
     # The terminal exposure estimate belongs to the auction phase only.
-    remaining = inventory - quantity if x[0] >= cfg.grid.tau_op else 0.0
+    remaining = inventory - quantity if auction_credit and x[0] >= cfg.grid.tau_op else 0.0
     if cfg.rl.learning_clob_inventory_potential and x[0] < cfg.grid.tau_op:
         # A deterministic depletion corridor makes deadline exposure visible
         # before the phase boundary, without a large initial value baseline.

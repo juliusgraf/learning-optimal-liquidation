@@ -22,3 +22,5 @@ algo:
     checkpoint_interval_episodes: 100
     exploration_noise_std: 0.1
     grad_clip_norm: 1.0
+    # Bound critic feature extrapolation; keep native single-critic DDPG.
+    critic_layer_norm: true

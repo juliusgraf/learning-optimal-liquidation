@@ -53,13 +53,13 @@ credentials after checkout. See `REPRODUCING.md` for the complete workflow.
 After committing the reviewed changes and leaving the tree clean, launch the
 440-run publication matrix with `scripts/run_multiseed.sh --jobs 10 --threads-per-job 1`
 from the activated environment. The resulting report is
-`results/revision_v18/_publication/index.html`: four focused figures, three
+`results/revision_v19/_publication/index.html`: five focused figures, three
 tables, and seed-level audit records. The [output guide](docs/research_outputs.md)
 explains the statistical protocol, file locations, regeneration and exact
 unapplied manuscript inclusion instructions. Comprehensive diagnostics are
 available separately with `--diagnostics`.
 
-The protected TeX sources are unchanged. The [exact review patch](docs/manuscript_recommendations_v18.patch)
+The protected TeX sources are unchanged. The [exact review patch](docs/manuscript_recommendations_v19.patch)
 aligns them with weighted shaped J for headline training and economic
 risk-adjusted PnL for validation and evaluation. Earlier reports are retained
 as development history.

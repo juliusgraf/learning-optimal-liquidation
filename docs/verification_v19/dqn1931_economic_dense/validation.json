@@ -1,0 +1,72 @@
+[
+  {
+    "pnl": 0.8460949538257367,
+    "objective": -57.76133684811559,
+    "inventory": 75.85532893219244,
+    "auction_qty": -0.6144242770865485,
+    "inventory_at_auction_open": 75.24090465510591,
+    "clob_qty": 24.759095344894103,
+    "cancels": 19.0,
+    "episode": 0,
+    "updates": {
+      "clob": 0,
+      "auction": 0
+    }
+  },
+  {
+    "pnl": 3.5698493237336137,
+    "objective": -3.3862523720765596,
+    "inventory": 12.807232806033186,
+    "auction_qty": 3.288497336370009,
+    "inventory_at_auction_open": 16.095730142403195,
+    "clob_qty": 83.9042698575968,
+    "cancels": 13.3125,
+    "episode": 50,
+    "updates": {
+      "clob": 757,
+      "auction": 540
+    }
+  },
+  {
+    "pnl": 3.6737466203449403,
+    "objective": 2.5265600757233373,
+    "inventory": 4.341946815779564,
+    "auction_qty": -2.0368936287081465,
+    "inventory_at_auction_open": 2.305053187071418,
+    "clob_qty": 97.69494681292859,
+    "cancels": 5.578125,
+    "episode": 99,
+    "updates": {
+      "clob": 2790,
+      "auction": 2010
+    }
+  },
+  {
+    "pnl": 3.2869066627049115,
+    "objective": 2.646603625603345,
+    "inventory": 2.327865063959102,
+    "auction_qty": -0.3163506251473089,
+    "inventory_at_auction_open": 2.011514438811795,
+    "clob_qty": 97.98848556118821,
+    "cancels": 4.0625,
+    "episode": 100,
+    "updates": {
+      "clob": 2826,
+      "auction": 2040
+    }
+  },
+  {
+    "pnl": 3.7490294810836877,
+    "objective": 2.9035526356455073,
+    "inventory": 3.562001136422509,
+    "auction_qty": -1.1621263421215051,
+    "inventory_at_auction_open": 2.3998747943010086,
+    "clob_qty": 97.60012520569899,
+    "cancels": 2.90625,
+    "episode": 150,
+    "updates": {
+      "clob": 4852,
+      "auction": 3540
+    }
+  }
+]

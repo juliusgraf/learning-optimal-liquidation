@@ -365,6 +365,13 @@ class MarketMakingEnv(gymnasium.Env):
         snapshot = self._generator.prepare_clob_decision(next_index, self._k_mid())
         self._current_algo1_diag = self.algo1.observe(next_index, snapshot)
         self._h_cache = self._current_algo1_diag.H
+        weights = self.cfg.algo1.clob_forecast_weights
+        if weights:
+            # Raw Algorithm 1 and carryover calibration are unchanged. Only
+            # its use as a future-close signal is reliability-adjusted.
+            # The coefficients are frozen from independent training paths.
+            bin_index = min(3, int(4*self._t/self.grid.tau_op))
+            self._h_cache = self._mid + weights[bin_index]*(self._h_cache-self._mid)
         self._h_history.append(float(self._h_cache))
 
     def _open_auction(self, carryover: CarryoverCalibration) -> None:

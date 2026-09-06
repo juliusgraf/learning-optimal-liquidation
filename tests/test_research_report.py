@@ -63,7 +63,7 @@ def example_run(tmp_path, algo="dqn", seed=7, *, setting=R.SYNTHETIC, symbol=Non
         # Full figure layout without running 800 training episodes.
         pd.DataFrame({"episode": [99, 199, 299, 399, 499, 599, 699, 799],
                       "eval_risk_adjusted_pnl_mean": np.linspace(1, 7, 8) + seed*.001}).to_csv(rd / "metrics.csv", index=False)
-        (rd / "checkpoints/initial_validation.yaml").write_text("metric: risk_adjusted_pnl\nvalue: -1.0\n")
+        (rd / "checkpoints/initial_validation.yaml").write_text("metric: risk_adjusted_pnl\nvalue: -1.0\nvalidation_seeds: [1, 2, 3]\n")
         (rd / "checkpoints/best.pt").write_bytes(b"fixture")
         (rd / "checkpoints/best_selection.yaml").write_text(yaml.safe_dump({
             "metric": "risk_adjusted_pnl", "episode": 799,
@@ -174,6 +174,25 @@ def test_learning_aggregate_never_forward_fills_stopped_seeds():
     assert list(out["mean"]) == [2., 3.]
 
 
+def test_credit_learning_requires_matched_paths_and_observed_budgets(tmp_path):
+    dense = example_run(tmp_path, setting=R.SYNTHETIC+'__mechanism_economic_dense', materialize=True)
+    sparse = example_run(tmp_path, setting=R.SYNTHETIC+'__mechanism_economic_sparse', materialize=True)
+    metrics_path = sparse.run_dir/'metrics.csv'
+    metrics = pd.read_csv(metrics_path)
+    # Leave an internal missing evaluation, while retaining the selected one.
+    metrics = metrics[metrics.episode != 199]
+    metrics['eval_risk_adjusted_pnl_mean'] -= 2
+    metrics.to_csv(metrics_path, index=False)
+    data = R.credit_learning_rows([dense, sparse])
+    assert 200 not in set(data.episodes_completed)
+    np.testing.assert_allclose(data.loc[data.episodes_completed > 0, 'objective_bps'], 2.)
+    meta = sparse.run_dir/'checkpoints/initial_validation.yaml'
+    payload = yaml.safe_load(meta.read_text()); payload['validation_seeds'] = [1, 2, 4]
+    meta.write_text(yaml.safe_dump(payload))
+    with pytest.raises(ValueError, match='validation CRN mismatch'):
+        R.credit_learning_rows([dense, sparse])
+
+
 def test_treatment_figure_includes_pure_auction_access(tmp_path, monkeypatch):
     data = pd.DataFrame([dict(contrast_key=key, algorithm=algo, mean_difference=1.)
                          for key, *_ in publication.TREATMENT_CONTRASTS for algo in R.ALGOS])
@@ -200,11 +219,11 @@ def test_complete_curated_bundle_and_read_only_inputs(tmp_path, monkeypatch, ame
         path.write_text(json.dumps(protocol))
     inputs = {p: hashlib.sha256(p.read_bytes()).hexdigest() for p in tmp_path.rglob("*") if p.is_file()}
     out = R.generate(tmp_path, [9501, 9502], complete=True, treatments=True)
-    assert len(list((out / "figures").glob("*.pdf"))) == 4
-    assert len(list((out / "figures").glob("*.png"))) == 4
+    assert len(list((out / "figures").glob("*.pdf"))) == 5
+    assert len(list((out / "figures").glob("*.png"))) == 5
     assert len(list((out / "tables").glob("*.tex"))) == 3
     assert len(pd.read_csv(out / "audit/economic_by_seed.csv")) == 6*6*2
-    assert len(pd.read_csv(out / "audit/treatments_by_seed.csv")) == 7*4*2
+    assert len(pd.read_csv(out / "audit/treatments_by_seed.csv")) == 5*4*2
     manifest = json.loads((out / "manifest.json").read_text())
     assert manifest["publication"] is False
     assert len(manifest["runs"]) == 88

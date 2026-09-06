@@ -619,6 +619,8 @@ class DQNAgent(Agent):
                 {phase: network.architecture for phase, network in self.q.items()}):
             raise ValueError('checkpoint DQN phase architecture mismatch')
         contract = state.get("dqn_contract")
+        if isinstance(contract, dict) and isinstance(contract.get('algo1'), dict):
+            contract['algo1'].setdefault('clob_forecast_weights', ())
         if isinstance(contract, dict):
             contract.get('hyperparams_except_device', {}).setdefault('weight_decay', 0.0)
             contract.get('hyperparams_except_device', {}).setdefault('auction_control_exploration_probability', 0.0)

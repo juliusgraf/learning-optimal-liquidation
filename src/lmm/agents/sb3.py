@@ -19,6 +19,7 @@ from stable_baselines3 import DDPG, SAC, TD3
 from stable_baselines3.common.buffers import ReplayBuffer
 from stable_baselines3.common.logger import configure
 from stable_baselines3.common.type_aliases import ReplayBufferSamples
+from stable_baselines3.td3.policies import TD3Policy
 
 from lmm.agents.base import Agent, ENVIRONMENT_CONTRACT
 from lmm.env.action_spaces import continuous_action_specs
@@ -35,6 +36,27 @@ class _SpacesOnlyEnv(gym.Env):
 
     def step(self, action):
         raise RuntimeError("The shared market episode loop owns environment interaction")
+
+
+class LayerNormCriticPolicy(TD3Policy):
+    """Native SB3 actor/updates, with normalized critic hidden features.
+
+    Both online and target critics are built by the same factory. There is
+    no batch statistic, extra critic, delayed actor update, or target noise.
+    """
+
+    def make_critic(self, features_extractor=None):
+        critic = super().make_critic(features_extractor)
+        for i, network in enumerate(critic.q_networks):
+            modules = []
+            for j, layer in enumerate(network):
+                modules.append(layer)
+                if isinstance(layer, torch.nn.Linear) and j < len(network) - 1:
+                    modules.append(torch.nn.LayerNorm(layer.out_features))
+            normalized = torch.nn.Sequential(*modules).to(self.device)
+            critic.q_networks[i] = normalized
+            setattr(critic, f"qf{i}", normalized)
+        return critic
 
 
 class PhaseReplayBuffer(ReplayBuffer):
@@ -85,6 +107,11 @@ class SB3Agent(Agent):
         self.models, self.replay = {}, {}
         specs = continuous_action_specs(cfg)
         cls = {"ddpg": DDPG, "td3": TD3, "sac": SAC}[self.name]
+        normalized_critic = getattr(self.hp, "critic_layer_norm", False)
+        if not isinstance(normalized_critic, bool):
+            raise ValueError('critic_layer_norm must be boolean')
+        if normalized_critic and self.name == "sac":
+            raise ValueError("critic_layer_norm currently supports deterministic SB3 policies")
         for phase in self.PHASES:
             kwargs = {}
             if self.name == "sac":
@@ -94,7 +121,8 @@ class SB3Agent(Agent):
                               target_policy_noise=self.hp.target_noise_std,
                               target_noise_clip=self.hp.target_noise_clip)
             model = cls(
-                "MlpPolicy", _SpacesOnlyEnv(len(cfg.features.clob), specs[phase].dim),
+                LayerNormCriticPolicy if normalized_critic else "MlpPolicy",
+                _SpacesOnlyEnv(len(cfg.features.clob), specs[phase].dim),
                 learning_rate=self.hp.learning_rate, buffer_size=self.hp.buffer_size,
                 learning_starts=getattr(self.hp, f"min_buffer_{phase}"),
                 batch_size=self.hp.batch_size, tau=self.hp.target_soft_tau, gamma=1.0,
@@ -251,6 +279,8 @@ class SB3Agent(Agent):
     def load(self, path):
         state = torch.load(Path(path), map_location=self.device, weights_only=False)
         contract = state.get("contract")
+        if isinstance(contract, dict) and isinstance(contract.get('algo1'), dict):
+            contract['algo1'].setdefault('clob_forecast_weights', ())
         if isinstance(contract, dict):
             historical = contract.get('midprice', {}).get('historical')
             if isinstance(historical, dict):

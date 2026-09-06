@@ -550,8 +550,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         ],
     )
     forecast_summary_rows: list[dict] = []
-    for policy in policies:
-        rows = [row for row in forecast_rows if row["policy"] == policy]
+    for policy, phase in ((p, ph) for p in policies for ph in ("clob", "auction")):
+        rows = [row for row in forecast_rows if row["policy"] == policy and row["phase"] == phase]
         buckets = sorted(
             {int(float(row["time_to_close"]) // 10) * 10 for row in rows},
             reverse=True,
@@ -570,6 +570,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             forecast_summary_rows.append(
                 {
                     "policy": policy,
+                    "phase": phase,
                     "time_to_close_bin_lo": bucket,
                     "time_to_close_bin_hi": bucket + 10,
                     "n": len(selected),
@@ -588,7 +589,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         run_dir / "eval" / "h_forecast_summary.csv",
         forecast_summary_rows,
         [
-            "policy", "time_to_close_bin_lo", "time_to_close_bin_hi", "n",
+            "policy", "phase", "time_to_close_bin_lo", "time_to_close_bin_hi", "n",
             "signed_bias", "mae", "rmse",
             "mae_improvement_vs_contemporaneous_mid",
             "mae_improvement_vs_opening_mid",

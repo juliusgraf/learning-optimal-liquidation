@@ -145,9 +145,9 @@ def test_treatment_launcher_reuses_shaped_headline_instead_of_retraining_alias()
     script = (REPO / "scripts" / "run_synthetic_treatments.sh").read_text()
     arms = script.split("ARMS=(", 1)[1].split(")", 1)[0]
     assert "ablation_h_on_shaping_on" not in arms
-    assert "ablation_h_on_shaping_off" in arms
+    assert "mechanism_economic_sparse" in arms
     assert "canonical synthetic headline" in script
-    assert (REPO / "configs/treatment/ablation_h_on_shaping_off.yaml").exists()
+    assert (REPO / "configs/treatment/mechanism_economic_sparse.yaml").exists()
 
 
 def test_full_publication_rejects_noncanonical_seed_subset():

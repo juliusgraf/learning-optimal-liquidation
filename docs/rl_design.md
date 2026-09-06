@@ -1,9 +1,9 @@
-# Learning and evaluation contract (v18)
+# Learning and evaluation contract (v19)
 
 `configs/base.yaml` and the algorithm/treatment overlays are the executable
 specification. `paper/main.tex` defines the control problem. The protected
-manuscript has not been edited: `docs/manuscript_recommendations_v18.patch` gives
-precise proposed changes, and `docs/pathology_repair_v18.md` records the diagnosis
+manuscript has not been edited: `docs/manuscript_recommendations_v19.patch` gives
+precise proposed changes, and `docs/pathology_repair_v19.md` records the diagnosis
 and limits of the bounded verification.
 
 ## Economics and observations
@@ -40,9 +40,23 @@ The raw observation remains the common 18-coordinate manuscript vector:
 Before fitting standardization, `h_cl` becomes `h_cl-s_mid`; each weighted
 quote becomes `weighted_quote-s_mid*slope`. The original midprice and slopes
 are retained, so this is a deterministic invertible coordinate change in
-H-on runs. H-off runs set the transformed H coordinate to zero and anchor
-auction actions on the frozen midprice. No future grid, arrivals or prices
+H-on runs. H-off runs set the transformed H coordinate to zero. H observation and auction
+anchor now have independent switches; the controlled H comparison holds the
+anchor at frozen midprice in both arms. No future grid, arrivals or prices
 enter any feature or action.
+
+Before use as a future-close signal during the CLOB, Algorithm 1's raw output
+is calibrated as `H=mid+w[b]*(H_raw-mid)` in four equal time bins. Restricted,
+no-intercept least squares fits the four weights on 256 independent training
+no-order paths, with actual closing price as the target. Synthetic weights
+are `[0, .190153, .234565, .414256]`; historical training-pool weights are
+`[.192784, .314044, .386180, .525631]`. All weights are frozen for every algorithm
+and treatment. The internal raw estimator and exogenous carryover are unchanged.
+During the auction, the original indicative calculation is used. This is a
+change to the implemented forecast and hence the forecast-dependent shaped J,
+not a change to settlement or order flow. Its validation improves CLOB MAE;
+it does not guarantee economic improvement. The original indicative auction
+anchor remains the headline default. See the v19 report for errors by phase.
 
 The normalizer is fitted on 16 independent training paths and frozen. Its
 four calibration modes cover random actions, persistent auction schedules,
@@ -87,7 +101,13 @@ z_hat = G_own*delta - (W_own-mid*G_own)
 Phi = (mid-S0)*inventory + delta*z_hat - lambda*(inventory-z_hat)^2
 ```
 
-The terminal potential is exactly zero. This approximate continuous-root
+The terminal potential is exactly zero. The economic-sparse mechanism removes
+only `delta*z_hat-lambda*(inventory-z_hat)^2` in the auction through
+`rl.learning_auction_inventory_potential=false`; mark-to-mid centering and
+CLOB conditioning remain. Since midprice is frozen during the auction,
+a persistent unchanged schedule then receives no action-dependent intermediate
+potential credit. Both dense and sparse versions have the same episode
+objective after the terminal correction. This approximate continuous-root
 liquidation value is only a control variate; actual clearing, fills and cash
 continue to use the original simulator. The potential telescopes. In the
 rebased settings Phi(initial)=0. In addition, replay subtracts the realized
@@ -158,6 +178,15 @@ classes remain solely for regression characterization; they are not selected
 by the active continuous algorithm overlays. Their tests use explicit frozen
 algorithm fixtures, while active integration tests exercise SB3 itself.
 
+DDPG now uses critic-only hidden LayerNorm (two 256-unit layers, learned affine
+parameters, before ReLU). The final scalar output is unrestricted. The SB3
+policy factory builds both online and target critics this way. Actor layers,
+single critic, actor update every step, absence of target smoothing, rates,
+Polyak coefficient and native DDPG losses are unchanged. This addresses the
+observed feedback between critic overestimation and actor over-selling; it
+is not a conversion to TD3. A config switch allows the paired old-critic
+control. TD3 and SAC do not enable this architecture change.
+
 Each phase has a separate library model and replay buffer. `model.train(1)`
 performs the library losses, backward passes, optimizer and target updates.
 At a CLOB/auction junction, the replay adapter computes the current auction
@@ -198,15 +227,30 @@ with the same 800-episode cap. Final evaluation uses
 separate seeds and common random numbers for all policies. A larger training
 return is not evidence of greater economic value or benchmark superiority.
 
-The canonical headline is H-on/shaping-on/auction-on. The launcher reuses it
-for that 2x2 cell and trains H-on/shaping-off, H-off/shaping-on and
-H-off/shaping-off as distinct treatments. No-cancellation retains headline
-shaping. The no-auction arm disables H and all shaping, so its contrast is a
-bundle. The report also contrasts H-off/shaping-off with no-auction, isolating
-auction access under matched H/shaping settings. An additional
-same-CLOB/auction-noop counterfactual measures the
-direct execution contribution of the auction without claiming a retrained
-no-auction optimum.
+The canonical headline is H-on/shaping-on/auction-on with the indicative anchor.
+Five additional synthetic cells isolate mechanisms, with identical training
+seeds, market parameters and economic evaluation:
+
+| Cell | H feature | Anchor | CLOB preference | Auction preference | Auction potential |
+|---|---|---|---|---|---|
+| Headline | on | indicative | on | on | on |
+| Fixed-anchor full | on | frozen mid | on | on | on |
+| Economic dense | on | frozen mid | off | off | on |
+| Economic sparse | on | frozen mid | off | off | off |
+| H feature off | off | frozen mid | off | off | on |
+| No auction | off | frozen mid | off | off | inactive |
+
+The report compares dense versus sparse economic training at common observed
+budgets as well as at selected checkpoints; this measures credit assignment
+without changing the economic objective. The H comparison holds the anchor
+and rewards fixed. The anchor comparison retains H and the complete shaped J.
+The fixed-anchor full arm tests the combined manuscript preferences. The
+CLOB-only and auction-only arms remain optional; the final matrix does not
+identify their separate effects. Auction access compares H-off economic
+training with and without the auction. A same-CLOB auction-noop counterfactual
+also measures direct auction execution value, without claiming to represent a
+retrained no-auction optimum. Legacy bundled H/shaping and no-cancellation
+overlays remain available outside the canonical matrix.
 
 Schema 15 and the new environment contract prevent accidental reuse of v12
 checkpoints or publication artifacts. Full production runs remain at the
@@ -257,11 +301,11 @@ results are still required for publication claims about cross-seed rankings.
 
 The publication matrix has ten fixed seeds (42, 7, 99, 123, 2024, 314, 577,
 811, 1618, 2718), 440 runs and 100 economic test episodes per selected policy.
-The final simulation RNG uses a fresh namespace, 18001, while preserving
+The final simulation RNG uses a fresh namespace, 19001, while preserving
 matched environment seeds across policies and arms. Training RNG is unchanged.
 Historical training and normalizer fitting sample whole rebased sessions
 from all five stocks on the training dates only (50 sessions). Validation and
 evaluation use the requested stock on their separate date partitions. The
-v17 test week has already been inspected: a fresh simulation RNG does not
+v17/v18 test week has already been inspected: a fresh simulation RNG does not
 make those historical dates an untouched holdout. Broader historical claims
 require a subsequently frozen date block, not more resampling of those dates.

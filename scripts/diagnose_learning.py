@@ -125,6 +125,9 @@ def main():
                              terminal_inventory=r.i_final, auction_qty=r.auction_exec_qty,
                              **r.diagnostics))
     pd.DataFrame(training).to_csv(args.output / 'training.csv', index=False)
+    # Keep the actual last iterate: a best-only report cannot establish that
+    # a stability intervention prevents regression.
+    agent.save(args.output / 'final.pt')
     if args.save_stress_checkpoint:
         if args.algo != 'dqn':
             raise ValueError('replay stress checkpoint currently supports DQN only')

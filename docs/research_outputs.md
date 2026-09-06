@@ -1,12 +1,12 @@
-# Launch and research outputs
+# Launch and research outputs (v19)
 
-The full launcher trains the current v18 specification and then produces a
-focused research report. Training uses the approved weighted shaped J;
-checkpoint selection and final comparisons use the economic objective.
-The v18 production experiment has not been run in this repair task.
-Short launcher tests check operation, not the eventual scientific conclusions.
+Headline training retains the author-approved weighted shaped objective
+`J_omega`, with `omega=.0001`, `q=0` and both manuscript shaping terms enabled.
+Selection and all economic comparisons use `Jbar_lambda`. V19 adds a calibrated
+CLOB forecast, critic LayerNorm for native SB3 DDPG and mechanism-specific
+controls. The full v19 experiment has not been run during this repair.
 
-After reviewing/committing the changes and leaving the tree clean, run:
+After reviewing and committing the changes, with a clean working tree:
 
 ```bash
 cd /Users/juliusgraf/Learning-Market-Making
@@ -15,299 +15,143 @@ unset LMM_RESULTS_ROOT
 scripts/run_multiseed.sh --jobs 10 --threads-per-job 1
 ```
 
-Use the normal `results/revision_v18` namespace; unset `LMM_RESULTS_ROOT` first
-if your shell has a development override. Ten workers each have one numerical
-thread, a starting point for the current 15-core Apple M5 Pro with 24 GB RAM.
-The queue assigns individual experiments across all seeds, algorithms, tickers
-and treatments; a worker immediately takes another experiment when it finishes.
-`--jobs` is no longer capped by the master-seed count. Lower it to eight if other
-applications need resources. More workers are supported but do not guarantee
-more throughput once CPU or memory bandwidth is saturated. Keep the commit/configuration
-unchanged during the experiment. No API credentials or new quote download are
-needed: historical runs consume the frozen repository inputs.
-
-The matrix contains 440 learned-policy runs:
+The default output root is `results/revision_v19`. Ten workers, each with one
+numerical thread, share a queue of individual experiments. Eight workers is
+also reasonable if other applications need resources. Keep the code and
+configuration fixed during the campaign. Historical runs consume the frozen
+repository inputs and require no new quote download. Existing v18 results
+remain an archive, not resumable v19 training.
 
 | Block | Runs |
 |---|---:|
 | Synthetic headline: four algorithms × ten seeds | 40 |
 | Historical headline: four algorithms × five tickers × ten seeds | 200 |
-| Five additional synthetic treatments × four algorithms × ten seeds | 200 |
+| Five additional synthetic cells × four algorithms × ten seeds | 200 |
+| Total | 440 |
 
-Seeds are 42, 7, 99, 123, 2024, 314, 577, 811, 1618, 2718; tickers are MSFT, JPM, PG, GOOGL and CAT.
-Each run has an 800-episode maximum, 128-path validation every 50 episodes,
-and 100 test episodes. Early stopping can end training sooner. Initial
-validation, feature fitting and benchmark calibration are additional work.
-The short queue smoke checks verify scheduling and complete output generation;
-they do not establish steady-state speedup for 800-episode training.
+The seeds are 42, 7, 99, 123, 2024, 314, 577, 811, 1618 and 2718. Each run
+has an 800-episode cap, economic validation on 128 paths every 50 episodes,
+and the existing maturity gate and patience rule. Each selected policy is
+then evaluated on 100 separate simulation paths. The new simulation namespace
+19001 does **not** make the previously inspected historical dates an untouched
+holdout. Do not claim out-of-sample evidence on new securities or dates from
+this rerun. See [the evidence and limitations](pathology_repair_v19.md).
 
-The headline supplies the H-on/shaping-on factorial cell, so it is not trained
-twice. Representation controls remain optional development experiments, outside
-this publication matrix. DQN/DDPG/TD3 use phase/asinh preprocessing;
-SAC retains pooled standardization. DQN uses the normalized Q representation
-and one-step replay detailed in [the auction follow-up](dqn_auction_repair_v18.md).
-The comparison includes those
-implementation choices.
+## The report to read
 
-The launcher requires a clean commit. It skips an existing run only after
-exact configuration and completion-manifest validation. Partial, drifted or
-nonreportable runs stop the pipeline with their path. Retain/move a partial
-run for diagnosis and restart the command; there is no automatic partial
-checkpoint resume. A failed training seed is not dropped or replaced by a
-hand-picked seed. Failures stop new dispatch; already running jobs finish.
-Ctrl-C terminates active worker process groups. A kernel lock prevents two
-launchers writing the same results root, including during final reporting. Every seed is retained even if it does not improve on initialization.
-Only an absent mature checkpoint or invalid/incomplete artifacts prevent
-reporting. The first maturity-eligible checkpoint is evaluated immediately;
-four eligible evaluations without improvement stop training. For the archived
-v17 campaign only, use the explicit, matrix-wide
-[best-mature reporting amendment](reporting_amendment_v17.md). It retains the
-non-improving result and evaluates its saved checkpoint without retraining or
-altering the other completed runs. Do not restart training to resolve that gate.
+Open **`results/revision_v19/_publication/index.html`** after completion.
+It contains five figure groups and three tables. Figures are vector PDF plus
+PNG, and tables are numeric CSV plus LaTeX. The report preserves negative
+results and poor seeds. Its pointwise 95% bootstrap intervals resample
+training-seed means; 100 episodes are not 100 independent trained policies.
+Historical tickers appear separately. The auction summary's historical mean
+weights the fixed tickers equally within each seed.
 
-## Prior local concurrency check
-
-The prior v17 queue was checked on the current 15-core/24-GB Mac using the same 56-job
-smoke matrix with four training episodes per job and three evaluation episodes:
-
-| Resource configuration | Training/evaluation queue | Through final report |
-|---|---:|---:|
-| 5 workers × 2 threads | 117 seconds | 122 seconds |
-| 10 workers × 1 thread | 68 seconds | 73 seconds |
-
-This single short comparison was about 40% shorter with ten workers. It includes
-startup, small replay buffers and output overhead, so it is not a measured
-speedup for 800-episode training. Both matrices completed, and all 112 completion
-manifests remained valid after reporting. Queue tests cover more than five
-simultaneous jobs, immediate refill, failed-job dispatch stoppage, interruption
-cleanup, exclusive results-root locking, and one final report. Evidence is in
-`docs/verification_outputs/queue_verification.json`.
-
-## What to open
-
-Start with **`results/revision_v18/_publication/index.html`**. It is a local,
-static report with all figures, interpretation, and download links. The same
-material is in `README.md`. The output bundle is deliberately small:
-
-| Artifact basename | Question it answers | Formats |
+| Output basename | Question answered | Formats |
 |---|---|---|
-| `economic_performance` | How do DQN, DDPG, TD3 and SAC compare with AS/TWAP on the economic objective in synthetic data and each historical ticker? The table also shows net PnL and paired objective differences against DQN and both references. | Figure PDF/PNG; table TeX/CSV |
-| `learning` | Does economic validation improve during shaped training? Are there late regressions or seed instability? Which checkpoint was actually selected? | Figure PDF/PNG |
-| `auction_mechanism` | How much does auction participation add with the CLOB policy fixed? How much is execution price edge net of fees versus inventory-risk relief? How much inventory reaches the auction and remains afterward? | Figure PDF/PNG; table TeX/CSV |
-| `treatments` | What changes when shaping, the H/anchor bundle or cancellation is switched? What is the matched H-off/shaping-off auction-access effect, and the bundled full-model/no-auction difference? | Figure PDF/PNG; table TeX/CSV |
+| `economic_performance` | How do economic PnL and risk-adjusted PnL compare with DQN, AS and TWAP? | Figure and table |
+| `learning` | Does economic validation improve, and where do individual seeds regress? | Figure |
+| `auction_mechanism` | How much auction inventory arrives, and what is the direct execution/risk contribution? | Figure and table |
+| `treatments` | Which of the five isolated mechanisms changes selected economic performance? | Figure and table |
+| `credit_assignment` | Does dense auction guidance improve economic learning at the same training budget? | Figure |
 
-Figures live in `figures/`, tables in `tables/`. Colorblind-safe colors identify
-algorithms consistently; figures use dots/intervals or learning curves, readable
-small multiples, zero reference lines and vector PDF text. No arbitrarily
-ordered cumulative episode plots, reward-composition pies, per-run histograms,
-or critic-loss grids enter the default bundle. Raw data are retained.
+The two learning figures show actual observed validation values. The aggregate
+is drawn only where all seeds have observations; stopped runs are never
+carried forward and raw curves are never replaced by their running maximum.
+The credit figure pairs dense and sparse validation paths and budgets,
+rejecting a mismatched random-seed set. This is the figure most directly
+relevant to the original thirty-step credit-assignment motivation.
 
-All comparisons use basis points of initial notional. This permits a common
-interpretation across the normalized markets without claiming empirical dollar
-profits. The primary figure shows every ticker separately, retaining mixed
-rankings. Net PnL includes cancellation fees. The economic objective subtracts
-terminal inventory penalty; neither includes training shaping.
+The direct auction contribution uses the same learned CLOB trajectory and
+then compares actual auction execution with submitting no auction orders:
 
-## Uncertainty and interpretation
-
-The primary estimand is the **mean** test outcome across episodes, then across
-training seeds. An IQM would change that expected-value estimand and discard
-some extreme seed outcomes. Each training seed receives equal weight. Tiny
-points show every seed; larger points and lines show means with deterministic
-95% percentile bootstrap intervals (10,000 resamples, bootstrap seed zero).
-One-seed development reports display point estimates without an interval.
-
-References are checked for identical economic outcomes and CRN keys across
-algorithm runs and are counted once per seed. Comparisons pair both episode
-number and environment seed before forming within-seed differences. Treatment
-contrasts use the same pairing. Cross-ticker auction means average the fixed
-reported ticker set within each seed and resample whole seed blocks, preserving
-cross-ticker dependence. Historical training now pools all 50 training stock--sessions, while
-validation/evaluation are stock-specific. The final simulation seed namespace
-is fresh, but the historical test week was already inspected in v17. There is
-no claim of population uncertainty over new stocks, fresh dates, or all market
-regimes. Ten training seeds still provide limited
-precision; intervals are pointwise and exploratory, with no multiple-testing
-significance stars. Do not infer pairwise significance from overlapping or
-non-overlapping separate-policy intervals; use the paired-difference columns.
-
-Learning plots use **validation**, never test results or the maximum observed
-validation as a final outcome. Individual seed traces and selected-checkpoint
-stars are retained. The aggregate mean/band only uses checkpoints observed for
-every requested seed; it stops at the end of common support. There is no
-forward-fill, smoothing or best-so-far envelope to conceal late regression.
-The horizontal coordinate counts completed training episodes, with the initial
-untrained policy at zero.
-
-For the auction, let `I_open = I0 - clob_exec_qty`, let `Z` be the actual signed
-auction execution, and let `P_open` be the frozen residual-inventory mark. The
-report computes the exact objective difference against no auction orders on
-the same CLOB trajectory:
-
-```text
-auction value = Z * (S_cl - P_open) - cancellation fees
-                + lambda * (I_open**2 - I_final**2)
+```
+auction_value = (S_cl - frozen_mid) * auction_qty - cancellation_cost
+                + lambda * (opening_inventory^2 - final_inventory^2)
 ```
 
-Actual signed settlement is preserved, including negative final inventory and
-negative contributions. The no-order counterfactual retains inventory at the
-same policy-independent mark and incurs no auction cancellation fees. It does
-not require another simulation. Inventory plots show **mean absolute** exposure,
-so short and long positions cannot cancel in the average. The bundled
-no-auction treatment separately changes training and observables; it must not
-be described as isolating auction participation alone. The seventh treatment
-contrast isolates auction access by comparing the H-off/shaping-off auction-on
-arm against the no-auction arm, using already-required training runs.
+This separates price edge and fees from inventory-risk relief. It is not the
+value of an optimally retrained no-auction policy. Small or negative values
+remain visible. A controller that already liquidates in the CLOB has little
+remaining liquidation risk for the auction to remove.
 
-These reporting choices use the emphasis on uncertainty and raw run variability
-in [Agarwal et al., NeurIPS 2021](https://papers.neurips.cc/paper_files/paper/2021/hash/f514cec81cb148559cf475e7426eed5e-Abstract.html)
-and the experimental-design guidance of
-[Patterson et al., JMLR 2024](https://www.jmlr.org/papers/v25/23-0183.html).
-A broad benchmark-suite performance-profile plot is not needed for this
-focused economic comparison.
+## What the five treatment contrasts mean
 
-## Audit and regeneration
+All treatments are retrained, and each contrast pairs the same master seeds
+and evaluation market paths. The canonical headline retains H, both shaped
+preferences, the indicative anchor and dense replay conditioning.
 
-Within `_publication/audit/`:
+| Contrast | What is held fixed |
+|---|---|
+| Economic dense − economic sparse | Economic training objective, H feature and frozen-mid anchor; only action-dependent auction potential guidance changes |
+| H feature on − off | Economic training, dense conditioning and frozen-mid anchor |
+| Indicative − frozen-mid anchor | H feature, complete shaped J and dense conditioning |
+| Combined preferences on − off | H, frozen-mid anchor and dense conditioning |
+| Auction access on − off | H off and economic training; auction-on arm uses the frozen-mid grid |
 
-- `economic_by_seed.csv`: each policy's seed mean, paired DQN/benchmark/initial
-  differences, auction components, residual inventory and short frequency.
-- `validation_by_seed.csv`: each observed validation point and selected flag.
-- `validation_common_support.csv`: the exact points and intervals on the heavy
-  learning curves, with seed counts.
-- `treatments_by_seed.csv`: each paired treatment estimate, run paths and digest
-  of the common evaluation seed vector.
+Sparse here means sparse **auction control credit**. It retains CLOB potential
+conditioning and market-return centering. Both potentials are terminal-corrected,
+so dense versus sparse does not change the episodic economic objective.
+Removing a manuscript preference does change the training objective. These
+are different scientific questions; neither contrast guarantees a positive sign.
+The CLOB-only and auction-only preference arms are optional follow-ups outside
+the final matrix. Omitting them saves 80 runs (15.4% of the initial plan), but
+means the production results identify only the combined manuscript-preference
+effect, not its individual components. All four algorithms, ten seeds, five
+historical tickers and the distinct information/anchor controls are retained.
+Legacy bundled H/anchoring and no-cancellation controls are also optional.
 
-`manifest.json` records all contributing runs, key input hashes, the report
-implementation hash and generated output hashes. Publication generation also
-validates the existing run completion manifests, including checkpoint contents,
-exact configs and clean Git commit. Older result namespaces are never mixed in.
-No result or checkpoint is re-evaluated by output generation.
+## Supporting records and forecast diagnostics
 
-The explicit v17 reporting amendment preserves the saved training commit and
-original completion manifests, verifies unchanged execution sources outside the
-declared reporting modules, and binds the exact amended source snapshot. This
-allows reporting after committing those same reporting changes. Amended bundles
-also contain `checkpoint_selection.csv`, `reporting_protocol.json` and a
-ready-to-include `reporting_amendment.tex` in `audit/`; see the amendment document
-for the required disclosure and the separate, evaluation-only recovery command.
+The report's `audit/` directory contains:
 
-The raw run directories are unchanged:
+- `economic_by_seed.csv`: economic outcomes, benchmark gaps and auction decomposition.
+- `validation_by_seed.csv` and `validation_common_support.csv`: unaltered learning observations and supported aggregates.
+- `treatments_by_seed.csv`: paired treatment effects with provenance.
+- `credit_learning_by_seed.csv` and `credit_learning_common_support.csv`: matched dense-minus-sparse validation results.
+
+The report `manifest.json` records inputs and scope. Each run has its resolved
+configuration, training metrics, checkpoint/selection metadata and `eval/`
+records. Run directories are:
 
 ```text
-results/revision_v18/synthetic_rough_heston/<algo>_seed<seed>/
-results/revision_v18/historical_sp500_midquotes/<algo>_<ticker>_seed<seed>/
-results/revision_v18/synthetic_rough_heston__<arm>/<algo>__<arm>_seed<seed>/
+results/revision_v19/synthetic_rough_heston/<algo>_seed<seed>/
+results/revision_v19/historical_sp500_midquotes/<algo>_<ticker>_seed<seed>/
+results/revision_v19/synthetic_rough_heston__<arm>/<algo>__<arm>_seed<seed>/
 ```
 
-Each contains resolved configuration/seed/commit/runtime provenance,
-`metrics.csv`, normalizer and split-seed state, `checkpoints/best.pt` with
-selection sidecars, initial/final checkpoints, `eval/records.csv`, economic
-metadata, traces/action/forecast diagnostics, paired reference differences,
-and `pipeline_complete.json`. The launcher console shows starts/completions. Detailed training progress is
-in each run's `logs/run.log`. `_orchestration/status.json` records queued,
-active, completed and failed job identities, elapsed time and the concurrency
-limit; `_orchestration/<block>__<algo>_seed<seed>.log` captures each full pipeline.
-The results-root lock file may remain after completion; kernel locking, not
-its mere existence, determines whether another launcher is active. Periodic replay-heavy resume snapshots are suppressed by the full
-launcher; selected and final policies remain available.
+In each `eval/`, `h_forecast_summary.csv` reports bias, MAE, RMSE and improvement
+against contemporaneous midprice by **policy, phase and time-to-close bin**.
+Inspect CLOB and auction separately: a good pooled H score can conceal a poor
+CLOB forecast. Raw forecast records support more detailed diagnostics; use
+market paths, rather than individual correlated forecast times, as resampling
+units. These auxiliary data do not create extra default publication figures.
 
-Inspect the full 440-job command plan without training (works before committing):
+## Regeneration and manuscript integration
+
+Inspect the entire command plan without training:
 
 ```bash
 scripts/run_multiseed.sh --jobs 10 --threads-per-job 1 --dry-run
 ```
 
-Regenerate the focused report, without training:
+Regenerate the report from completed matching artifacts:
 
 ```bash
 scripts/make_multiseed_outputs.sh --publication
 ```
 
-For optional detailed debugging only:
+`--diagnostics` adds the legacy comprehensive outputs outside the publication
+bundle. Smoke and development reports are labelled separately and are not
+scientific training results. The bounded repair ledger can be rebuilt without
+learning using `.venv/bin/python scripts/summarize_v19.py`.
 
-```bash
-scripts/make_all_outputs.sh --seed 42 --diagnostics
-scripts/make_multiseed_outputs.sh --publication --diagnostics
-```
-
-Those comprehensive legacy outputs remain outside `_publication`. Without
-`--diagnostics`, `make_all_outputs.sh --seed N` now produces a focused
-single-seed development report under `_single_seedN/`. A nonpublication
-multiseed report is under `_development/` and clearly labelled as such.
-
-## Exact manuscript recommendations, not applied
-
-`paper/main.tex` and `paper/results/tables_params/params_generative.tex` remain
-untouched. The existing calibration/reward recommendations in
-`docs/manuscript_recommendations_v18.patch` remain separate from output inclusion.
-Do not treat the old parameter table as the active run specification.
-
-The current manuscript has no result figure inclusions to replace. After
-reviewing the full report, copy its `figures/` and `tables/` directories to
-`paper/results/research_report/`. In `paper/main.tex`, insert
-`\usepackage{longtable}` immediately after `\input{packages}`. Insert the
-following immediately before `\bibliographystyle{plain}` (after the existing
-`\newpage`). The captions below deliberately contain no numerical conclusions
-until the production results have been read:
-
-```tex
-\section{Learning and Economic Evaluation}
-We train the headline policies on the weighted shaped objective $J$ and
-select mature checkpoints using economic validation performance. Held-out
-comparisons report economic risk-adjusted PnL in basis points of initial
-notional. We average episodes within each training seed and then average
-seeds equally. Intervals are pointwise 95\% percentile bootstrap intervals
-of seed means; ten seeds still limit inferential precision. AS and TWAP are
-stylized references. The algorithm implementations include the declared
-preprocessing choices. No test outcomes enter checkpoint selection.
-
-\begin{figure}[p]
-\centering
-\includegraphics[width=\textwidth]{results/research_report/figures/economic_performance.pdf}
-\caption{Held-out economic performance. Large points and intervals summarize
-training-seed means; small points show every seed. Historical tickers are
-reported separately.}
-\label{fig:economic_performance}
-\end{figure}
-
-\begin{figure}[p]
-\centering
-\includegraphics[width=\textwidth]{results/research_report/figures/learning.pdf}
-\caption{Economic validation during shaped training. Thin lines show seeds;
-stars identify selected checkpoints. Aggregate means and pointwise intervals
-stop when common observed checkpoint support ends.}
-\label{fig:economic_learning}
-\end{figure}
-
-\begin{figure}[p]
-\centering
-\includegraphics[width=\textwidth]{results/research_report/figures/auction_mechanism.pdf}
-\caption{Auction contribution relative to no auction orders with the CLOB
-trajectory fixed. Total value combines execution price edge, cancellation
-fees and inventory-risk relief. Inventory panels show mean absolute exposure.
-Historical summaries average the fixed ticker set within each seed.}
-\label{fig:auction_mechanism}
-\end{figure}
-
-\begin{figure}[p]
-\centering
-\includegraphics[width=\textwidth]{results/research_report/figures/treatments.pdf}
-\caption{Paired synthetic treatment effects. Positive values favor the first
-condition. H changes the observed signal and action anchoring. The full versus
-no-auction contrast bundles auction access, H/anchor and shaping. Intervals
-are pointwise, with no familywise significance claim.}
-\label{fig:treatments}
-\end{figure}
-
-\clearpage
-\input{results/research_report/tables/economic_performance}
-\input{results/research_report/tables/auction_mechanism}
-\input{results/research_report/tables/treatments}
-```
-
-The three tables are multipage `longtable` environments; do not wrap them in
-`table` floats. They can instead be placed in an appendix if journal page limits
-favor the four figures in the main text. For the protected generative-parameter
-table, use the exact numerical recommendations in the v18 review patch;
-output generation does not require modifying that file.
+Both protected TeX files remain untouched. The exact consolidated proposed
+changes are in [manuscript_recommendations_v19.patch](manuscript_recommendations_v19.patch).
+They document the forecast, learning implementation, calibration and experimental
+protocol; they do not insert conclusions from an unrun campaign. After reading
+the final report, copy only chosen figures/tables into `paper/results/` and
+cite their supplied methods/captions. Prefer economic performance, auction
+mechanism and the mechanism/credit figures for the main argument; use the raw
+learning curves to substantiate stability. Tables can provide appendix numbers
+without duplicating every figure in the main text.

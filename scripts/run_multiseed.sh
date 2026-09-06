@@ -102,7 +102,7 @@ if [[ "$SMOKE" -eq 0 ]]; then
   fi
 fi
 
-QUEUE_ARGS=(--root "${LMM_RESULTS_ROOT:-results/revision_v18}" --seeds $SEEDS
+QUEUE_ARGS=(--root "${LMM_RESULTS_ROOT:-results/revision_v19}" --seeds $SEEDS
             --jobs "$JOBS" --threads-per-job "$THREADS_PER_JOB")
 [[ "$SMOKE" -eq 1 ]] && QUEUE_ARGS+=(--smoke)
 [[ "$DRY_RUN" -eq 1 ]] && QUEUE_ARGS+=(--dry-run)
