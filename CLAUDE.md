@@ -26,7 +26,8 @@ not implementation specifications.
 
 - Synthetic and historical settings share the simulator, action, reward,
   learner, and evaluation configuration. Setting overlays select the
-  exogenous mid-price source and run identity only.
+  exogenous mid-price source, run identity and training-only forecast
+  reliability coefficients.
 - A policy observes only current state. Future random grid points and future
   arrivals remain simulator-private.
 - The strategic CLOB order is one-sided, lives for one realized interval, and
@@ -40,12 +41,13 @@ not implementation specifications.
 - The manuscript auction coordinates use `B_inf` for the absolute admissible
   offset of executed `b` and `B_max` for the local policy coordinate `ell`.
   Config and documentation must preserve those distinct roles.
-- `actions.auction_anchor` is `indicative` exactly when `H_cl` is observed and
-  `frozen_mid` in H-off treatments, so masks, projection, and execution cannot
-  leak the ablated indicative signal.
+- H-off treatments use the `frozen_mid` auction anchor so masks, projection,
+  and execution cannot leak the ablated indicative signal. H-visible controls
+  may use either anchor to distinguish forecast information from quote anchoring.
 - Training uses the reward selected by the resolved configuration: the
   headline uses the author-approved weighted, centered shaped J. The exact
-  unapplied manuscript edits are in docs/manuscript_recommendations_v16.patch.
+  unapplied manuscript edits are in docs/manuscript_recommendations_v19.patch,
+  with current integration guidance in docs/research_writeup_plan_v19.md.
   Shaping-off specifications are explicit treatments. The telescoping
   potential and frozen exogenous-price reference preserve policy differences;
   neither enters reported training J or economic PnL. Validation, checkpoint
@@ -74,3 +76,8 @@ not implementation specifications.
   for running a clean checkout; tracked raw archives support digest validation.
 - Preserve unrelated changes. Generate figures and tables from saved outputs;
   output generation must not step an environment.
+- The completed study and its follow-ups are the basis for writing. Keep
+  diagnostic output under `results/`; retain only compact evidence in `docs/`.
+  Superseded development files are indexed with exact recovery hashes in
+  `docs/cleanup_manifest.json`; do not restore them into the active workflow
+  merely to follow an archived instruction.

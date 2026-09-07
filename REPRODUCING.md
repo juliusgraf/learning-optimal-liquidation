@@ -1,457 +1,181 @@
-# Current v19 workflow
+# Reproducing the completed study
 
-The active contracts and algorithm details are in `docs/rl_design.md` and
-`docs/pathology_repair_v19.md`. The headline is H-on/shaping-on, trained on the
-author-approved weighted J and
-selected/evaluated on economic risk-adjusted PnL. Use a fresh results/revision_v19
-namespace; older outputs remain diagnosis inputs only. Stable-Baselines3 2.7.1
-is installed by the project dependency metadata.
+Training is finished: 440 main v19 runs and two subsequent 40-run synthetic
+comparisons. Use the saved results for writing. This guide documents how to check
+and regenerate them, and how to reproduce experiments if needed later.
+The [documentation index](docs/README.md) links the scientific protocol and
+findings; [rl_design.md](docs/rl_design.md) defines the learning contract.
 
-V19 retains weighted shaped J and its preferences. It adds training-only
-CLOB forecast reliability calibration and critic LayerNorm for native SB3 DDPG.
-Its six-cell synthetic matrix separates dense auction credit, H information,
-anchoring, combined reward preferences and auction access. All 43 bounded
-learning checks are recorded in `docs/verification_v19/learning_summary.csv`;
-they are development evidence, not full ten-seed results.
+## Environment and validation
 
-Bounded development verification (180 episodes, no final-test paths):
-
-```bash
-MPLCONFIGDIR=/tmp/lmm-mpl LMM_TORCH_INTRAOP_THREADS=1 LMM_TORCH_INTEROP_THREADS=1 \
-  .venv/bin/python scripts/diagnose_learning.py --algo dqn --seed 628 \
-  --episodes 180 --validation-size 64 --output results/my_dqn_diagnostic
-```
-
-Use `--algo ddpg`, `td3`, or `sac` with distinct output directories. Historical
-checks additionally pass `--setting historical_sp500_midquotes --symbol MSFT`.
-The command refuses more than 200 episodes or an existing output directory.
-
-DQN/DDPG/TD3 use phase-specific normalization and signed-asinh auction inventory
-coordinates; SAC retains pooled standardization. DQN additionally uses a
-normalized action-conditioned Q representation, AdamW and one-step Double-DQN replay.
-The auction follow-up also fixes zero-slope warm-up projection, control exploration
-coverage and the auction Q reference; see [the detailed audit](docs/dqn_auction_repair_v18.md).
-To run a matched
-representation control, append either
-`--config configs/treatment/representation_pooled.yaml` or
-`--config configs/treatment/representation_phase_asinh.yaml` to the bounded
-diagnostic command. These supplementary controls have distinct labels and
-are not added to the production treatment matrix. To reproduce a completed
-run exactly, pass its saved complete `config.yaml` via `--resolved-config`.
-The production launchers below retain the 800-episode cap and full treatment
-matrix. No production run was launched as part of the repair.
-
-# Reproducing the revised experiments
-
-This repository implements the revised manuscript environment for the
-synthetic rough-Heston setting and the historical-midprice setting, with DQN
-and the DDPG/TD3/SAC continuous-action relaxations. Current artifacts use
-schema 15, are written below `results/revision_v19/`, and carry environment
-contract `shaped-j-economic-eval-sb3-2026-09-05-v15`; checkpoints and results
-from earlier contracts are rejected.
-
-## Setup
-
-Python 3.10 or newer is required. The reference configs use CPU Torch.
+Python 3.10 or newer is required. `pyproject.toml` is the dependency source of
+truth, including Stable-Baselines3 2.7.1; `requirements.txt` delegates to it.
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-python -m pip install --upgrade pip
 python -m pip install -e ".[dev]"
-```
-
-`pyproject.toml` is the canonical dependency specification. For tooling that
-expects a requirements file, `python -m pip install -r requirements.txt` is
-equivalent: that file delegates to the same editable project and development
-extras instead of maintaining a second dependency list.
-
-## Mandatory pre-run gate
-
-Run the acceptance checklist before starting a long experiment:
-
-```bash
+export MPLCONFIGDIR="$PWD/.cache/matplotlib"
 pytest -q tests/test_revision_acceptance.py
 pytest -q -m 'not network and not slow'
 ```
 
-The checklist covers the realized grid and interval partition, leak-free
-chronology, residual-book carry-over, transactional auction validity,
-indicative-price lags, action counts and canonical no-ops, cross-phase Bellman
-targets, one update per transition, common unclipped reward scaling, pro-rata
-fills, inventory conservation, self-trade exclusion, shaped-training/economic-evaluation accounting,
-annualized minute-clock rough-Heston time, the capped benchmark schedule, and rejection of
-stale artifacts.
+The offline suite covers environment chronology, action projection, rewards,
+checkpoint selection, data provenance, launchers and reporting. Tests under
+`tests/audit/` also characterize the retained legacy implementation; they do not
+establish the validity of the current economics. No full training is required to
+run the offline suite.
 
-Do not infer publication readiness from the legacy characterization tests in
-`tests/audit/`; they document the superseded implementation.
+The protected manuscript and parameter table are never rewritten by the workflow.
+The [pending review patch](docs/manuscript_recommendations_v19.patch) predates the
+two follow-ups; use the [writing plan](docs/research_writeup_plan_v19.md) for its
+current integration recommendations.
 
-## Common physical clock
+## Data and model contract
 
-Both active settings use minutes. One integer grid interval is one minute,
-`tau_op=120` opens the auction after a two-hour CLOB phase, and `tau_cl=150`
-ends a 30-minute auction. CLOB Poisson intensities are therefore per minute and
-auction Bernoulli probabilities are per one-minute decision. The synthetic
-rough-Heston model remains parameterized in trading years, using
-`s_star=252*6.5*60=98,280` trading minutes per year. The numerical grid has not
-grown, so this change does not add environment steps; it changes the physical
-meaning and the synthetic mid-price calendar-time increment.
+The tracked historical CSV, schema-3 sidecar and raw archives are required inputs.
+The environment checks their digests and split contract. The normal workflow
+needs no data account or download; optional regeneration is in [data/README.md](data/README.md).
+Training uses pooled stock-session paths from training dates. Validation and test
+remain ticker-specific. The previously inspected historical test dates are a
+reused holdout, not fresh-date or unseen-stock evidence.
 
-## One shared simulator
+The resolved configuration is `configs/base.yaml`, one setting overlay, one
+`configs/algo/` overlay and any `configs/treatment/` overlay. Forecast reliability
+coefficients in the setting overlays are frozen training-only fits; their
+protocols remain under `docs/verification_v19/forecast_{synthetic,historical}/`.
+Feature normalizers are fitted within each run on training paths and saved.
+See the learning design for the distinction between forecast information and
+quote anchoring, and for the exact reward-conditioning equations.
 
-The active setting overlays select only run identity and the exogenous
-mid-price source. Both inherit the same grid, CLOB and auction flows, action
-space, cancellation/order semantics, reward, validation design, and
-algorithm-specific hyperparameters from `configs/base.yaml` and
-`configs/algo/*.yaml`. In particular, both use `lambda0=.5`, `V_inf=2`,
-`rho_lob=0.96`, exogenous `L_max=200`, agent CLOB offset bound 12, and the
-same 1,346-action cancellation-enabled DQN auction grid. The acceptance suite
-compares every shared resolved section for all four learners.
+Headline training uses weighted shaped J. Checkpoint selection and all learned,
+AS and TWAP evaluation use economic risk-adjusted PnL. Economic controls change
+only their declared interventions. Raw cash-flow training omits reward
+conditioning; the matched dense economic control retains it. PnL never includes
+fictive rewards or replay-only potentials.
 
-The manuscript notation is used directly in the active action configuration.
-`actions.B_inf=150` is the absolute bound on the executed frozen-mid offset
-`b`, so `b in [-B_inf,B_inf]` and
-`S_t^a=S_{tau_op}^{mid}+alpha*b_t^a`. The same absolute support sets the
-exogenous quote bounds `M1=-B_inf` and `M2=B_inf`; configuration validation
-requires `actions.B_inf == auction_flow.B_inf`. Every learned policy uses the
-same 21 local manuscript actions `ell in [-B_max,B_max]`, where
-`actions.B_max=10`. The explicit `actions.auction_anchor` resolves them around
-the lagged observable indicative price in H-on arms and around the frozen
-auction-open midprice in H-off arms. The latter prevents the ablated signal
-from leaking through action execution or admissibility. Thus `B_inf` is the
-absolute market-coordinate bound and `B_max` is the local proposal bound; they
-are neither aliases nor interchangeable settings.
-
-## Historical data requirement
-
-The repository includes `data/historical_sp500_midquotes_1m.csv` and its
-schema-3 provenance sidecar. A clean checkout can therefore run the historical
-experiment without a data account, network access, or a preprocessing step.
-The environment verifies the processed-file digest, every tracked raw-archive
-digest, source/feed declarations, and split contract before constructing a
-historical path.
-
-The artifact was built from timestamped bid/ask quotes (SIP for publication),
-stores raw USD midpoints without normalization, and maps each decision time to
-the latest valid quote at or before that time. The environment freezes the
-auction-open midquote during the call and rebases a selected session to
-`S0=100` only as an explicit model-coordinate transformation. Order flow,
-books, auction proposals, clearing, and allocation remain simulated.
-
-Training and normalizer fitting sample the 50 whole rebased stock--session
-paths across all five stocks on the training dates. Validation/test remain
-specific to the requested stock. V18 changes the final simulation seed
-namespace to 18001. It does not create new historical dates: the August
-24--28 test week has already informed development through v17. Disclose
-this reused holdout; do not claim unseen-stock or fresh-date validation.
-
-The optional credential-safe regeneration command and raw-event archive
-contract are documented in `data/README.md`:
+For a policy-free simulator check:
 
 ```bash
-python3 -m lmm.data.load_midquote_data --help
-```
-
-Generation must be followed by the policy-free carry-over gate:
-
-```bash
-python3 -m lmm.experiments.diagnose_simulator \
-  --config configs/base.yaml \
-  --config configs/historical_sp500_midquotes.yaml \
+python -m lmm.experiments.diagnose_simulator \
+  --config configs/base.yaml --config configs/synthetic_rough_heston.yaml \
+  --episodes 100 --assert-ready
+python -m lmm.experiments.diagnose_simulator \
+  --config configs/base.yaml --config configs/historical_sp500_midquotes.yaml \
   --episodes 20 --assert-ready
 ```
 
-Run the same gate for the rough-Heston source:
+## Completed outputs
+
+| Campaign | Runs | Report |
+|---|---:|---|
+| Main synthetic, historical and mechanism study | 440 | `results/revision_v19/_publication/index.html` |
+| H-anchored raw economic cash flow | 40 | `results/revision_v19_cashflow/_comparison/index.html` |
+| H-anchored dense economic training | 40 | `results/revision_v19_economic_dense_h/_comparison/index.html` |
+
+The main bundle contains five PDF/PNG figure groups, three CSV/LaTeX tables,
+seed-level audit records and an input/output hash manifest. Each follow-up
+contains a comparison figure, table, seed-level differences and manifest.
+[research_outputs.md](docs/research_outputs.md) explains each contrast and the
+statistical interpretation. [The writing plan](docs/research_writeup_plan_v19.md)
+selects the exhibits relevant to the manuscript.
+
+Every completed run retains its resolved configuration, Git SHA, dependency and
+split-seed provenance, feature normalizer, training metrics, selected/initial/final
+checkpoints, evaluation records, traces, diagnostics and paired benchmark
+comparisons. `pipeline_complete.json` binds the complete required inventory by
+SHA-256. Do not delete intermediate-looking files inside completed runs: many
+are required by that integrity contract. Generated reports are separate from the
+bound run inputs. Neither report generation nor analysis needs to step an environment.
+
+## Regenerating reports without training
+
+The follow-ups validate against each run's saved source identity:
 
 ```bash
-python3 -m lmm.experiments.diagnose_simulator \
-  --config configs/base.yaml \
-  --config configs/synthetic_rough_heston.yaml \
-  --episodes 100 --assert-ready
+python -m lmm.experiments.cashflow_comparison --report-only
+python -m lmm.experiments.cashflow_comparison --conditioned --report-only
 ```
 
-## Canonical runs
-
-The matched confirmation budget is 800 episodes in both settings. Each run
-fits its feature normalizer on training-only paths. All algorithms use the
-common 32-episode structured warmup; DQN retains its complete action grids.
-A checkpoint can enter the validation race only after both phase learners pass
-the configured optimizer-update maturity thresholds (only CLOB for no-auction).
-Early-stopping patience starts with the first eligible validation. The active
-`checkpoint_require_initial_improvement=false` retains every seed, including
-non-improvers. Each phase needs at least 2,000 optimizer updates. Validation
-uses 128 paths every 50 episodes, also evaluates the first mature checkpoint
-immediately, and stops after four eligible evaluations without improvement.
-The initial policy is never reportable. `best.pt` is the highest-scoring mature, reportable joint policy,
-selected on economic validation and evaluated on 100 held-out test episodes.
-If no checkpoint qualifies, the run fails closed and retains its diagnostics;
-the publication report will not silently omit that seed.
-
-Headline training uses the manuscript's shaped J. Initial-inventory centering
-subtracts the constant S0*I0. A training-only telescoping potential redistributes
-rewards without changing the full centered J return. Validation, checkpoint
-selection and learned/AS/TWAP comparisons use economic risk-adjusted PnL.
-The common calibration has q=0, while CLOB and signed interim auction shaping
-remain active. The separate shaping-off treatments remove both shaping terms.
-See `docs/rl_design.md` for the exact conditioning and replay equations.
-
-DQN still selects from the exact masked action grids, but its Q function does
-not give each of the 1,346 auction actions an unrelated output vector. A shared
-two-layer state trunk scores normalized action coordinates through a rank-32
-embedding. The replay update evaluates only its sampled action, while greedy
-and Double-DQN target selection enumerate the complete admissible grid. This
-coordinate-conditioned head shares evidence across nearby `(K,ell,c)` actions
-and is recorded in checkpoints as `coordinate_conditioned_normalized_v2`.
-State hidden layers and the bounded learned action embedding use non-affine
-LayerNorm; linear query/value heads stay unrestricted. AdamW weight decay is
-.0001 and gradient clipping is 10. Three-step replay flushes at phase boundaries.
-
-One synthetic run:
+The main strict publication generator additionally requires a clean checkout at
+the **saved training commit**. A later documentation or cleanup commit is still a
+different Git identity. Preserve that gate: use a separate checkout instead of
+changing saved provenance or weakening validation. From this repository root:
 
 ```bash
-scripts/run_synthetic_dqn.sh --seed 42
-scripts/run_synthetic_ddpg.sh --seed 42
-scripts/run_synthetic_td3.sh --seed 42
-scripts/run_synthetic_sac.sh --seed 42
+LMM_REPO="$PWD"
+LMM_TRAIN_SHA="$(cat results/revision_v19/synthetic_rough_heston/dqn_seed42/git_sha.txt)"
+LMM_REPORT_TREE="$(mktemp -d /tmp/lmm-v19-report.XXXXXX)"
+git worktree add --detach "$LMM_REPORT_TREE" "$LMM_TRAIN_SHA"
+(
+  cd "$LMM_REPORT_TREE"
+  PYTHONPATH="$LMM_REPORT_TREE/src" MPLCONFIGDIR="$LMM_REPO/.cache/matplotlib" \
+    "$LMM_REPO/.venv/bin/python" -m lmm.experiments.make_report \
+    --root "$LMM_REPO/results/revision_v19" \
+    --seeds 42 7 99 123 2024 314 577 811 1618 2718 --publication
+)
+git worktree remove "$LMM_REPORT_TREE"
 ```
 
-One historical ticker:
+This uses the installed dependency environment with the recorded source checkout
+and regenerates the existing publication directory from saved run inputs. For a
+new campaign at its own clean training commit, the shell equivalent is
+`LMM_RESULTS_ROOT=/absolute/path/to/campaign scripts/make_multiseed_outputs.sh --publication`.
+Specify the root explicitly: the older standalone reporting shell wrappers retain
+legacy default roots. Extra per-run plots remain opt-in with `--diagnostics`.
+
+## Reproducing training later
+
+These commands document the completed protocols; they are not needed for the
+write-up. Use a fresh results root and a clean committed tree. Never overwrite
+completed campaigns or mix runs from different source commits.
 
 ```bash
-scripts/run_historical_dqn.sh --seed 42 --symbol MSFT
+# Inspect the main 440 jobs without training:
+LMM_RESULTS_ROOT=/absolute/scratch/new-study \
+  scripts/run_multiseed.sh --jobs 10 --threads-per-job 1 --dry-run
+# Remove --dry-run only when intentionally reproducing the campaign.
 ```
 
-All standard runs and output generation:
+For the two extensions, `python -m lmm.experiments.cashflow_comparison --help`
+documents `--root`, `--headline-root`, `--jobs`, `--threads-per-job`, `--dry-run`
+and `--conditioned`. Their controls reuse the selected synthetic headline runs.
+The original matrix and both follow-ups use ten canonical master seeds:
+42, 7, 99, 123, 2024, 314, 577, 811, 1618 and 2718.
 
-```bash
-scripts/reproduce_all.sh --seed 42
-```
+The production cap is 800 episodes, with economic validation on 128 paths and
+final evaluation on 100 paths. The maturity gate, patience and stopping rules
+are recorded in the resolved configuration. The selected reportable checkpoint
+is the best mature economic-validation policy; non-improving seeds remain in
+the study. Worker count changes scheduling, not the learning budget or seed set.
+Queue state and console logs live under `_orchestration/`.
 
-This command is intentionally long. It runs four synthetic experiments and
-four algorithms across the configured historical tickers.
+The launchers skip only completed runs whose configuration, source identity and
+full completion inventory validate. Interrupted or changed runs fail closed.
+They suppress replay-heavy periodic resume checkpoints; selected, initial and
+final checkpoints are retained. Exact numerical replay also depends on the saved
+dependency versions and machine. Independent RNG streams separate normalization,
+training, validation, test, exploration and replay; wall-clock timings are not
+expected to reproduce.
 
-For isolated development or CI runs, set `LMM_RESULTS_ROOT` to an absolute
-scratch directory. Every launcher and report generator honors the override,
-and training records the same path in `config_resolved.yaml`, so discovery and
-provenance cannot disagree. Leave it unset for the canonical
-`results/revision_v19/` layout. For example:
-
-```bash
-LMM_RESULTS_ROOT=/absolute/scratch/lmm-results \
-  scripts/reproduce_all.sh --smoke --symbol MSFT --seed 9001
-```
-
-A short pipeline smoke is available and is not a training result:
-
-```bash
-scripts/reproduce_all.sh --smoke --symbol MSFT --seed 9001
-```
-
-The five additional synthetic mechanism cells for all four learners run with:
-
-```bash
-scripts/run_synthetic_treatments.sh --seed 42
-# To exercise only the pipeline:
-scripts/run_synthetic_treatments.sh --smoke --seed 9001
-```
-
-The canonical synthetic headline is reused, so run it for the same seed before
-aggregating treatments. The cells and five matched contrasts are specified
-in [the learning contract](docs/rl_design.md#selection-and-treatments).
-The headline retains both manuscript preferences and the indicative anchor.
-Fixed-anchor controls isolate H observation, combined manuscript shaping
-and dense-versus-sparse auction credit. The no-auction arm is compared
-with economic H-off auction-on training. Legacy bundled H/shaping and
-no-cancellation controls remain available outside the default matrix. Shaped J
-and the economic criterion remain different objectives even with q=0.
-
-
-The canonical ten-seed publication command covers the headline, historical,
-and complete synthetic treatment matrix, then generates the focused report:
-
-```bash
-scripts/run_multiseed.sh --jobs 10 --threads-per-job 1
-```
-
-On the current 15-core Apple M5 Pro with 24 GB RAM, start with ten workers
-and one numerical-library/Torch intra-op thread per worker. Jobs are individual
-experiments from the complete 440-run matrix, rather than one long worker per
-master seed. The queue continuously refills idle slots and works with more
-than five workers. It caps Apple Accelerate/vecLib, BLAS and NumExpr as well as
-Torch; effective settings are saved in each `runtime_versions.json`. Lower
-`--jobs` if other applications need memory or CPU. The number of workers changes
-scheduling, not the seed set, training budget or configurations. Report generation
-runs once after every experiment succeeds, under the same results-root lock.
-Queue progress is in `_orchestration/status.json`; each job has a separate
-console log there, and training still writes its own `logs/run.log`.
-A small development check
-can use `--smoke --jobs 2`, which defaults to the deliberately nonpublication
-seeds `9001 9002`; smoke artifacts are explicitly rejected by publication
-mode. The launcher rejects canonical publication seed names in smoke mode so a
-development artifact cannot block the later full run at the same path.
-
-Full publication mode also requires a clean Git worktree: `git_sha.txt` records
-the exact commit, not an uncommitted patch. The long launcher is safely
-restartable across already finished runs. A failed job stops new dispatch while
-already active jobs finish; a second launcher on the same root is rejected. A run is skipped only when its saved
-resolved config exactly matches the current command, its complete evaluation
-uses `best.pt`, and `pipeline_complete.json` cryptographically binds the
-resolved config, seed, Git SHA, runtime and split-seed provenance, training
-metrics and feature normalizer, initial/best/final checkpoints, best-selection
-sidecar, and the complete evaluation artifact tree (including metadata,
-records, traces, diagnostics, and both paired-difference files) by SHA-256.
-Any subsequent change makes the manifest invalid. An interrupted or
-drifted run fails closed with its path. Move that partial directory aside for
-diagnosis and rerun; automatic checkpoint resume is intentionally not used
-because post-checkpoint metric/grid rows would also need transactional
-truncation. Publication aggregation additionally exact-compares every resolved
-run against the current checked-in base, setting, algorithm, and treatment
-config stack. The sole accepted operational difference is the launcher's
-disk-safe `checkpoint_interval_episodes=10000000`, which suppresses periodic
-replay-heavy resume checkpoints without changing learning or selection.
-
-To regenerate reports without training:
-
-```bash
-scripts/make_multiseed_outputs.sh --publication
-```
-
-Open `results/revision_v19/_publication/index.html` after completion. It contains
-five figures and three tables, with captions and methods. Figures are vector
-PDF plus PNG; tables are LaTeX (`longtable`/`booktabs`) plus numeric CSV. The
-report retains **mean** economic performance, including poor seeds, because
-that is the expected-value estimand. It does not substitute an IQM or a maximum
-validation score for held-out economic performance. Small plot markers expose
-every seed; 95% intervals resample training-seed means, not individual test
-episodes as independent training replications. Ten seeds still limit precision.
-
-The treatment figure/table shows five effects: dense auction credit,
-H observation, anchoring, combined preferences and auction access. A fifth figure, `credit_assignment`, shows
-raw dense-minus-sparse economic validation curves on common observed budgets.
-It does not carry stopped seeds forward or replace raw scores with a running
-maximum. The auction mechanism figure derives a same-CLOB no-order
-counterfactual from saved accounting, separating execution price edge, fees
-and inventory-risk relief. Negative contributions remain visible.
-
-All headline comparisons use basis points of initial notional. Historical
-markets are shown individually; the auction summary additionally uses the
-fixed-ticker equal-weight mean within each seed. This is not a dollar forecast
-or uncertainty over unseen historical dates/stocks. See
-[`docs/research_outputs.md`](docs/research_outputs.md) for the full artifact map,
-statistical protocol, and exact unapplied manuscript inclusion instructions.
-
-Comprehensive legacy diagnostics remain opt-in:
-`scripts/make_multiseed_outputs.sh --publication --diagnostics` and
-`scripts/make_all_outputs.sh --seed 42 --diagnostics`. They are outside the
-focused publication bundle. The old standalone paired treatment table remains
-available via `scripts/make_treatment_outputs.sh --publication`.
-
-Generated result artifacts are never copied into `paper/` automatically.
-Promotion into the manuscript artifact directory remains an explicit manual
-review step.
-
-## Equivalent module commands
-
-For a synthetic DQN run named `dqn_seed42`:
-
-```bash
-RUN=results/revision_v19/synthetic_rough_heston/dqn_seed42
-
-python3 -m lmm.experiments.train \
-  --config configs/base.yaml \
-  --config configs/synthetic_rough_heston.yaml \
-  --config configs/algo/dqn.yaml \
-  --run-name dqn_seed42 --seed 42
-
-python3 -m lmm.experiments.evaluate --run-dir "$RUN" --trace-episodes 1
-python3 -m lmm.experiments.policy_differences --run-dir "$RUN" --benchmark as
-python3 -m lmm.experiments.policy_differences --run-dir "$RUN" --benchmark twap
-python3 -m lmm.experiments.publication --write-completion-manifest "$RUN"
-# Optional per-run debugging, not the publication report:
-# python3 -m lmm.experiments.make_figures --run-dir "$RUN"
-# python3 -m lmm.experiments.make_tables --run-dir "$RUN"
-```
-
-The installed command names are `lmm-train`, `lmm-evaluate`,
-`lmm-policy-differences`, `lmm-make-report`, `lmm-make-figures`, and `lmm-make-tables`.
-Fixed-policy cumulative differences are not called regret.
-
-## Artifact map
-
-Every completed run contains the following raw and provenance artifacts:
-
-- `config_resolved.yaml`, `seed.txt`, `git_sha.txt`, and
-  `runtime_versions.json`;
-- `historical_data_manifest.json` for historical runs;
-- `feature_normalizer.yaml`, `split_seeds.yaml`, and realized-grid records;
-- `metrics.csv` and training forecast diagnostics;
-- `checkpoints/{initial,best,final}.pt` plus optional resume checkpoints;
-- `eval/records.csv`, `eval/metadata.yaml`, realized grids, forecast summaries,
-  proposal/action/clearing diagnostics, and episode traces;
-- `eval/policy_difference_{as,twap}.csv`.
-
-The canonical launcher writes one report under
-`results/revision_v19/_publication/`: `index.html`, `README.md`,
-`figures/{economic_performance,learning,auction_mechanism,treatments,credit_assignment}.{pdf,png}`,
-`tables/{economic_performance,auction_mechanism,treatments}.{tex,csv}`,
-`audit/` with seed-level estimates and validation series, and `manifest.json`
-with input and output hashes. Per-run figures, critic-loss plots, cumulative
-fixed-policy differences, and selected episode anatomy are not generated by
-default. Their underlying raw data remain in each run directory.
-
-`scripts/make_all_outputs.sh --seed N` now writes a focused, explicitly
-nonpublication single-seed report under `_single_seedN/`; it requires all four
-algorithms in each included market and omits confidence intervals.
-Nonpublication multiseed reports use `_development/`. Only `--publication`
-produces `_publication/` and applies the strict complete-matrix/configuration/
-commit/checkpoint checks. Reports are read-only with respect to run artifacts
-and completion manifests. Regeneration never executes an environment.
-
-Primary evaluation fields are `pnl` and `risk_adjusted_pnl`. The latter is
-
-```text
-risk_adjusted_pnl = pnl - terminal_inventory_penalty
-```
-
-where `pnl` already includes cancellation fees. Headline training return is
-centered shaped J. Its components and the telescoping replay adjustment are
-retained as training diagnostics and never enter reported PnL or checkpoint
-selection. Historical tables additionally use
-`risk_adjusted_pnl_bps`.
-
-The full field-level schema is in `docs/metrics_schema.md`.
+For a bounded development investigation, the retained `scripts/diagnose_learning.py`
+accepts `--algo`, `--seed`, `--episodes`, `--validation-size` and `--output`.
+It caps training at 200 episodes and rejects an existing output directory.
+Use `--resolved-config` to investigate a saved diagnostic configuration.
+The remaining audit scripts cover forecast credit, physical market units,
+shaping calibration and policy economics. Superseded one-off scripts and trial
+overlays are archived as described in [cleanup.md](docs/cleanup.md).
 
 ## Compile the manuscript
 
-The generated parameter-table input currently referenced by `paper/main.tex`
-is tracked under `paper/results/`, so compilation does not depend on a local
-experiment output tree. With a TeX distribution providing `latexmk` and the
-packages listed in `paper/packages.tex`, build from a clean checkout with:
+All current TeX inputs are tracked. With the required TeX packages installed:
 
 ```bash
 latexmk -cd -pdf -interaction=nonstopmode -halt-on-error paper/main.tex
-```
-
-LaTeX build intermediates are ignored by Git. To remove them while keeping
-the compiled PDF, run:
-
-```bash
 latexmk -cd -c paper/main.tex
 ```
 
-Publication figures and tables should still be regenerated after the final
-experiments. Keeping the currently referenced inputs tracked guarantees build
-completeness; it does not promote an old smoke or pre-revision artifact to a
-new empirical result.
-
-## Determinism
-
-One master `SeedSequence` creates private streams for normalizer calibration,
-training, validation, final evaluation, exploration, replay, and the AS
-order-book impact regression. The environment never uses global NumPy or
-Python RNG state. The AS benchmark is risk-neutral (`gamma=0`), so no
-volatility parameter is calibrated or stored.
-For a fixed config, seed, machine, and dependency build, numeric trajectories
-are reproducible across fresh processes; `wall_clock_s` is intentionally not.
-Common-random-number comparisons reuse the same exogenous realization for each
-policy on a matched evaluation episode.
+The second command removes build scratch and keeps the PDF. Research figures
+and tables are promoted into the manuscript only through an explicit writing
+change. Obsolete legacy PNGs were unreferenced by the manuscript and have been
+removed; they are recoverable with the other archived development files.

@@ -1,7 +1,0 @@
-# Delay native optimizer starts until the 32 common exploration episodes have
-# populated both phase buffers. Earlier starts exposed the actor to only the
-# first inventory/auction-mode blocks of the factorial exploration design.
-algo:
-  hyperparams:
-    min_buffer_clob: 2500
-    min_buffer_auction: 960

@@ -1,65 +1,54 @@
 # Learning Optimal Liquidation with Closing Auctions
 
-This repository implements the simulator and reinforcement-learning methods
-for an end-of-day liquidation problem with a continuous limit-order-book phase
-followed by a two-sided closing call. The controlled CLOB policy is a
-one-sided liquidator. At auction open, the admissible controls expand to
-signed schedules, so terminal inventory can be positive or negative.
-
-The implemented learners are DQN and the projected continuous-proposal methods
-DDPG, TD3, and SAC. Synthetic rough-Heston and historical-midquote experiments
-use the same market mechanics, action semantics, rewards, and learning
-configuration; only the exogenous mid-price source changes. Historical runs
-replay frozen SIP midquotes while order flow, books, auction updates, clearing,
+A research simulator for end-of-day liquidation through a continuous limit order
+book followed by a closing call auction. DQN is the discrete baseline; DDPG, TD3
+and SAC use projected continuous proposals on the same executable controls.
+Synthetic rough-Heston and historical-midquote experiments share the market
+mechanics. Historical inputs supply midprice paths; order flow, books, clearing
 and allocation remain simulated.
 
-The [current repair report](docs/pathology_repair_v18.md) documents the
-author-approved shaping correction, calibration, learning checks and auction
-diagnostics. The market remains stylized; the development results do not
-establish universal benchmark superiority or empirical auction calibration.
-The [DQN auction follow-up](docs/dqn_auction_repair_v18.md) records the later
-projection, exploration and replay-target fixes, with all rejected trials.
+The study is complete: **440 main runs plus two 40-run economic-training
+comparisons**, with ten training seeds per cell. Headline policies train on
+weighted shaped J with dense auction credit; checkpoint selection and evaluation
+use economic risk-adjusted PnL. The current task is the research write-up.
+
+## Read the completed study
+
+- [Research findings and manuscript plan](docs/research_writeup_plan_v19.md)
+- [Main results](results/revision_v19/_publication/index.html)
+- [Raw economic cash-flow comparison](results/revision_v19_cashflow/_comparison/index.html)
+- [Matched dense economic comparison](results/revision_v19_economic_dense_h/_comparison/index.html)
+- [Documentation index](docs/README.md), including the result verdicts and analysis records
+
+Results are local, ignored artifacts. They are available on the research machine;
+a source checkout alone does not contain trained checkpoints or reports.
 
 ## Sources of truth
 
-- `paper/main.tex` defines the mathematical model.
-- `configs/base.yaml`, setting overlays, algorithm overlays, and treatment
-  overlays define the active executable configuration.
-- `REPRODUCING.md` is the operational guide for installation, validation,
-  training, evaluation, and paper compilation.
-- `docs/rl_design.md` documents how the mathematical controls are represented
-  by the learners.
+- [Manuscript](paper/main.tex): mathematical specification. Pending alignment
+  recommendations are in [the review patch](docs/manuscript_recommendations_v19.patch)
+  and the manuscript plan; neither is applied automatically.
+- `configs/base.yaml` plus setting, algorithm and treatment overlays: executable
+  configuration. Saved runs retain their own complete resolved configurations.
+- [Learning design](docs/rl_design.md): controls, forecast, rewards and selection.
+- [Reproduction guide](REPRODUCING.md): setup, verification and report generation.
 
-Legacy implementations and the reports under `audit/` are retained for
-provenance and characterization only. They are not active specifications.
-
-## Quick start
+## Setup and checks
 
 Python 3.10 or newer is required.
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-python -m pip install --upgrade pip
 python -m pip install -e ".[dev]"
-pytest -q tests/test_revision_acceptance.py
 pytest -q -m 'not network and not slow'
 ```
 
-The repository includes the frozen processed historical artifact and its
-verified provenance sidecar, so the historical simulator does not require API
-credentials after checkout. See `REPRODUCING.md` for the complete workflow.
+The frozen historical CSV, provenance sidecar and raw archives are tracked;
+ordinary historical runs need no credentials or download. See [the data
+contract](data/README.md).
 
-After committing the reviewed changes and leaving the tree clean, launch the
-440-run publication matrix with `scripts/run_multiseed.sh --jobs 10 --threads-per-job 1`
-from the activated environment. The resulting report is
-`results/revision_v19/_publication/index.html`: five focused figures, three
-tables, and seed-level audit records. The [output guide](docs/research_outputs.md)
-explains the statistical protocol, file locations, regeneration and exact
-unapplied manuscript inclusion instructions. Comprehensive diagnostics are
-available separately with `--diagnostics`.
-
-The protected TeX sources are unchanged. The [exact review patch](docs/manuscript_recommendations_v19.patch)
-aligns them with weighted shaped J for headline training and economic
-risk-adjusted PnL for validation and evaluation. Earlier reports are retained
-as development history.
+Superseded development output and one-off tools have been removed from the
+working tree, with exact recovery instructions in [the cleanup record](docs/cleanup.md).
+`legacy/` and `audit/` retain the small implementation and characterization
+records used by regression tests; they are not active specifications.

@@ -1,4 +1,0 @@
-# Shared representation diagnostic: unchanged rewards, controls and optimizers.
-rl:
-  phase_normalization: true
-  auction_inventory_asinh: false

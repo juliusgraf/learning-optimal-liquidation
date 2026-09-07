@@ -1,8 +1,9 @@
 # Source ledger — v19 diagnosis
 
 Research retrieved September 5, 2026. Theory, borrowed design precedent and
-local empirical evidence are kept distinct. The canonical report source is
-`report-source.md`; the user-facing repository report is `../pathology_repair_v19.md`.
+local empirical evidence are kept distinct. The duplicate frozen report source is [archived in Git](https://github.com/juliusgraf/Learning-Market-Making/blob/83c35645edfe2d15733f91ede4a54e1bd9660fde/docs/research_v19/report-source.md);
+the maintained repository report is [pathology_repair_v19.md](../pathology_repair_v19.md).
+See [local recovery instructions](../cleanup.md) if the archived revision has not been pushed.
 
 | Source | Primary evidence used | Scope / limitation |
 |---|---|---|

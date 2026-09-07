@@ -1,3 +1,0 @@
-# Keep the H observation and both manuscript rewards; isolate action geometry.
-actions:
-  auction_anchor: frozen_mid

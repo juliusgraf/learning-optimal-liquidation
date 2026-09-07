@@ -1,6 +1,0 @@
-# Restore the manuscript's DDPG actor rate, with the shared critic rate and
-# all other settings retained. Slower actor adaptation lets the critic track
-# its changing policy. This is separate from the rejected L2/.001-critic trial.
-algo:
-  hyperparams:
-    actor_learning_rate: 0.0001

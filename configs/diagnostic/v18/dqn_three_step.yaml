@@ -1,4 +1,0 @@
-# Short multi-step return reduces repeated undiscounted bootstrapping.
-# Phase boundaries flush the tail; terminal cash/risk is still included once.
-rl:
-  n_step: 3

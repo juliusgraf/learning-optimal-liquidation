@@ -1,0 +1,179 @@
+% Proposed prose blocks for paper/main.tex. Not included automatically.
+% A: replace the abstract body, retaining the existing keyword block.
+We study end-of-day execution through a continuous limit-order book followed
+by a closing auction. The trader begins with positive inventory and sells
+during continuous trading; signed auction schedules subsequently allow
+inventory adjustment at clearing. We develop a reinforcement-learning framework
+that combines a projected clearing-price signal with intermediate feedback
+for auction decisions whose cash consequences are delayed until settlement.
+We compare a baseline DQN with projected continuous-proposal DDPG, TD3 and SAC
+policies. Headline policies train on a shaped objective, while selection and
+evaluation use marked-to-market PnL net of fees and terminal inventory risk.
+Experiments with synthetic rough-Heston prices and historical midprice inputs
+inside the same simulated market show improved risk-adjusted performance
+relative to stylized AS and TWAP references. The continuous methods obtain
+larger realized auction contributions than DQN, with historical-setting gains
+arising mainly from terminal inventory-risk relief. Matched ablations show
+that dense auction credit improves economic learning. The clearing forecast
+is predictively informative, although its incremental economic value varies
+by learner. Additional forecast-relative reward preferences have no established
+average benefit once learning guidance is held fixed. These findings identify
+both the usefulness and the limits of auction-informed learning for liquidation.
+
+% B: introduction question/contribution paragraphs; see the integration plan.
+The central question is whether a learning agent can use information about a
+future closing auction to balance continuous execution with end-of-day inventory
+management. This requires connecting two decisions: how much inventory to sell
+during continuous trading and how to adjust the residual position through an
+auction whose cash consequences are realized only at clearing. Our framework
+provides a projected clearing-price signal, an explicit auction control problem
+and intermediate learning guidance. We study DQN as a baseline and DDPG, TD3
+and SAC as continuous-proposal extensions projected onto the same executable
+action grid.
+
+The numerical study addresses three questions. First, is the projected clearing
+signal informative, and does supplying it improve economic decisions? Second,
+does intermediate training guidance help policies learn from delayed auction
+outcomes? Third, does access to the closing auction improve liquidation and
+terminal inventory management? We answer these questions using matched
+experiments alongside comparisons with stylized reference policies. Throughout,
+we distinguish training feedback from economic cash flows and evaluate all
+policies using the same risk-adjusted economic criterion.
+
+% C: add after the definition/discussion of the unshaped economic criterion.
+\paragraph{The role of training guidance.}
+The fictive rewards are learning signals rather than exchange cash flows.
+Their purpose is to guide actions before auction settlement, and their usefulness
+must therefore be assessed through the economic behavior of the resulting policy.
+Excluding them from $\bar J_\lambda$ prevents an artificial increase in the
+reported score; it does not prevent a better learned policy from improving that
+score. We distinguish the additional preferences defining the shaped objective
+$J$ from potential-based temporal credit used in replay. The latter redistributes
+feedback across decision times with a terminal correction that preserves the
+episode objective up to a policy-independent constant. Our ablations examine
+the complete training scheme, temporal credit assignment, and the additional
+preferences separately.
+
+% D: empirical protocol and first results subsection, before the bibliography.
+\subsection{Evaluation Protocol and Economic Performance}
+\label{subsec:empirical_protocol}
+The headline study uses four learning algorithms and ten independent training
+seeds in a synthetic setting and five settings driven by historical midprices.
+Order flow, auction updates and clearing remain simulated in all settings.
+Policies are selected on separate economic validation paths and evaluated on
+100 additional test episodes per selected policy. We average outcomes within
+each training seed and give seeds equal weight. Matched differences pair the
+evaluation environments before averaging; pointwise 95\% bootstrap intervals
+resample training-seed means. The initial 440-run campaign was followed by two
+declared 40-run synthetic comparisons with literal economic cash-flow training
+and with conditioned economic training at the headline auction anchor.
+The full specifications and the chronology of these follow-ups are reported
+in the experimental appendix.
+
+Headline policies outperform both stylized reference policies on mean
+$\bar J_\lambda$ in all six settings, with positive pointwise paired intervals.
+The advantage should be interpreted through both execution PnL and inventory
+risk. The implemented risk-neutral AS reference often earns greater raw PnL
+while retaining more terminal risk. The learned policies improve the risk-adjusted
+trade-off rather than universally maximizing raw PnL. Likewise, the continuous
+methods are competitive with DQN on total performance, but the results do not
+establish a universal algorithm ranking. Negative economic means on the MSFT
+midprice setting are retained in the reported results.
+
+\subsection{Auction Access, Execution Value and Terminal Inventory}
+\label{subsec:auction_value}
+The auction is a final execution opportunity, and its value should be measured
+against an explicit economic counterfactual. For a fixed realized CLOB trajectory,
+the contribution of the subsequent learned auction policy relative to submitting
+no auction orders is
+\[
+Z_{\tau^\cl}\bigl(S_{\tau^\cl}^\cl-S_{\tau^\op}^{\mathrm{mid}}\bigr)
+-\sum_{t_i\geq\tau^\op}d_{t_i}c_{t_i}
++\lambda\bigl(I_{\tau^\op}^{2}-I_{\tau^\cl}^{2}\bigr).
+\]
+This separates execution price edge, cancellation fees and inventory-risk
+relief. The direct contribution is positive on average for every headline
+market--method combination; its pointwise interval excludes zero in 23 of
+the 24 combinations, with synthetic DQN the exception. In the historical
+settings, equal-ticker mean contributions are approximately 0.39, 1.48,
+1.35 and 1.54 basis points for DQN, DDPG, TD3 and SAC. Most of this value
+comes from reduced terminal inventory risk. The continuous methods obtain
+larger realized contributions than DQN, including the effect of their own
+endogenous opening inventories.
+
+A separate experiment retrains policies without auction access, terminating
+at the CLOB boundary with residual marking and the inventory penalty. Relative
+to this control, auction access improves the economic objective by 0.22,
+0.56, 0.48 and 0.61 basis points for DQN, DDPG, TD3 and SAC, respectively.
+The continuous-method intervals are positive; the DQN interval includes zero.
+This comparison holds economic training and explicit forecast access fixed.
+Together, the retrained access experiment and the direct decomposition show
+that the learned continuous policies use the auction to economic advantage.
+Because the auction permits signed positions, this need not imply lower
+absolute inventory on every path or complete liquidation.
+
+% E: forecast results subsection.
+\subsection{Forecast Information and Economic Decisions}
+\label{subsec:forecast_value}
+The projected clearing signal has lower mean absolute and root mean squared
+prediction errors than contemporaneous midprice in both phases across all
+six settings. These errors use eventual simulated auction clearing as the
+target. For example, synthetic mean absolute error is 0.1800 versus 0.1925
+during continuous trading and 0.0488 versus 0.1403 during the auction.
+This validates predictive information within the modeled market; it does
+not constitute an auction-price forecasting test on observed exchange data.
+
+To examine decision value, we compare access to the explicit $H_t^\cl$
+observation at a common fixed quote anchor, economic objective and learning
+guidance. DDPG gains 0.72 basis points, with interval $[0.12,1.36]$.
+The corresponding DQN, TD3 and SAC effects are 0.17, 0.15 and $-0.17$
+basis points, with intervals including zero. Forecast information is therefore
+predictively useful, while its incremental economic value depends on the
+learner and the information already supplied. The H-off policies retain other
+clearing-relevant state variables. A separate anchoring comparison shows that
+centering a bounded action grid on the forecast need not improve performance;
+its complete results are reported in the appendix. Prediction quality, access
+to a prediction and the geometry of executable quotes are distinct properties.
+
+% F: training-guidance results subsection.
+\subsection{Learning from Delayed Auction Outcomes}
+\label{subsec:auction_learning}
+During the auction, submissions and cancellations affect the eventual position
+before their cash consequences are realized. Dense feedback addresses the
+resulting credit-assignment difficulty. In the matched auction-potential
+comparison, dense credit improves final economic performance by 1.18, 1.69,
+2.30 and 0.85 basis points for DQN, DDPG, TD3 and SAC, respectively, with
+positive pointwise intervals for every algorithm. Economic validation curves
+also show positive paired differences at episode 250. Both arms retain common
+CLOB conditioning and optimize the economic objective, so this experiment
+isolates an auction-credit effect rather than an extra economic cash flow.
+
+The complete headline training scheme, including weighted fictive rewards,
+also outperforms literal economic cash-flow training for all four methods
+and all ten paired seeds. However, that comparison changes the entire reward
+construction. To identify the additional manuscript preferences, the final
+comparison retains the headline's H-centred quotes and all reward conditioning
+while training on $\bar J_\lambda$. The J-minus-economic effects are
+$-0.06$, $-0.06$, $0.19$ and $-0.20$ basis points, respectively; all intervals
+include zero. Conditioned economic policies improve selected validation over
+initialization in 39 of 40 runs and obtain positive mean auction contributions.
+The evidence supports intermediate guidance for delayed auction decisions,
+while additional forecast-relative preferences have no established marginal
+economic benefit at the tested calibration. This does not prove equivalence
+of the objectives or their learned policies.
+
+% G: concluding section after the empirical results.
+\section{Conclusion}
+An explicit closing auction gives a learning agent an additional means to
+manage an initial inventory position. Our framework connects continuous
+execution, a projected clearing signal and delayed auction settlement, and
+produces policies that improve risk-adjusted performance relative to the stated
+stylized references. The continuous-proposal methods obtain greater realized
+auction contributions than the DQN baseline, primarily through terminal
+inventory-risk relief in the historical-midprice settings. Matched experiments
+show that dense auction credit improves economically evaluated learning.
+The forecast is informative, although its incremental policy value varies
+across methods, and the additional manuscript preferences do not have a
+demonstrated average advantage once conditioning is shared. These findings
+support auction-informed learning for end-of-day execution while delimiting
+the claims justified by a sequential simulated market and finite training data.

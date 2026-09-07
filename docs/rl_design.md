@@ -18,7 +18,8 @@ q=0, auction shaping weight=.0001, d=.001, and exogenous slope support
 [1,20]. Price units are rebased; the liquidity parameters are stylized.
 Continuous arrival intensity is .5 per minute per side, about twice the parent
 in expected contra-side volume. This is a substantial-participation scenario,
-not an estimate of exchange tape liquidity. See docs/pathology_repair_v18.md.
+not an estimate of exchange tape liquidity. The earlier calibration audit is
+archived as `docs/pathology_repair_v18.md`; see [recovery instructions](cleanup.md).
 
 All 391 CLOB and 1,346 auction actions remain. The auction slope lattice is
 `0.25 * {0,...,32}`; its maximum is 8 per schedule. Multiple schedules

@@ -277,7 +277,7 @@ subsidy; `beta=.25` gives maximum individual schedule slope 8, not a cap on
 aggregate execution. Multiple signed schedules and overselling remain feasible.
 The historical midprice experiment remains a stylized market around replayed
 prices. Quote data do not identify auction slope or flow parameters. See
-[the existing calibration audit](pathology_repair_v18.md); these values should
+[the existing calibration audit (archived)](https://github.com/juliusgraf/Learning-Market-Making/blob/83c35645edfe2d15733f91ede4a54e1bd9660fde/docs/pathology_repair_v18.md); these values should
 be presented as explicit normalized scenario choices, not exchange estimates.
 
 ## 7. Verification, publication scope and the next run
@@ -309,7 +309,7 @@ unchanged exogenous settlement under forecast adjustment, independent
 information/anchor flags, and rejection of unmatched credit-comparison paths.
 The final offline suite passed **595 tests**, with 23 slow/network tests
 deselected and 14 expected legacy/error-path warnings. Output is retained in
-[tests_final_pass.log](verification_v19/tests_final_pass.log). The smoke output is purely
+[tests_final_pass.log (archived)](https://github.com/juliusgraf/Learning-Market-Making/blob/83c35645edfe2d15733f91ede4a54e1bd9660fde/docs/verification_v19/tests_final_pass.log). The smoke output is purely
 operational evidence and must not be interpreted as learned performance.
 
 See [the launch/output guide](research_outputs.md) for the exact command, the

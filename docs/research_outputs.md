@@ -4,23 +4,14 @@ Headline training retains the author-approved weighted shaped objective
 `J_omega`, with `omega=.0001`, `q=0` and both manuscript shaping terms enabled.
 Selection and all economic comparisons use `Jbar_lambda`. V19 adds a calibrated
 CLOB forecast, critic LayerNorm for native SB3 DDPG and mechanism-specific
-controls. The full v19 experiment has not been run during this repair.
+controls. The completed evidence is retained under `results/revision_v19/`.
 
-After reviewing and committing the changes, with a clean working tree:
-
-```bash
-cd /Users/juliusgraf/Learning-Market-Making
-source .venv/bin/activate
-unset LMM_RESULTS_ROOT
-scripts/run_multiseed.sh --jobs 10 --threads-per-job 1
-```
-
-The default output root is `results/revision_v19`. Ten workers, each with one
-numerical thread, share a queue of individual experiments. Eight workers is
-also reasonable if other applications need resources. Keep the code and
-configuration fixed during the campaign. Historical runs consume the frozen
-repository inputs and require no new quote download. Existing v18 results
-remain an archive, not resumable v19 training.
+The main campaign and both economic-training follow-ups are complete. The table
+below records the original 440-run scope; each follow-up adds 40 synthetic runs.
+Use [the completed-study writing plan](research_writeup_plan_v19.md) for the
+current interpretation and [the reproduction guide](../REPRODUCING.md) for
+report-only commands and source-identity requirements. No further training is
+needed to use these outputs.
 
 | Block | Runs |
 |---|---:|
@@ -39,7 +30,7 @@ this rerun. See [the evidence and limitations](pathology_repair_v19.md).
 
 ## The report to read
 
-Open **`results/revision_v19/_publication/index.html`** after completion.
+Open **`results/revision_v19/_publication/index.html`**.
 It contains five figure groups and three tables. Figures are vector PDF plus
 PNG, and tables are numeric CSV plus LaTeX. The report preserves negative
 results and poor seeds. Its pointwise 95% bootstrap intervals resample
@@ -135,16 +126,19 @@ Inspect the entire command plan without training:
 scripts/run_multiseed.sh --jobs 10 --threads-per-job 1 --dry-run
 ```
 
-Regenerate the report from completed matching artifacts:
+Regenerate from completed matching artifacts at the saved training commit.
+For later checkouts, follow the isolated-checkout procedure in
+[REPRODUCING.md](../REPRODUCING.md#regenerating-reports-without-training):
 
 ```bash
-scripts/make_multiseed_outputs.sh --publication
+LMM_RESULTS_ROOT=results/revision_v19 scripts/make_multiseed_outputs.sh --publication
 ```
 
 `--diagnostics` adds the legacy comprehensive outputs outside the publication
 bundle. Smoke and development reports are labelled separately and are not
-scientific training results. The bounded repair ledger can be rebuilt without
-learning using `.venv/bin/python scripts/summarize_v19.py`.
+scientific training results. The bounded repair ledger remains under
+`verification_v19/`; its superseded one-off generator is recoverable using
+[the development archive instructions](cleanup.md).
 
 Both protected TeX files remain untouched. The exact consolidated proposed
 changes are in [manuscript_recommendations_v19.patch](manuscript_recommendations_v19.patch).

@@ -1,4 +1,0 @@
-# Capacity sensitivity: half the continuous-market arrival intensity.
-# This is a declared stylized liquidity scenario, not an empirical fit.
-clob_flow:
-  lambda0: 0.5

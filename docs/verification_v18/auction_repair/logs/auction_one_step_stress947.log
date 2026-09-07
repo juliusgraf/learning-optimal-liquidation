@@ -1,5 +1,0 @@
-{"auction_updates": 0, "clob_updates": 0, "objective_mean": 0.19509715657089735, "objective_se": 3.5621696791910216}
-{"auction_updates": 5000, "clob_updates": 15000, "objective_mean": -2.072054192928198, "objective_se": 4.360299448248561}
-{"auction_updates": 10000, "clob_updates": 30000, "objective_mean": -3.5629882832960917, "objective_se": 4.4933583540947915}
-{"auction_updates": 15000, "clob_updates": 45000, "objective_mean": -3.512389160533989, "objective_se": 4.391978910950384}
-{"auction_updates": 20000, "clob_updates": 60000, "objective_mean": -4.294175940256174, "objective_se": 4.522390290343743}
