@@ -73,13 +73,19 @@ def fit_contract(repo: Path, root: Path, setting: str, smoke: bool) -> dict:
     )
 
 
-def validate_forecast_fit(repo: Path, root: Path, setting: str, *, smoke=False) -> Path:
+def validate_forecast_fit(repo: Path, root: Path, setting: str, *, smoke=False,
+                          source_attestation=None) -> Path:
     directory = forecast_directory(root, setting)
     manifest = directory/'completion.json'
     if not manifest.is_file():
         raise ValueError(f'{directory}: missing completed revised forecast fit; incomplete outputs are not reused')
     saved = json.loads(manifest.read_text())
     expected = fit_contract(repo, root, setting, smoke)
+    if source_attestation is not None:
+        # Report-only provenance exception: all config/runtime/input and artifact
+        # checks below remain exact. Training/reuse callers retain strict HEAD.
+        expected['git_sha'] = source_attestation.forecast_revision(
+            repo, root, setting, saved.get('contract', {}).get('git_sha'))
     if saved.get('contract') != expected:
         raise ValueError(f'{directory}: forecast config/code/runtime/input contract mismatch; use a fresh campaign root')
     hashes = {name: sha256(directory/name) for name in FIT_FILES}

@@ -263,7 +263,7 @@ def validate_completion_manifest(run_dir: str | Path) -> None:
     )
 
 
-def _canonical_publication_config(run: "RunInfo") -> ExperimentConfig:
+def _canonical_publication_config(run: "RunInfo", *, source_attestation=None) -> ExperimentConfig:
     """Resolve the exact current config stack for one publication identity."""
 
     if run.algo not in ALGO_ORDER:
@@ -289,7 +289,8 @@ def _canonical_publication_config(run: "RunInfo") -> ExperimentConfig:
         # never make saved run coefficients their own canonical reference.
         root = Path(run.run_dir).resolve().parent.parent
         setting = HISTORICAL_SETTING if run.setting == HISTORICAL_SETTING else 'synthetic_rough_heston'
-        fitted = validate_forecast_fit(repo_root, root, setting)
+        kwargs = {} if source_attestation is None else {'source_attestation': source_attestation}
+        fitted = validate_forecast_fit(repo_root, root, setting, **kwargs)
         paths += [config_root/'clearing/max_volume_v2.yaml', fitted]
     expected = load_config(
         *paths,
@@ -324,10 +325,10 @@ def _config_differences(expected: Any, observed: Any, prefix: str = "") -> list[
     return [] if expected == observed else [prefix or "<root>"]
 
 
-def _validate_canonical_publication_config(run: "RunInfo") -> None:
+def _validate_canonical_publication_config(run: "RunInfo", *, source_attestation=None) -> None:
     if not isinstance(run.cfg, ExperimentConfig):
         raise ValueError("resolved publication config is not an ExperimentConfig")
-    expected = to_dict(_canonical_publication_config(run))
+    expected = to_dict(_canonical_publication_config(run, source_attestation=source_attestation))
     observed = to_dict(run.cfg)
 
     # The artifact root is operational rather than scientific.  Permit an
@@ -403,7 +404,8 @@ def _clean_head_sha() -> str:
 
 
 def validate_publication_runs(
-    runs: Iterable["RunInfo"], *, expected_git_sha: str | None = None
+    runs: Iterable["RunInfo"], *, expected_git_sha: str | None = None,
+    source_attestation=None,
 ) -> None:
     """Reject development/smoke artifacts from publication aggregation.
 
@@ -417,7 +419,13 @@ def validate_publication_runs(
     errors: list[str] = []
     from lmm.experiments.mature_reporting import load_protocol, validate_protocol_run
     protocol = load_protocol(runs)
-    if protocol is not None:
+    if source_attestation is not None:
+        if protocol is not None:
+            raise ValueError('source attestation cannot be combined with a selection amendment')
+        if expected_git_sha not in (None, source_attestation.training_revision):
+            raise ValueError('requested training revision disagrees with source attestation')
+        expected_git_sha = source_attestation.training_revision
+    elif protocol is not None:
         protocol_sha = protocol["training_git_sha"]
         if expected_git_sha is not None and expected_git_sha != protocol_sha:
             errors.append("requested training revision disagrees with reporting amendment")
@@ -502,14 +510,19 @@ def validate_publication_runs(
         prefix = str(run.run_dir)
         cfg = run.cfg
         try:
-            _validate_canonical_publication_config(run)
+            _validate_canonical_publication_config(run, source_attestation=source_attestation)
         except (KeyError, TypeError, ValueError) as exc:
             errors.append(f"{prefix}: {exc}")
         git_sha_path = Path(run.run_dir) / "git_sha.txt"
         saved_git_sha = (
             git_sha_path.read_text().strip() if git_sha_path.is_file() else None
         )
-        if expected_git_sha is None or saved_git_sha != expected_git_sha:
+        if source_attestation is not None:
+            try:
+                source_attestation.validate_run(run.run_dir)
+            except (ValueError, OSError) as exc:
+                errors.append(f'{prefix}: {exc}')
+        elif expected_git_sha is None or saved_git_sha != expected_git_sha:
             errors.append(
                 f"{prefix}: git_sha.txt={saved_git_sha!r}, expected current clean "
                 f"HEAD {expected_git_sha!r}"

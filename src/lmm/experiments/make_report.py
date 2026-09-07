@@ -471,7 +471,14 @@ def discover(root, seeds, *, complete=False, symbol=None, treatments=False):
     return runs, headline, synthetic
 
 
-def generate(root, seeds, *, publication_mode=False, complete=False, symbol=None, treatments=False):
+def generate(root, seeds, *, publication_mode=False, complete=False, symbol=None, treatments=False,
+             source_attestation=None):
+    attestation = None
+    if source_attestation is not None:
+        if not publication_mode:
+            raise ValueError('source attestation is only applicable to publication reporting')
+        from lmm.experiments.source_attestation import SourceAttestation
+        attestation = SourceAttestation.load(Path(__file__).resolve().parents[3], root, source_attestation)
     if publication_mode:
         if symbol or set(seeds) != set(publication.PUBLICATION_SEEDS):
             raise ValueError("publication requires the canonical seeds and all historical tickers")
@@ -480,8 +487,9 @@ def generate(root, seeds, *, publication_mode=False, complete=False, symbol=None
     from lmm.experiments.mature_reporting import load_protocol, RELATIVE_PATH
     protocol = load_protocol(runs)
     if publication_mode:
-        publication.validate_publication_runs(synthetic)
-        publication.validate_publication_runs([r for r in runs if r.setting == P.HISTORICAL_SETTING])
+        kwargs = {} if attestation is None else {'source_attestation': attestation}
+        publication.validate_publication_runs(synthetic, **kwargs)
+        publication.validate_publication_runs([r for r in runs if r.setting == P.HISTORICAL_SETTING], **kwargs)
     data = seed_outcomes(headline)
     learning = learning_rows(headline)
     curves = learning_summary(learning)
@@ -507,6 +515,10 @@ def generate(root, seeds, *, publication_mode=False, complete=False, symbol=None
         figures, tables, audit = [stage / name for name in ("figures", "tables", "audit")]
         for path in (figures, tables, audit):
             path.mkdir()
+        source_disclosure = ''
+        if attestation is not None:
+            source_disclosure = attestation.payload['disclosure']
+            (audit/'source_attestation.json').write_text(json.dumps(attestation.payload, indent=2)+'\n')
         disclosure = ""
         if protocol is not None:
             selection_rows = [{"run": name, **{k: entry[k] for k in (
@@ -546,6 +558,8 @@ def generate(root, seeds, *, publication_mode=False, complete=False, symbol=None
         intro = f"{status}. {len(runs)} runs; master seeds {', '.join(map(str, seeds))}."
         methods = METHODS + "\n" + experiment_scope(runs)
         readme = f"# Research results\n\n{intro}\n\n{methods}\n"
+        if source_disclosure:
+            readme += f'\n## Source provenance attestation\n\n{source_disclosure}\n\nSee audit/source_attestation.json for the author statement and bound source/artifact inventory.\n'
         if disclosure:
             readme += f"\n## Reporting protocol amendment\n\n{disclosure}\n\nSee audit/checkpoint_selection.csv for all 220 decisions and audit/reporting_protocol.json for the bound provenance. Include audit/reporting_amendment.tex in the paper when using these results.\n"
         for name in names:
@@ -553,6 +567,8 @@ def generate(root, seeds, *, publication_mode=False, complete=False, symbol=None
         readme += "\nTables are longtable/booktabs LaTeX and numeric long-form CSV (mean, CI limits and seed count). Include with \\input; longtable cannot be nested inside a table float. CSVs under audit contain every contributing seed estimate and validation point. Source configs, raw episode records, selection details and checkpoint hashes remain in the run directories listed in manifest.json. Report generation only writes to the requested output directory.\n"
         (stage / "README.md").write_text(readme)
         page = '<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Research results</title><style>body{font:16px/1.55 system-ui;max-width:1200px;margin:36px auto;padding:0 24px;color:#20242b}img{width:100%;height:auto}h1,h2{line-height:1.2}p{max-width:100ch}a{color:#0072B2}</style><h1>Research results</h1><p>' + html.escape(intro) + '</p><p>' + html.escape(methods).replace('\n\n', '</p><p>') + '</p>'
+        if source_disclosure:
+            page += '<h2>Source provenance attestation</h2><p>' + html.escape(source_disclosure) + '</p><p><a href="audit/source_attestation.json">Author statement and source/artifact inventory</a></p>'
         if disclosure:
             page += '<h2>Reporting protocol amendment</h2><p>' + html.escape(disclosure) + '</p><p><a href="audit/checkpoint_selection.csv">All checkpoint decisions</a> · <a href="audit/reporting_amendment.tex">LaTeX disclosure</a></p>'
         for name in names:
@@ -571,6 +587,12 @@ def generate(root, seeds, *, publication_mode=False, complete=False, symbol=None
                            "setting": run.setting, "symbol": run.symbol,
                            "files": {p: publication._sha256_file(run.run_dir / p) for p in paths if (run.run_dir / p).is_file()}})
         manifest = {"schema": "lmm-focused-report-v1", "publication": publication_mode,
+                    "source_attestation": None if attestation is None else {
+                        'schema': attestation.payload['schema'],
+                        'training_revision': attestation.training_revision,
+                        'path': str(attestation.path),
+                        'sha256': publication._sha256_file(attestation.path),
+                        'disclosure': source_disclosure},
                     "reporting_amendment": disclosure or None,
                     "seeds": seeds, "runs": inputs, "estimand": "equal-seed mean of episode means",
                     "interval": "95% percentile bootstrap of training-seed blocks", "bootstrap_replicates": BOOTSTRAP_REPLICATES,
@@ -578,6 +600,10 @@ def generate(root, seeds, *, publication_mode=False, complete=False, symbol=None
                     "report_source_sha256": publication._sha256_file(Path(__file__)),
                     "outputs": {str(p.relative_to(stage)): publication._sha256_file(p) for p in sorted(stage.rglob("*")) if p.is_file()}}
         (stage / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+        if attestation is not None:
+            # Do not publish a report if sources or bound manifests changed
+            # while validation and figure generation were in progress.
+            attestation.revalidate()
         destination.mkdir(exist_ok=True)
         (destination / "manifest.json").unlink(missing_ok=True)
         for p in sorted(stage.rglob("*")):
@@ -596,13 +622,16 @@ def main(argv=None):
     parser.add_argument("--publication", action="store_true")
     parser.add_argument("--require-complete", action="store_true")
     parser.add_argument("--include-treatments", action="store_true")
+    parser.add_argument('--source-attestation', type=Path,
+                        help='explicit audited provenance for writing-only dirty training runs')
     parser.add_argument("--symbol", choices=["MSFT", "JPM", "PG", "GOOGL", "CAT"])
     args = parser.parse_args(argv)
     if len(args.seeds) != len(set(args.seeds)) or min(args.seeds) < 0:
         parser.error("seeds must be distinct nonnegative integers")
     try:
         path = generate(args.root, sorted(args.seeds), publication_mode=args.publication,
-                        complete=args.require_complete, symbol=args.symbol, treatments=args.include_treatments)
+                        complete=args.require_complete, symbol=args.symbol, treatments=args.include_treatments,
+                        source_attestation=args.source_attestation)
     except (ValueError, KeyError, OSError) as exc:
         parser.exit(1, f"Report generation failed: {exc}\n")
     print(f"Research report: {path / 'index.html'}")

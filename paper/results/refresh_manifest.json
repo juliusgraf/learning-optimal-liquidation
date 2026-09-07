@@ -1,0 +1,54 @@
+{
+  "campaign": "revision_v20",
+  "inputs": {
+    "paper/results/shortfall_summary.csv": "b1ddad9af6fcc5d658db308c54d4eff0ed6af7573ad4b5f0da1baede12c8da7d",
+    "paper/results/forecast_summary.csv": "67c2b6f269861c8d965251986e6198bd64eadb9b529637acc36a1b7b1564e015",
+    "results/revision_v20/_publication/tables/treatments.csv": "dc485c9ea836353eeb39ac08ff01f624019d50053065fd90a9763dd30d7a30c4",
+    "results/revision_v20/_publication/audit/treatments_by_seed.csv": "944f7e8d38fabc00c344587127b7b44c62940a6b559b3046c6281a3fd2cc0169",
+    "results/revision_v20_cashflow/_comparison/comparison.csv": "9cb378a9ef163051e6974b5502a245ccb1b2484877d5fb5d6e0eadc3bcda2084",
+    "results/revision_v20_economic_dense_h/_comparison/comparison.csv": "f8031b58b7ee9a13229c7999d8038ff8b0e37148d02df08309a5f88c3d57cfd5",
+    "results/revision_v20/_publication/figures/economic_performance.pdf": "c631dc807a5935ab54fd17d7ac2c6e86e1e5c1500021c6a40b9ef34b05bedde8",
+    "results/revision_v20/_publication/figures/auction_mechanism.pdf": "c8320e44cd2e55ca570b2bf95bb229e9b8a898ef8766277827da01bceb6ea474",
+    "results/revision_v20/_publication/figures/treatments.pdf": "d1d69bedd996ac14b5acb4c428a6eaa708c383aec652a871d1e867af6f553e59",
+    "results/revision_v20/_publication/figures/credit_assignment.pdf": "c947135707be1459e1ecc9930060501f8f3840c1bd3b42a231d13ee9f3479b88",
+    "results/revision_v20/_publication/figures/learning.pdf": "112da5ad320656d6c3494542f6e82911ef463e1014bdda7bc2e783a659143d2d",
+    "results/revision_v20_cashflow/_comparison/comparison.pdf": "064a25a5f076fea34ba1f3b0ff4db55acf932e8c2fa20f673adf9cab5b032b44",
+    "results/revision_v20_economic_dense_h/_comparison/comparison.pdf": "54f6d7dc118aeabdd977cc6e11c3b986c207d7729464632f04e0face4f5ee1b1"
+  },
+  "figure_outputs": {
+    "paper/figures/economic_performance.pdf.txt": {
+      "source": "results/revision_v20/_publication/figures/economic_performance.pdf",
+      "sha256": "c631dc807a5935ab54fd17d7ac2c6e86e1e5c1500021c6a40b9ef34b05bedde8"
+    },
+    "paper/figures/auction_mechanism.pdf.txt": {
+      "source": "results/revision_v20/_publication/figures/auction_mechanism.pdf",
+      "sha256": "c8320e44cd2e55ca570b2bf95bb229e9b8a898ef8766277827da01bceb6ea474"
+    },
+    "paper/figures/treatments.pdf.txt": {
+      "source": "results/revision_v20/_publication/figures/treatments.pdf",
+      "sha256": "d1d69bedd996ac14b5acb4c428a6eaa708c383aec652a871d1e867af6f553e59"
+    },
+    "paper/figures/credit_assignment.pdf.txt": {
+      "source": "results/revision_v20/_publication/figures/credit_assignment.pdf",
+      "sha256": "c947135707be1459e1ecc9930060501f8f3840c1bd3b42a231d13ee9f3479b88"
+    },
+    "paper/figures/learning.pdf.txt": {
+      "source": "results/revision_v20/_publication/figures/learning.pdf",
+      "sha256": "112da5ad320656d6c3494542f6e82911ef463e1014bdda7bc2e783a659143d2d"
+    },
+    "paper/figures/cashflow_comparison.pdf.txt": {
+      "source": "results/revision_v20_cashflow/_comparison/comparison.pdf",
+      "sha256": "064a25a5f076fea34ba1f3b0ff4db55acf932e8c2fa20f673adf9cab5b032b44"
+    },
+    "paper/figures/preferences_comparison.pdf.txt": {
+      "source": "results/revision_v20_economic_dense_h/_comparison/comparison.pdf",
+      "sha256": "54f6d7dc118aeabdd977cc6e11c3b986c207d7729464632f04e0face4f5ee1b1"
+    }
+  },
+  "tables": [
+    "tab:economic_performance",
+    "tab:forecast_accuracy",
+    "tab:treatments"
+  ],
+  "note": "Numbers use revised runs only. The PDF .txt suffix is retained for compatibility with the supplied LaTeX source."
+}

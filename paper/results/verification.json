@@ -1,0 +1,14 @@
+{
+  "campaign": "revision_v20",
+  "empirical_tables": 3,
+  "numeric_cells_verified": 216,
+  "figure_assets_verified": 7,
+  "forecast_headline_runs": 240,
+  "forecast_episodes_per_run": 100,
+  "forecast_market_phase_rows": 12,
+  "qualitative_claim_checks": "benchmark gaps, raw PnL comparison, forecast improvement, credit at episode 250, 39/40 cash-flow wins",
+  "source_attestation_valid": true,
+  "latex_warnings": 0,
+  "main_tex_sha256": "15d4168688291f61a52fdba5479ce6b5aacc60b73d3f1b975befa2996a1523a8",
+  "pdf_sha256": "093e670b617a1f3fe6135e25155da0e55ed86193aa2264c1c0ad2b145aa09db0"
+}

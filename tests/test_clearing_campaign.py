@@ -65,6 +65,38 @@ def test_partial_fit_is_not_overwritten(tmp_path, monkeypatch):
     assert not calls
 
 
+def test_report_attestation_changes_only_forecast_git_identity(tmp_path, monkeypatch):
+    _fake_fitter(monkeypatch, tmp_path)
+    setting = C.SETTINGS[0]
+    C.prepare_forecast(REPO, tmp_path, setting, smoke=True)
+    original = C.fit_contract
+    recorded = original(REPO, tmp_path, setting, True)['git_sha']
+    extra = {}
+    def after_paper_commit(*args):
+        contract = original(*args)
+        contract.update(git_sha='new-paper-commit', **extra)
+        return contract
+    monkeypatch.setattr(C, 'fit_contract', after_paper_commit)
+    with pytest.raises(ValueError, match='contract mismatch'):
+        C.validate_forecast_fit(REPO, tmp_path, setting, smoke=True)
+    checked = []
+    def accept(repo, root, requested, saved):
+        checked.append((repo, root, requested, saved))
+        return recorded
+    attestation = SimpleNamespace(forecast_revision=accept)
+    C.validate_forecast_fit(REPO, tmp_path, setting, smoke=True, source_attestation=attestation)
+    assert checked == [(REPO, tmp_path, setting, recorded)]
+    for field, value in [('python', 'different runtime'), ('historical_inputs', {'changed': 'data'}),
+                         ('config', {}), ('fitter_sha256', 'modified fitter')]:
+        extra[field] = value
+        with pytest.raises(ValueError, match='contract mismatch'):
+            C.validate_forecast_fit(REPO, tmp_path, setting, smoke=True, source_attestation=attestation)
+        extra.clear()
+    (C.forecast_directory(tmp_path, setting)/'forecasts.csv').write_text('tampered')
+    with pytest.raises(ValueError, match='artifacts changed'):
+        C.validate_forecast_fit(REPO, tmp_path, setting, smoke=True, source_attestation=attestation)
+
+
 def test_forecast_failure_does_not_write_completion(tmp_path, monkeypatch):
     original_run = subprocess.run
     def fail(command, **kwargs):
