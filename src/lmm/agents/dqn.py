@@ -33,9 +33,9 @@ import numpy as np
 import torch
 import torch.nn as nn
 
+from lmm.config import environment_contract, LEGACY_CLEARING
 from lmm.agents.base import (
     BELLMAN_FACTOR,
-    ENVIRONMENT_CONTRACT,
     Agent,
     Transition,
 )
@@ -570,7 +570,7 @@ class DQNAgent(Agent):
         initial/best/final snapshots to keep them small)."""
         state = {
             "artifact_schema_version": self.artifact_schema_version,
-            "environment_contract": ENVIRONMENT_CONTRACT,
+            "environment_contract": environment_contract(self.cfg),
             "q_architecture": self.q["clob"].architecture,
             "q_architectures": {phase: network.architecture for phase, network in self.q.items()},
             "dqn_contract": self._checkpoint_contract(),
@@ -605,7 +605,7 @@ class DQNAgent(Agent):
                 "checkpoint artifact_schema_version mismatch: "
                 f"expected {self.artifact_schema_version}, got {saved_schema}"
             )
-        if state.get("environment_contract") != ENVIRONMENT_CONTRACT:
+        if state.get("environment_contract") != environment_contract(self.cfg):
             raise ValueError(
                 "checkpoint environment contract mismatch; old auction/grid "
                 "checkpoints cannot be loaded by the revised pipeline"
@@ -621,6 +621,9 @@ class DQNAgent(Agent):
         contract = state.get("dqn_contract")
         if isinstance(contract, dict) and isinstance(contract.get('algo1'), dict):
             contract['algo1'].setdefault('clob_forecast_weights', ())
+            contract['algo1'].setdefault('clob_forecast_mechanism', LEGACY_CLEARING)
+        if isinstance(contract, dict) and isinstance(contract.get('auction_flow'), dict):
+            contract['auction_flow'].setdefault('clearing_mechanism', LEGACY_CLEARING)
         if isinstance(contract, dict):
             contract.get('hyperparams_except_device', {}).setdefault('weight_decay', 0.0)
             contract.get('hyperparams_except_device', {}).setdefault('auction_control_exploration_probability', 0.0)

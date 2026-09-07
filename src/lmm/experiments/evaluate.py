@@ -25,8 +25,8 @@ from typing import Optional, Sequence
 import numpy as np
 import yaml
 
+from lmm.config import environment_contract
 from lmm.agents.benchmarks import ASBenchmarkAgent, TWAPBenchmarkAgent
-from lmm.agents.base import ENVIRONMENT_CONTRACT
 from lmm.config import economic_evaluation_config, load_config, to_dict
 from lmm.env.mdp import make_env
 from lmm.experiments.tracing import EpisodeTraceRecorder
@@ -652,7 +652,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "tau_op": cfg.grid.tau_op,
         "tau_cl": cfg.grid.tau_cl,
         "artifact_schema_version": cfg.experiment.artifact_schema_version,
-        "environment_contract": ENVIRONMENT_CONTRACT,
+        "environment_contract": environment_contract(cfg),
+        "clearing_mechanism": cfg.auction_flow.clearing_mechanism,
         "dqn_equal_q_tie_breaking": "first action in lexicographic grid order",
         "ablation_label": cfg.experiment.ablation_label,
         "auction_enabled": cfg.experiment.auction_enabled,

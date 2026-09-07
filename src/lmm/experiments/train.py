@@ -636,6 +636,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             yaml.safe_dump(
                 {
                     "fit_split": "training_calibration",
+                    "clearing_mechanism": cfg.auction_flow.clearing_mechanism,
+                    "artifact_schema_version": cfg.experiment.artifact_schema_version,
                     "n_episodes": len(normalizer_seeds),
                     "seed_stream": "normalizer_env",
                     "policy_seed_stream": "normalizer_policy",

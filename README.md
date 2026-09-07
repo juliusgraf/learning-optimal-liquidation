@@ -7,6 +7,11 @@ rough-Heston and historical-midquote settings share the market mechanics.
 Historical inputs determine prices only; order flow and auction clearing remain
 simulated.
 
+The revised volume-maximizing auction projection is implemented as
+`max_volume_v2` (schema 16). Existing configurations, fitted forecasts and saved
+paper results retain legacy nearest-tick clearing. The multiseed launcher now defaults to v2, refits forecasts automatically and
+writes separate v20 outputs. See the [rerun workflow](docs/revised_clearing_reruns.md).
+
 ## Quick start
 
 Python 3.10 or newer is required. Run commands from the repository root.
@@ -23,11 +28,14 @@ private historical dataset skip explicitly when it is absent. Synthetic
 experiments require no external data:
 
 ```bash
-# Four training episodes and three evaluation episodes; a pipeline check only.
+# Legacy standalone smoke: four training and three evaluation episodes only.
 LMM_RESULTS_ROOT=results/smoke scripts/run_synthetic_dqn.sh --smoke
 
-# Inspect the main experiment matrix without training.
-scripts/run_multiseed.sh --dry-run
+# Inspect the revised 440-run matrix and two forecast prerequisites.
+scripts/run_multiseed.sh --jobs 10 --threads-per-job 1 --dry-run
+
+# After committing a clean worktree, fit, train/reselect, evaluate and report:
+# scripts/run_multiseed.sh --jobs 10 --threads-per-job 1
 ```
 
 The smoke run is not a scientific result. Full training budgets, data setup and

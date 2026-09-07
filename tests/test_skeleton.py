@@ -238,7 +238,7 @@ def test_config_rejects_incoherent_physical_clock() -> None:
 
 def test_config_rejects_old_or_future_artifact_schema_labels() -> None:
     for schema in (12, 16):
-        with pytest.raises(ConfigError, match="active schema 15"):
+        with pytest.raises(ConfigError, match="15 for nearest_tick_v1"):
             _load_synthetic(
                 overrides=[f"experiment.artifact_schema_version={schema}"]
             )

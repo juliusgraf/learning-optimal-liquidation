@@ -9,8 +9,8 @@ from typing import Optional, Sequence
 
 import yaml
 
-from lmm.agents.base import ENVIRONMENT_CONTRACT
-from lmm.config import ACTIVE_ARTIFACT_SCHEMA_VERSION, load_config
+from lmm.config import environment_contract, LEGACY_CLEARING
+from lmm.config import load_config
 from lmm.experiments import plotting as P
 
 __all__ = ["build_parser", "main"]
@@ -42,16 +42,18 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     cfg = load_config(run_dir / "config_resolved.yaml")
     metadata_path = run_dir / "eval" / "metadata.yaml"
     metadata = yaml.safe_load(metadata_path.read_text()) if metadata_path.exists() else {}
-    if metadata.get("environment_contract") != ENVIRONMENT_CONTRACT:
+    if metadata.get('clearing_mechanism', LEGACY_CLEARING) != cfg.auction_flow.clearing_mechanism:
+        raise SystemExit('evaluation clearing mechanism disagrees with resolved config')
+    if metadata.get("environment_contract") != environment_contract(cfg):
         raise SystemExit(
             "evaluation artifact predates the revised environment contract; "
             "old result files cannot be compared"
         )
     metadata_schema = metadata.get("artifact_schema_version")
-    if metadata_schema is None or int(metadata_schema) != ACTIVE_ARTIFACT_SCHEMA_VERSION:
+    if metadata_schema is None or int(metadata_schema) != cfg.experiment.artifact_schema_version:
         raise SystemExit(
             "evaluation artifact_schema_version mismatch: expected active schema "
-            f"{ACTIVE_ARTIFACT_SCHEMA_VERSION}, got {metadata_schema!r}"
+            f"{cfg.experiment.artifact_schema_version}, got {metadata_schema!r}"
         )
     if int(metadata_schema) != cfg.experiment.artifact_schema_version:
         raise SystemExit(

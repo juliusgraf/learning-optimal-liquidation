@@ -1,10 +1,15 @@
 # Reproducing the completed study
 
-Training is finished: 440 main v19 runs and two subsequent 40-run synthetic
+**Legacy nearest-tick clearing:** training is finished for 440 main v19 runs and two subsequent 40-run synthetic
 comparisons. Use the saved results for writing. This guide documents how to check
 and regenerate them, and how to reproduce experiments if needed later.
 The [documentation index](docs/README.md) links the scientific protocol and
 findings; [rl_design.md](docs/rl_design.md) defines the learning contract.
+
+The revised volume-maximizing projection is a changed simulator, with no
+recomputed paper results. Its [separate rerun instructions](docs/revised_clearing_reruns.md)
+cover forecast/reference refitting, retraining/reselection and matched evaluation.
+The commands below reproduce the retained legacy study.
 
 ## Environment and validation
 
@@ -135,11 +140,19 @@ write-up. Use a fresh results root and a clean committed tree. Never overwrite
 completed campaigns or mix runs from different source commits.
 
 ```bash
-# Inspect the main 440 jobs without training:
+# Inspect reproduction of the retained legacy 440 jobs without training:
 LMM_RESULTS_ROOT=/absolute/scratch/new-study \
-  scripts/run_multiseed.sh --jobs 10 --threads-per-job 1 --dry-run
+  scripts/run_multiseed.sh --jobs 10 --threads-per-job 1 --legacy-clearing --dry-run
 # Remove --dry-run only when intentionally reproducing the campaign.
 ```
+
+Without `--legacy-clearing`, the launcher now runs the revised `max_volume_v2`
+main matrix in `results/revision_v20`, with two forecast refits before the 440
+learning jobs. After committing a clean worktree, the complete revised command
+is `scripts/run_multiseed.sh --jobs 10 --threads-per-job 1`. See
+[the revised workflow](docs/revised_clearing_reruns.md) and
+[exchange-practice assessment](docs/auction_market_practice.md). The retained
+520-run findings above remain legacy-only.
 
 For the two extensions, `python -m lmm.experiments.cashflow_comparison --help`
 documents `--root`, `--headline-root`, `--jobs`, `--threads-per-job`, `--dry-run`

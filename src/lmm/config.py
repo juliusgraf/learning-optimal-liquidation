@@ -28,6 +28,10 @@ import yaml
 
 __all__ = [
     "ACTIVE_ARTIFACT_SCHEMA_VERSION",
+    "LEGACY_CLEARING",
+    "VOLUME_MAX_CLEARING",
+    "CLEARING_SCHEMAS",
+    "environment_contract",
     "ConfigError",
     "ExperimentMeta",
     "GridParams",
@@ -54,7 +58,18 @@ __all__ = [
 ]
 
 
-ACTIVE_ARTIFACT_SCHEMA_VERSION = 15
+LEGACY_CLEARING = "nearest_tick_v1"
+VOLUME_MAX_CLEARING = "max_volume_v2"
+ACTIVE_ARTIFACT_SCHEMA_VERSION = 16
+CLEARING_SCHEMAS = {LEGACY_CLEARING: 15, VOLUME_MAX_CLEARING: 16}
+
+
+def environment_contract(cfg: ExperimentConfig) -> str:
+    """Mechanism-specific identity; retained v15 artifacts keep their meaning."""
+    return {
+        LEGACY_CLEARING: "shaped-j-economic-eval-sb3-2026-09-05-v15",
+        VOLUME_MAX_CLEARING: "max-volume-auction-2026-09-07-v16",
+    }[cfg.auction_flow.clearing_mechanism]
 
 
 class ConfigError(ValueError):
@@ -76,7 +91,7 @@ class ExperimentMeta:
     episodes: int  # E; active settings use one matched budget
     master_seed: int  # single master seed; ruling D10
     results_root: Path  # gitignored output root
-    artifact_schema_version: int = ACTIVE_ARTIFACT_SCHEMA_VERSION
+    artifact_schema_version: int = 15  # missing schema/mechanism preserves v1
     seeds: tuple[int, ...] = (42,)
     ablation_label: str = "H_on__shaping_on__auction_on"
     auction_enabled: bool = True
@@ -148,6 +163,8 @@ class AuctionFlowParams:
     U1: float  # exogenous schedule slope lower bound; => 0.1
     U2: float  # exogenous schedule slope upper bound; => 2.0
     B_inf: int  # exogenous auction quote-support half-width in ticks; => 150
+    # Missing in old configs means legacy, never an implicit simulator upgrade.
+    clearing_mechanism: str = LEGACY_CLEARING
 
     @property
     def M1(self) -> int:
@@ -252,6 +269,7 @@ class Algo1Params:
     # Optional training-fitted reliability of the raw projected book signal
     # in four equal CLOB time bins. Empty preserves the original estimator.
     clob_forecast_weights: tuple[float, ...] = ()
+    clob_forecast_mechanism: str = LEGACY_CLEARING
 
     @property
     def tau(self) -> float:
@@ -823,6 +841,13 @@ def _validate_experiment_config(cfg: ExperimentConfig) -> ExperimentConfig:
     weights = cfg.algo1.clob_forecast_weights
     if weights and (len(weights) != 4 or any(not math.isfinite(w) or not 0 <= w <= 1 for w in weights)):
         raise ConfigError('algo1.clob_forecast_weights must be empty or four values in [0,1]')
+    mechanism = cfg.auction_flow.clearing_mechanism
+    if mechanism not in CLEARING_SCHEMAS:
+        raise ConfigError(f"unknown auction_flow.clearing_mechanism {mechanism!r}")
+    if cfg.algo1.clob_forecast_mechanism not in CLEARING_SCHEMAS:
+        raise ConfigError("unknown algo1.clob_forecast_mechanism")
+    if weights and cfg.algo1.clob_forecast_mechanism != mechanism:
+        raise ConfigError("forecast weights were fitted under a different clearing mechanism; refit on training paths")
     if cfg.rl.auction_exposure_features and not cfg.rl.relative_price_features:
         raise ConfigError('auction exposure coordinates require relative prices')
     if cfg.rl.auction_inventory_asinh and not cfg.rl.auction_exposure_features:
@@ -969,10 +994,10 @@ def _validate_experiment_config(cfg: ExperimentConfig) -> ExperimentConfig:
         raise ConfigError("reward.numerical_guard_bound must be finite and positive")
     if cfg.rl.discount_mode != "undiscounted":
         raise ConfigError("the revised objective requires rl.discount_mode='undiscounted'")
-    if cfg.experiment.artifact_schema_version != ACTIVE_ARTIFACT_SCHEMA_VERSION:
+    if cfg.experiment.artifact_schema_version != CLEARING_SCHEMAS[mechanism]:
         raise ConfigError(
-            "experiment.artifact_schema_version must equal the active schema "
-            f"{ACTIVE_ARTIFACT_SCHEMA_VERSION}"
+            "experiment.artifact_schema_version must equal "
+            f"{CLEARING_SCHEMAS[mechanism]} for {mechanism}"
         )
     if cfg.rl.normalizer_fit_episodes <= 0:
         raise ConfigError("rl.normalizer_fit_episodes must be positive")

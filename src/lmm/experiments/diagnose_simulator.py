@@ -119,6 +119,8 @@ def diagnose(
     pooled_array = np.asarray(pooled_slopes)
     return {
         "contract": "no strategic CLOB order; first auction action is no-op",
+        "clearing_mechanism": cfg.auction_flow.clearing_mechanism,
+        "artifact_schema_version": cfg.experiment.artifact_schema_version,
         "midprice_model": cfg.midprice.model,
         "data_split": data_split,
         "episodes_per_symbol": episodes,

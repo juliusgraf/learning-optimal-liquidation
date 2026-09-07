@@ -19,8 +19,8 @@ from importlib import metadata
 from dataclasses import dataclass
 from pathlib import Path
 
+from lmm.config import environment_contract
 from lmm.config import ExperimentConfig, save_resolved
-from lmm.agents.base import ENVIRONMENT_CONTRACT
 
 __all__ = ["RunPaths", "create_run_dir", "write_run_metadata", "get_run_logger"]
 
@@ -130,7 +130,8 @@ def write_run_metadata(paths: RunPaths, cfg: ExperimentConfig, master_seed: int)
                 "platform": platform.platform(),
                 "packages": packages,
                 "artifact_schema_version": cfg.experiment.artifact_schema_version,
-                "environment_contract": ENVIRONMENT_CONTRACT,
+                "environment_contract": environment_contract(cfg),
+                "clearing_mechanism": cfg.auction_flow.clearing_mechanism,
                 "time_unit": cfg.grid.time_unit,
                 "tau_op": cfg.grid.tau_op,
                 "tau_cl": cfg.grid.tau_cl,

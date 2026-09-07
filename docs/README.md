@@ -3,6 +3,7 @@
 ## Model and operation
 
 - [Model specification](model.md)
+- [Revised auction clearing and separate rerun commands](revised_clearing_reruns.md)
 - [Learning design](rl_design.md) and [continuous-control projection](continuous_action_extension.md)
 - [Metrics schema](metrics_schema.md) and [research outputs](research_outputs.md)
 - [Reproduction guide](../REPRODUCING.md) and [data setup](../data/README.md)
@@ -17,7 +18,8 @@
 - [Matched dense economic follow-up protocol](economic_dense_h_comparison_v19.md)
 - [Structural repairs and limitations](pathology_repair_v19.md)
 
-The study contains 520 completed runs. Protocol records describe decisions at
+The legacy nearest-tick study contains 520 completed runs. These results do not
+evaluate the revised volume-maximizing projection. Protocol records describe decisions at
 launch; the result summaries record the completed outcomes.
 
 ## Evidence and provenance

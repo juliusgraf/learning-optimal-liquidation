@@ -38,6 +38,9 @@ clob_flow:
   rho_lob: 0.96
   L_max: 200
 auction_flow:
+  # Retained v19 campaign and forecast fits: explicitly legacy clearing.
+  # New experiments overlay configs/clearing/max_volume_v2.yaml after setting.
+  clearing_mechanism: nearest_tick_v1
   p1: 1.0
   p2: 0.0
   p3: 0.3

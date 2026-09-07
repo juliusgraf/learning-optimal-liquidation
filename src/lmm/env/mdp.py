@@ -88,7 +88,7 @@ class MarketMakingEnv(gymnasium.Env):
         # policy before those times enter the filtration.
         self._generator = MarketGenerator(cfg.clob_flow, cfg.auction_flow, cfg.grid)
         self.algo1 = Algo1Estimator(cfg.algo1, cfg.grid)
-        self.eq2 = Eq2Cache(cfg.grid)
+        self.eq2 = Eq2Cache(cfg.grid, cfg.auction_flow.clearing_mechanism)
         self.features = FeatureExtractor(
             cfg.features, cfg.grid, cfg.clob_flow, cfg.auction_flow
         )
@@ -533,6 +533,9 @@ class MarketMakingEnv(gymnasium.Env):
             "tick_price": result.tick_price,
             "clearing_residual": result.residual_at_tick,
             "nonlinear_clearing": result.nonlinear,
+            "clearing_mechanism": self.cfg.auction_flow.clearing_mechanism,
+            "clearing_tick_index": result.tick_index,
+            "matched_volume": result.matched_volume,
             "degenerate_fallback": False,
             "clob_economic_cash": 0.0,
             "auction_economic_cash": 0.0,
@@ -632,6 +635,7 @@ class MarketMakingEnv(gymnasium.Env):
             leave_agent_out_inputs,
             self.grid.alpha,
             self.cfg.auction_flow.D_mu,
+            mechanism=self.cfg.auction_flow.clearing_mechanism,
         )
 
         self._S_cl = result.tick_price

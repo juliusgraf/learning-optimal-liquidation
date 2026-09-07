@@ -23,9 +23,8 @@ import matplotlib.pyplot as plt  # noqa: E402
 import pandas as pd  # noqa: E402
 import yaml  # noqa: E402
 
-from lmm.agents.base import ENVIRONMENT_CONTRACT
+from lmm.config import environment_contract, LEGACY_CLEARING
 from lmm.config import (
-    ACTIVE_ARTIFACT_SCHEMA_VERSION,
     ExperimentConfig,
     load_config,
 )
@@ -287,16 +286,16 @@ def collect_runs(run_dirs) -> list[RunInfo]:
             )
             raise ValueError(f"{rd}: missing eval/metadata.yaml.{detail}")
         meta = read_metadata(rd)
-        if meta.get("environment_contract") != ENVIRONMENT_CONTRACT:
+        if meta.get("environment_contract") != environment_contract(cfg):
             raise ValueError(
-                f"{rd}: result artifact does not match {ENVIRONMENT_CONTRACT!r}; "
+                f"{rd}: result artifact does not match {environment_contract(cfg)!r}; "
                 "old result files are not accepted by the revised pipeline"
             )
         metadata_schema = meta.get("artifact_schema_version")
-        if metadata_schema is None or int(metadata_schema) != ACTIVE_ARTIFACT_SCHEMA_VERSION:
+        if metadata_schema is None or int(metadata_schema) != cfg.experiment.artifact_schema_version:
             raise ValueError(
                 f"{rd}: eval/metadata.yaml artifact_schema_version must equal "
-                f"the active schema {ACTIVE_ARTIFACT_SCHEMA_VERSION}; got "
+                f"the active schema {cfg.experiment.artifact_schema_version}; got "
                 f"{metadata_schema!r}"
             )
         if int(metadata_schema) != cfg.experiment.artifact_schema_version:
@@ -305,6 +304,10 @@ def collect_runs(run_dirs) -> list[RunInfo]:
                 f"({metadata_schema}) disagrees with config_resolved.yaml "
                 f"({cfg.experiment.artifact_schema_version})"
             )
+        if meta.get("clearing_mechanism", LEGACY_CLEARING) != cfg.auction_flow.clearing_mechanism:
+            raise ValueError(f"{rd}: clearing mechanism metadata disagrees with config")
+        if runs and runs[0].cfg.auction_flow.clearing_mechanism != cfg.auction_flow.clearing_mechanism:
+            raise ValueError("cannot pool legacy and revised clearing results")
         algo = cfg.algo.name if cfg.algo is not None else "unknown"
         seed_file = rd / "seed.txt"
         if not seed_file.exists():

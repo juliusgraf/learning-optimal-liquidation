@@ -128,7 +128,7 @@ def test_report_runs_once_after_success_and_not_after_failure(tmp_path, monkeypa
     calls = []
     monkeypatch.setattr(M, 'run_queue', lambda *a, **k: 0)
     monkeypatch.setattr(M.subprocess, 'call', lambda command, **k: calls.append(command) or 0)
-    args = ['--seeds','9001','9002','--smoke','--symbol','MSFT','--root',str(tmp_path),'--jobs','10','--threads-per-job','1']
+    args = ['--seeds','9001','9002','--smoke','--symbol','MSFT','--root',str(tmp_path),'--jobs','10','--threads-per-job','1','--legacy-clearing']
     assert M.main(args) == 0
     assert len(calls) == 1
     assert calls[0][-3:] == ['--require-complete','--symbol','MSFT']
@@ -142,5 +142,44 @@ def test_dry_run_has_no_training_or_filesystem_side_effects(tmp_path, capsys):
                    '--threads-per-job','1','--dry-run','--root',str(tmp_path)]) == 0
     plan = json.loads(capsys.readouterr().out)
     assert plan['jobs'] == 440 and plan['workers'] == 10
+    assert plan['clearing_mechanism'] == 'max_volume_v2'
+    assert len(plan['forecast_commands']) == 2
     assert len(plan['commands']) == 440
     assert not list(tmp_path.iterdir())
+
+
+@pytest.mark.parametrize('forecast_code', [0, 1])
+def test_revised_prerequisites_finish_before_training(tmp_path, monkeypatch, forecast_code):
+    events = []
+    def queue(jobs, **kwargs):
+        forecasts = isinstance(jobs[0], M.ForecastJob)
+        env = kwargs['env']
+        assert env['LMM_CLEARING_MECHANISM'] == 'max_volume_v2'
+        assert env['LMM_FORECAST_ROOT'] == str(tmp_path/'_forecasts')
+        assert env['OMP_NUM_THREADS'] == env['LMM_TORCH_INTRAOP_THREADS'] == '1'
+        assert kwargs['workers'] == (2 if forecasts else 10)
+        events.append(('forecast' if forecasts else 'train', len(jobs)))
+        return forecast_code if forecasts else 0
+    monkeypatch.setattr(M, 'run_queue', queue)
+    monkeypatch.setattr(M, 'validate_forecast_fit', lambda *a, **k: events.append(('validate', a[2])))
+    monkeypatch.setattr(M.subprocess, 'check_output', lambda *a, **k: '')  # clean publication checkout
+    monkeypatch.setattr(M.subprocess, 'call', lambda *a, **k: events.append(('report', 1)) or 0)
+    args = ['--seeds', *map(str, M.PUBLICATION_SEEDS), '--root', str(tmp_path),
+            '--jobs', '10', '--threads-per-job', '1']
+    assert M.main(args) == forecast_code
+    expected = [('forecast', 2)]
+    if not forecast_code:
+        expected += [('validate', setting) for setting in M.SETTINGS] + [('train', 440), ('report', 1)]
+    assert events == expected
+
+
+def test_invalid_forecast_never_dispatches_training(tmp_path, monkeypatch):
+    events = []
+    monkeypatch.setattr(M, 'run_queue', lambda jobs, **k: events.append(len(jobs)) or 0)
+    def invalid(*a, **k):
+        raise ValueError('forecast artifacts changed')
+    monkeypatch.setattr(M, 'validate_forecast_fit', invalid)
+    with pytest.raises(SystemExit) as exc:
+        M.main(['--seeds', '9001', '9002', '--smoke', '--root', str(tmp_path)])
+    assert exc.value.code == 2
+    assert events == [2]

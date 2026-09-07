@@ -29,7 +29,7 @@ from typing import Any, Iterable, Optional, Sequence
 import numpy as np
 import pandas as pd
 
-from lmm.config import ExperimentConfig, load_config, to_dict
+from lmm.config import ExperimentConfig, VOLUME_MAX_CLEARING, load_config, to_dict
 from lmm.experiments.protocol import PUBLICATION_SEEDS
 from lmm.experiments.plotting import (
     ALGO_ORDER,
@@ -283,6 +283,14 @@ def _canonical_publication_config(run: "RunInfo") -> ExperimentConfig:
         overlay = _TREATMENT_OVERLAYS[treatment]
         if overlay is not None:
             paths.append(config_root / "treatment" / overlay)
+    if run.cfg.auction_flow.clearing_mechanism == VOLUME_MAX_CLEARING:
+        from lmm.experiments.clearing_campaign import validate_forecast_fit
+        # Derive the actual campaign root, then independently verify its fit;
+        # never make saved run coefficients their own canonical reference.
+        root = Path(run.run_dir).resolve().parent.parent
+        setting = HISTORICAL_SETTING if run.setting == HISTORICAL_SETTING else 'synthetic_rough_heston'
+        fitted = validate_forecast_fit(repo_root, root, setting)
+        paths += [config_root/'clearing/max_volume_v2.yaml', fitted]
     expected = load_config(
         *paths,
         overrides=[f"experiment.name={run.setting}"],

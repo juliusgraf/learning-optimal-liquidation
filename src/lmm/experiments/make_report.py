@@ -46,11 +46,15 @@ Reporting choices follow Agarwal et al., NeurIPS 2021 (https://papers.neurips.cc
 
 def experiment_scope(runs):
     """Expose training and held-out scope from the resolved run specifications."""
+    mechanisms = sorted({r.cfg.auction_flow.clearing_mechanism for r in runs})
+    text = (f"Auction clearing mechanism: {', '.join(mechanisms)}. "
+            "These results apply only to the recorded mechanism; legacy nearest-tick "
+            "results are not evidence for revised volume-maximizing clearing. ")
     historical = [r for r in runs if r.setting == P.HISTORICAL_SETTING]
     if not historical:
-        return ""
+        return text
     pooled = [r for r in historical if r.cfg.midprice.historical.training_pool == "all_symbols"]
-    text = ("Historical training pools all configured stocks on training dates only. "
+    text += ("Historical training pools all configured stocks on training dates only. "
             "Validation and evaluation remain stock-specific on their separate date partitions. "
             if len(pooled) == len(historical) else
             "Historical training-pool choices are recorded in each resolved configuration. ")

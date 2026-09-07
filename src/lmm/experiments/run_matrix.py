@@ -1,6 +1,6 @@
 """Run independent experiments through a bounded, continuously refilled queue.
 
-Standard-library-only orchestration: learning, seeds and per-run completion
+Bounded orchestration: learning, seeds and per-run completion
 validation remain in the existing launchers. One root lock includes final
 report generation. A failed job stops further dispatch and drains active jobs.
 """
@@ -16,8 +16,13 @@ import os
 from pathlib import Path
 import signal
 import subprocess
+import sys
 import time
-from lmm.experiments.protocol import PUBLICATION_SEEDS, RESULTS_ROOT
+from lmm.experiments.protocol import PUBLICATION_SEEDS, RESULTS_ROOT, REVISED_RESULTS_ROOT
+from lmm.config import LEGACY_CLEARING, VOLUME_MAX_CLEARING
+from lmm.experiments.clearing_campaign import (
+    ForecastJob, SETTINGS, validate_campaign_root, validate_forecast_fit,
+)
 
 ALGOS = ("dqn", "ddpg", "td3", "sac")
 TICKERS = ("MSFT", "JPM", "PG", "GOOGL", "CAT")
@@ -162,12 +167,16 @@ def main(argv=None):
     parser.add_argument("--seeds", nargs="+", required=True, type=int)
     parser.add_argument("--jobs", type=int, default=1)
     parser.add_argument("--threads-per-job", type=int, default=2)
-    parser.add_argument("--root", type=Path, default=Path(RESULTS_ROOT))
+    parser.add_argument("--root", type=Path)
+    parser.add_argument("--legacy-clearing", action="store_true", help="explicitly reproduce the retained v19 mechanism")
     parser.add_argument("--symbol", choices=TICKERS)
     parser.add_argument("--smoke", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args(argv)
     repo = Path(__file__).resolve().parents[3]
+    if args.root is None:
+        args.root = Path(RESULTS_ROOT if args.legacy_clearing else REVISED_RESULTS_ROOT)
+    mechanism = LEGACY_CLEARING if args.legacy_clearing else VOLUME_MAX_CLEARING
     if args.jobs < 1 or args.threads_per_job < 1:
         parser.error("jobs and threads-per-job must be positive")
     if len(args.seeds) < 2:
@@ -178,25 +187,52 @@ def main(argv=None):
         parser.error("publication requires all ten canonical seeds and five tickers")
     try:
         jobs = build_jobs(args.seeds, args.symbol)
+        root = (args.root if args.root.is_absolute() else repo / args.root).resolve()
+        forecasts = [] if args.legacy_clearing else [ForecastJob(setting) for setting in SETTINGS]
         if args.dry_run:
             print(json.dumps(dict(jobs=len(jobs), workers=args.jobs, threads_per_worker=args.threads_per_job,
+                                  clearing_mechanism=mechanism, root=str(root),
+                                  forecast_commands=[j.command(repo, root, args.smoke) for j in forecasts],
+                                  reference_calibration="fresh training-only normalization/inventory reference in every training job",
+                                  forecast_directory=str(root/'_forecasts') if forecasts else None,
                                   commands=[j.command(repo, args.smoke) for j in jobs]), indent=2))
             return 0
         if not args.smoke:
             dirty = subprocess.check_output(["git", "status", "--porcelain", "--untracked-files=all"], cwd=repo, text=True)
             if dirty.strip():
                 parser.error("full publication mode requires a clean git worktree")
-        root = args.root if args.root.is_absolute() else repo / args.root
-        env = worker_environment(args.threads_per_job, args.root)
+        validate_campaign_root(root, mechanism)
+        env = worker_environment(args.threads_per_job, root)
+        env['LMM_CLEARING_MECHANISM'] = mechanism
+        env['LMM_PYTHON'] = sys.executable
+        if forecasts:
+            env['LMM_FORECAST_ROOT'] = str(root/'_forecasts')
+        else:
+            env.pop('LMM_FORECAST_ROOT', None)
         env.setdefault("MPLCONFIGDIR", str(repo / ".cache/matplotlib"))
         with root_lock(root / "_orchestration"):
+            if forecasts:
+                print('Preparing two revised forecasts: fit on training paths; validation is diagnostic only.', flush=True)
+                code = run_queue(forecasts, workers=min(args.jobs, len(forecasts)), env=env,
+                                 log_dir=root/'_orchestration/forecasts', cwd=repo,
+                                 command=lambda j: j.command(repo, root, args.smoke))
+                if code:
+                    return code
+                for setting in SETTINGS:
+                    validate_forecast_fit(repo, root, setting, smoke=args.smoke)
+            (root/'_orchestration/launch_plan.json').write_text(json.dumps(dict(
+                clearing_mechanism=mechanism, root=str(root), jobs=len(jobs),
+                workers=args.jobs, threads_per_worker=args.threads_per_job,
+                forecast_commands=[j.command(repo, root, args.smoke) for j in forecasts],
+                commands=[j.command(repo, args.smoke) for j in jobs],
+            ), indent=2)+'\n')
             code = run_queue(jobs, workers=args.jobs, env=env, log_dir=root / "_orchestration",
                              command=lambda j: j.command(repo, args.smoke), cwd=repo)
             if code:
                 return code
             print("All runs completed; generating the research report once.", flush=True)
             return subprocess.call(report_command(repo, args.seeds, args.smoke, args.symbol), cwd=repo, env=env)
-    except ValueError as exc:
+    except (ValueError, OSError) as exc:
         parser.exit(2, f"{exc}\n")
     except KeyboardInterrupt:
         parser.exit(130, "Interrupted; active workers stopped. Partial runs retain their diagnostics.\n")

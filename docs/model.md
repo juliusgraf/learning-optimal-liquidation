@@ -26,10 +26,29 @@ The last strategic action enters clearing without a further exogenous update.
 H-off treatments anchor quotes to frozen midprice to avoid leaking the hidden
 forecast through execution.
 
-Settlement rounds the continuous clearing root half-up to the tick grid. The
-agent's schedules are netted before pro-rata allocation. Actual fills may be
+Auction clearing has two explicit versions. Retained v19 configurations use
+`nearest_tick_v1` (half-up nearest tick). To use the revised specification,
+append [max_volume_v2.yaml](../configs/clearing/max_volume_v2.yaml) after the
+price-source overlay. For each continuous auction root, it compares the unique
+floor/ceil integer tick indices and maximizes matched volume `min(QS,QD)`, then
+minimizes distance to the root, then chooses the higher tick. Supply and demand
+include both market-order sides, each exogenous participant separately, and one
+signed aggregate of all live strategic schedules, including benchmark orders.
+Monotone supply/demand imply a global tick-volume maximizer is among these
+candidates. An on-grid root has one candidate. The linear residual bound is
+`D*alpha`; `D*alpha/2` belongs only to nearest-tick clearing. No such bound is
+claimed for nonlinear schedules using the background linear slope alone.
+
+Both lagged auction indications and terminal clearing use the configured rule.
+The inherited opening signal, pre-action/post-action chronology, raw continuous
+Algorithm-1 recursion, and midpoint/action/anchor rounding are unchanged.
+The agent's schedules are netted before pro-rata allocation. Actual fills may be
 negative and final inventory is not clipped. Residual inventory is marked at
 the frozen exogenous midprice, including when it is negative.
+
+All retained paper results and forecast weights belong to legacy clearing.
+Revised fits, policy selection and evaluation remain separate pending reruns.
+See [tolerances, compatibility and rerun commands](revised_clearing_reruns.md).
 
 See [mdp.py](../src/lmm/env/mdp.py), [action_spaces.py](../src/lmm/env/action_spaces.py)
 and the market modules under [src/lmm/market](../src/lmm/market).
