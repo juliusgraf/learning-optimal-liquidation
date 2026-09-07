@@ -7,7 +7,6 @@ __pycache__/
 .envrc
 # Experiment outputs and separately maintained writing are local.
 /results/
-/paper/
 /docs/manuscript_drafts/
 /docs/manuscript_recommendations*.patch
 /docs/prism_handoff/
