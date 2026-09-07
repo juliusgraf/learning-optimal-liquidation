@@ -18,7 +18,7 @@ from lmm.market.clob import OrderBook, executed_volume
 
 from helpers import drive_to_auction, new_env, step_pair
 
-AUCTION_HOLD = AuctionAction(2.0, 2, 0)
+AUCTION_HOLD = AuctionAction(0.0, 0, 0)
 
 
 # ---------------------------------------------------------------------------
@@ -74,7 +74,7 @@ def taker_twins(cfg, seed: int, side: int, volume: float):
     drive_to_auction(env_b, seed=seed)
     for _ in range(2):
         step_pair(env_a, env_b, AUCTION_HOLD)
-    env_b.generator.auction_flow.inject_taker(side, volume)
+    env_b._generator.auction_flow.inject_taker(side, volume)
     return step_pair(env_a, env_b, AUCTION_HOLD)
 
 
@@ -93,7 +93,7 @@ def test_injected_buy_taker_raises_terminal_clearing(crn_synthetic_cfg):
     env_a, env_b = new_env(crn_synthetic_cfg), new_env(crn_synthetic_cfg)
     drive_to_auction(env_a, seed=29)
     drive_to_auction(env_b, seed=29)
-    env_b.generator.auction_flow.inject_taker(+1, 100.0)
+    env_b._generator.auction_flow.inject_taker(+1, 100.0)
     info_a = info_b = None
     while True:
         (_, info_a), (_, info_b) = step_pair(env_a, env_b, AUCTION_HOLD)
@@ -108,19 +108,22 @@ def test_injected_buy_taker_raises_terminal_clearing(crn_synthetic_cfg):
 
 
 def test_n_buy_counts_buy_taker_events(synthetic_cfg):
-    """env.n_buy / paper X^7 increment exactly on new_buy_taker events (and
-    are unaffected by taker cancellations, which only zero the volume)."""
+    """Paper X7/X8 are cumulative accepted-arrival counts.
+
+    The next decision's proposals are processed before ``step`` returns, so
+    ``info['proposal_counts']`` is the snapshot for the action just taken while
+    ``env.n_buy``/``env.n_sell`` already describe the returned next state.
+    """
     env = new_env(synthetic_cfg)
     drive_to_auction(env, seed=11)
-    L_max = synthetic_cfg.auction_flow.L_max
-    n_buy_events = n_sell_events = 0
     while True:
+        n_buy_before, n_sell_before = env.n_buy, env.n_sell
         _, _, term, _, info = env.step(AUCTION_HOLD)
-        ev = info["events"]
-        n_buy_events += int(ev.new_buy_taker)
-        n_sell_events += int(ev.new_sell_taker)
-        assert env.n_buy == min(n_buy_events, L_max)
-        assert env.n_sell == min(n_sell_events, L_max)
+        counts = info["proposal_counts"]
+        assert counts["buy_arrival"]["accepted"] == n_buy_before
+        assert counts["sell_arrival"]["accepted"] == n_sell_before
+        assert env.n_buy >= n_buy_before
+        assert env.n_sell >= n_sell_before
         ps = env.paper_state()
         assert ps["X7"] == env.n_buy and ps["X8"] == env.n_sell
         if term:

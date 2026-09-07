@@ -10,6 +10,7 @@ docs/continuous_action_extension.md.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Optional
 
 from lmm.agents.continuous_base import ContinuousActorCriticAgent, ContinuousHyperparams
 from lmm.config import ExperimentConfig, build_hyperparams
@@ -23,7 +24,10 @@ class DDPGHyperparams(ContinuousHyperparams):
     """DDPG-specific knobs (configs/algo/ddpg.yaml)."""
 
     exploration_noise: str  # "gaussian" | "ou"
-    exploration_noise_std: float  # noise scale (x action half-range)
+    exploration_noise_std: float  # standard deviation in normalized [-1, 1] space
+    min_buffer_clob: Optional[int] = None
+    min_buffer_auction: Optional[int] = None
+    safe_auction_initialization: bool = False
 
 
 class DDPGAgent(ContinuousActorCriticAgent):

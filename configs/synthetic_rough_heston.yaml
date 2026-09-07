@@ -1,30 +1,23 @@
-# Synthetic setting: rough-Heston mid price (legacy main.py experiment).
-# Overlay on base.yaml; values from main.py:1417-1422 + module constants
-# (audit/PARAMS_FROM_CODE.md, rulings D6, D14).
+# Synthetic setting: rough-Heston mid price on the common one-minute clock.
+# The numerical grid is 120 minutes of CLOB trading followed by a 30-minute
+# closing auction, matching the historical experiment chronology.
 
 experiment:
   name: synthetic_rough_heston
   setting: synthetic_rough_heston
-  episodes: 1000          # 2026-06-15: all four algos plateau well before 1000
-                          # (TD3/SAC by ~ep400, DQN/DDPG best policy by ~ep500);
-                          # 2000 (legacy main.py:1438) added only wall-clock.
-
-clob_flow:
-  lambda0: 1.0            # main.py:1419 — event-driven hat-grid genuinely skips
-                          # decision times at this intensity (AUDIT A.1)
 
 midprice:
   model: rough_heston
-  rough_heston:           # Richard et al. scheme, kept exactly (ruling D14);
-                          # params main.py:1421-1422 (match Abi Jaber-El Euch)
+  rough_heston:           # annualized Richard et al. scheme on a minute clock
     H: 0.1                # Hurst H
-    rho: -0.7             # price-vol correlation
+    rho_h: -0.7           # price-vol correlation (distinct from rho_lob)
     v0: 0.02              # V_0
-    theta: 0.04           # long-run variance
-    kappa: 0.3            # mean reversion (paper's lambda)
-    xi: 0.3               # vol-of-vol (paper's nu)
-    seconds_per_year: 5896800.0  # 252 * 6.5 * 3600; main.py:25-33 (1 grid unit = 1 s)
+    theta: 0.02           # revised variance-drift level
+    varsigma: 0.3         # mean reversion
+    nu: 0.3               # vol-of-vol
+    s_star: 98280.0       # 252 * 6.5 * 60 trading minutes/year
 
-benchmark:
-  as_sigma_rule: pooled_paths   # std of log-returns pooled over training paths;
-                                # main.py:1942-1954
+# Frozen from independent training paths, not policy/test PnL.
+# See docs/verification_v19/forecast_synthetic/protocol.json.
+algo1:
+  clob_forecast_weights: [0.0, 0.19015297415681834, 0.2345652342449872, 0.4142559859516085]

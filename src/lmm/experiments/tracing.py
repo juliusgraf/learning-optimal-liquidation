@@ -60,7 +60,11 @@ TRACE_COLUMNS = [
     "ev_buy_taker_cancelled",
     "ev_sell_taker_cancelled",
     "act_Ka",
-    "act_offset",
+    "act_ell",
+    "act_b",
+    "auction_anchor",
+    "auction_anchor_b",
+    "auction_anchor_price",
     "act_cancel",
     "degenerate_fallback",
     # -- terminal row only --
@@ -86,7 +90,7 @@ class EpisodeTraceRecorder:
     """Accumulate per-step rows; pass an instance as ``run_episode(on_step=...)``.
 
     Top-of-book volumes / depths (CLOB) and the running auction counts are read
-    from ``env.generator`` (delegated by the continuous adapter); everything
+    from the simulator's private generator; everything
     else comes from the step's ``info``. CLOB rows record the standing book as
     it is right AFTER the step (the book the next decision sees; on the final
     CLOB step it is the post-flow book, since no refresh happens at the auction
@@ -120,7 +124,8 @@ class EpisodeTraceRecorder:
             is_terminal=0,
         )
         if phase == "clob":
-            book = env.generator.book
+            base_env = env.env if hasattr(env, "env") else env
+            book = base_env._generator.book  # noqa: SLF001
             a = info["action"]
             row.update(
                 E_t=info["E_t"],
@@ -135,7 +140,8 @@ class EpisodeTraceRecorder:
                 act_delta=a.delta,
             )
         else:
-            flow = env.generator.auction_flow
+            base_env = env.env if hasattr(env, "env") else env
+            flow = base_env._generator.auction_flow  # noqa: SLF001
             ev = info["events"]
             a = info["action"]
             row.update(
@@ -151,7 +157,11 @@ class EpisodeTraceRecorder:
                 ev_buy_taker_cancelled=int(ev.buy_taker_cancelled),
                 ev_sell_taker_cancelled=int(ev.sell_taker_cancelled),
                 act_Ka=a.K_a,
-                act_offset=a.offset,
+                act_ell=a.ell if hasattr(a, "ell") else "",
+                act_b=int(info["executed_b"]),
+                auction_anchor=info["auction_anchor"],
+                auction_anchor_b=int(info["auction_anchor_b"]),
+                auction_anchor_price=info["auction_anchor_price"],
                 act_cancel=a.cancel,
                 degenerate_fallback=int(info["degenerate_fallback"]),
             )

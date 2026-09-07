@@ -1,1 +1,1 @@
-"""Experiment entry points: train, evaluate, regret, figures, tables."""
+"""Experiment entry points: train, evaluate, policy differences, figures, tables."""

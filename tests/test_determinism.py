@@ -15,6 +15,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 EPISODE_SCRIPT = """
 import hashlib
+import math
 import sys
 
 import numpy as np
@@ -32,9 +33,10 @@ h = hashlib.sha256()
 h.update(obs.tobytes())
 while True:
     if env.phase == "clob":
-        a = ClobAction(min(5.0, env.inventory), 2)
+        volume = float(min(5, max(0, math.floor(env.inventory))))
+        a = ClobAction(volume, 2 if volume else 0)
     else:
-        a = AuctionAction(2.0, 2, 0)
+        a = AuctionAction(2.0 * env.cfg.actions.beta, 2, int(env.cancel_admissible))
     obs, r, term, _, info = env.step(a)
     h.update(obs.tobytes())
     h.update(np.float64(r).tobytes())
@@ -58,7 +60,7 @@ def episode_hash(setting: str, seed: int) -> str:
     return out.stdout.strip()
 
 
-@pytest.mark.parametrize("setting", ["synthetic_rough_heston", "historical_sp500"])
+@pytest.mark.parametrize("setting", ["synthetic_rough_heston", pytest.param("historical_sp500_midquotes", marks=pytest.mark.market_data)])
 def test_same_seed_identical_across_fresh_processes(setting):
     assert episode_hash(setting, 42) == episode_hash(setting, 42)
 
@@ -71,6 +73,8 @@ def test_different_seeds_differ():
 
 def test_reset_seed_reproducible_in_process(synthetic_cfg):
     """reset(seed) alone determines the episode (no global RNG involved)."""
+    import math
+
     from helpers import new_env
     from lmm.env.action_spaces import ClobAction, AuctionAction
 
@@ -80,9 +84,10 @@ def test_reset_seed_reproducible_in_process(synthetic_cfg):
         rewards = []
         while True:
             if env.phase == "clob":
-                a = ClobAction(min(5.0, env.inventory), 2)
+                volume = float(min(5, max(0, math.floor(env.inventory))))
+                a = ClobAction(volume, 2 if volume else 0)
             else:
-                a = AuctionAction(2.0, 2, 0)
+                a = AuctionAction(2.0 * env.cfg.actions.beta, 2, int(env.cancel_admissible))
             _, r, term, _, _ = env.step(a)
             rewards.append(r)
             if term:

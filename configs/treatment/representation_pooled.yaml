@@ -1,0 +1,7 @@
+# Apply after any algorithm overlay to compare all four algorithms with
+# the same v16 pooled linear preprocessing and unchanged economics.
+experiment:
+  ablation_label: representation_pooled
+rl:
+  phase_normalization: false
+  auction_inventory_asinh: false

@@ -1,13 +1,14 @@
-"""Network factory and actor/critic modules (ruling D9).
+"""Discrete-Q and continuous actor/critic network modules (ruling D9).
 
-The DQN MLP factory (``mlp``, Phase 4) is recorded in docs/rl_design.md. The
-continuous actor/critic modules (Phase 5; DDPG/TD3/SAC) are recorded in
+The coordinate-conditioned DQN network is recorded in docs/rl_design.md. The
+continuous actor/critic modules (DDPG/TD3/SAC) are recorded in
 docs/continuous_action_extension.md §4. Architecture is configured in
-configs/algo/*.yaml.
+configs/algo/*.yaml; ``mlp`` remains their shared feed-forward factory.
 """
 
 from __future__ import annotations
 
+import math
 from typing import Sequence
 
 import numpy as np
@@ -17,6 +18,7 @@ import torch.nn as nn
 __all__ = [
     "ACTIVATIONS",
     "mlp",
+    "StructuredDiscreteQ",
     "DeterministicActor",
     "Critic",
     "SquashedGaussianActor",
@@ -52,6 +54,179 @@ def mlp(
         prev = int(width)
     layers.append(nn.Linear(prev, out_dim))
     return nn.Sequential(*layers)
+
+
+class StructuredDiscreteQ(nn.Module):
+    """Action-coordinate-conditioned Q network for an exact discrete grid.
+
+    A conventional DQN output layer assigns an independent parameter vector to
+    every discrete action.  That is a poor statistical fit for the auction
+    grid, whose 1,346 entries are structured combinations of only three
+    coordinates.  This module instead embeds the normalized coordinates with a
+    shared encoder and scores every exact grid entry with a state-dependent
+    query::
+
+        Q(s, a) = V(s) + <q(s), e(a)> / sqrt(r) + w_prior 1{a != a_noop}.
+
+    With ``reference_centered``, use ``e(a)-e(a_noop)`` and, absent a special
+    initialization, fix ``w_prior=0``. The reference Q is then exactly V(s).
+    The optional known-action-cost decomposition is retained for a rejected
+    diagnostic and is inactive in the production configuration.
+
+    ``forward(obs)`` retains the ordinary vector-valued DQN interface.  Passing
+    one action index per observation evaluates only the sampled entries, which
+    avoids materializing a batch-by-grid tensor during the gradient step.  The
+    action coordinates are a registered buffer (checkpointed but not learned),
+    while all action dependence is learned through shared encoder parameters;
+    there is no per-action parameter table.
+
+    When ``initial_noop_margin`` is supplied, the value/query heads start at
+    zero and the final scalar coefficient starts at ``-margin``.  Thus the
+    canonical no-op is the unique initial greedy action, while the coefficient
+    remains trainable and can be overcome by evidence.
+    """
+
+    ARCHITECTURE = "coordinate_conditioned_bilinear_v1"
+
+    def __init__(
+        self,
+        obs_dim: int,
+        hidden: Sequence[int],
+        action_coordinates: np.ndarray,
+        action_embedding_dim: int,
+        activation: type[nn.Module] = nn.ReLU,
+        *,
+        noop_index: int = 0,
+        initial_noop_margin: float | None = None,
+        layer_norm: bool = False,
+        reference_centered: bool = False,
+        known_action_cost: tuple[float, float] | None = None,
+    ) -> None:
+        super().__init__()
+        coordinates = np.asarray(action_coordinates, dtype=np.float32)
+        if coordinates.ndim != 2 or coordinates.shape[0] <= 0 or coordinates.shape[1] <= 0:
+            raise ValueError(
+                "action_coordinates must have shape (n_actions, action_dim) "
+                f"with positive dimensions, got {coordinates.shape}"
+            )
+        if not np.isfinite(coordinates).all():
+            raise ValueError("action_coordinates must be finite")
+        widths = tuple(int(width) for width in hidden)
+        if not widths or any(width <= 0 for width in widths):
+            raise ValueError("hidden must contain positive layer widths")
+        rank = int(action_embedding_dim)
+        if rank <= 0:
+            raise ValueError("action_embedding_dim must be positive")
+        if not 0 <= int(noop_index) < coordinates.shape[0]:
+            raise ValueError("noop_index is outside the action grid")
+        if initial_noop_margin is not None and float(initial_noop_margin) < 0.0:
+            raise ValueError("initial_noop_margin must be nonnegative")
+
+        self.n_actions = int(coordinates.shape[0])
+        self.action_dim = int(coordinates.shape[1])
+        self.action_embedding_dim = rank
+        self.noop_index = int(noop_index)
+        self.layer_norm = bool(layer_norm)
+        self.reference_centered = bool(reference_centered)
+        if known_action_cost is not None and (
+            coordinates.shape[1] != 3 or not np.isfinite(known_action_cost).all()
+        ):
+            raise ValueError('known action cost requires three auction coordinates and finite coefficients')
+        self.known_action_cost = known_action_cost
+        self.architecture = ("coordinate_conditioned_reference_v3" if reference_centered
+                             else "coordinate_conditioned_normalized_v2" if layer_norm
+                             else self.ARCHITECTURE)
+        if known_action_cost is not None:
+            self.architecture += "_known_fee_v4"
+        self.register_buffer(
+            "action_coordinates", torch.as_tensor(coordinates, dtype=torch.float32)
+        )
+        nonnoop = np.ones(self.n_actions, dtype=np.float32)
+        nonnoop[self.noop_index] = 0.0
+        self.register_buffer("_nonnoop", torch.as_tensor(nonnoop))
+
+        trunk: list[nn.Module] = []
+        previous = int(obs_dim)
+        for width in widths:
+            trunk.append(nn.Linear(previous, width))
+            if layer_norm:
+                trunk.append(nn.LayerNorm(width, elementwise_affine=False))
+            trunk.append(activation())
+            previous = width
+        self.state_trunk = nn.Sequential(*trunk)
+        self.value_head = nn.Linear(previous, 1)
+        self.query_head = nn.Linear(previous, rank)
+        self.action_encoder = nn.Sequential(
+            nn.Linear(self.action_dim, rank),
+            activation(),
+            nn.Linear(rank, rank),
+            # Bound the learned action representation, not rewards or Q values.
+            # Otherwise the two learned factors can magnify one another under
+            # undiscounted off-policy bootstrapping. The output remains linear
+            # in unrestricted state-query/value heads and retains every action.
+            *([nn.LayerNorm(rank, elementwise_affine=False), nn.Tanh()]
+              if layer_norm else []),
+        )
+        prior = 0.0 if initial_noop_margin is None else -float(initial_noop_margin)
+        self.nonnoop_prior = nn.Parameter(torch.tensor(prior, dtype=torch.float32),
+            requires_grad=not reference_centered or initial_noop_margin is not None)
+
+        if initial_noop_margin is not None:
+            # Preserve the exact safe auction policy at initialization without
+            # introducing a 1,346-row action-specific output parameter.
+            with torch.no_grad():
+                self.value_head.weight.zero_()
+                self.value_head.bias.zero_()
+                self.query_head.weight.zero_()
+                self.query_head.bias.zero_()
+
+    def forward(
+        self,
+        obs: torch.Tensor,
+        action_indices: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        """Return all Q values, or one indexed Q value per observation."""
+        if obs.ndim != 2:
+            raise ValueError(f"obs must have shape (batch, obs_dim), got {tuple(obs.shape)}")
+        state = self.state_trunk(obs)
+        value = self.value_head(state).squeeze(-1)
+        query = self.query_head(state)
+        scale = math.sqrt(float(self.action_embedding_dim))
+
+        if action_indices is None:
+            embedding = self.action_encoder(self.action_coordinates)
+            if self.reference_centered:
+                embedding = embedding - embedding[self.noop_index:self.noop_index+1]
+            advantage = query @ embedding.transpose(0, 1) / scale
+            result = value.unsqueeze(1) + advantage + self.nonnoop_prior * self._nonnoop
+            if self.known_action_cost is not None:
+                rate, offset = self.known_action_cost
+                fee = (obs[:, 0] * rate + offset).clamp_min(0.)
+                result = result - fee.unsqueeze(1) * self.action_coordinates[:, 2]
+            return result
+
+        indices = action_indices.to(device=obs.device, dtype=torch.int64)
+        if indices.ndim != 1 or indices.shape[0] != obs.shape[0]:
+            raise ValueError(
+                "action_indices must have shape (batch,), got "
+                f"{tuple(indices.shape)} for batch {obs.shape[0]}"
+            )
+        if bool(((indices < 0) | (indices >= self.n_actions)).any()):
+            raise ValueError("action_indices contains an index outside the action grid")
+        embedding = self.action_encoder(self.action_coordinates[indices])
+        if self.reference_centered:
+            embedding = embedding - self.action_encoder(self.action_coordinates[self.noop_index:self.noop_index+1])
+            # GEMM/GEMV roundoff can leave a tiny nonzero difference for the
+            # identical reference action. Adam can amplify that spurious
+            # gradient. The defining reference advantage is exactly zero.
+            embedding = embedding.masked_fill((indices == self.noop_index).unsqueeze(1), 0.)
+        advantage = (query * embedding).sum(dim=1) / scale
+        result = value + advantage + self.nonnoop_prior * self._nonnoop[indices]
+        if self.known_action_cost is not None:
+            rate, offset = self.known_action_cost
+            fee = (obs[:, 0] * rate + offset).clamp_min(0.)
+            result = result - fee * self.action_coordinates[indices, 2]
+        return result
 
 
 def _trunk(in_dim: int, hidden: Sequence[int], activation: type[nn.Module]) -> tuple[nn.Sequential, int]:

@@ -9,6 +9,7 @@ from __future__ import annotations
 import pandas as pd
 from helpers import load_dqn_cfg
 
+from lmm.agents.benchmarks import TWAPBenchmarkAgent
 from lmm.env.mdp import make_env
 from lmm.experiments.tracing import TRACE_COLUMNS, EpisodeTraceRecorder
 from lmm.experiments.train import make_agent, wrap_env_for_agent
@@ -47,9 +48,30 @@ def test_trace_schema_and_terminal_row(tmp_path):
     last = rec.rows[-1]
     assert last["phase"] == "auction" and last["is_terminal"] == 1
     assert last["S_cl"] != "" and last["terminal_reward"] != ""
+    assert last["auction_anchor"] == cfg.actions.auction_anchor
+    assert isinstance(last["auction_anchor_b"], int)
+    assert last["auction_anchor_price"] != ""
 
     out = tmp_path / "trace.csv"
     rec.write(out)
     df = pd.read_csv(out)
     assert list(df.columns) == TRACE_COLUMNS
     assert (df["phase"] == "clob").any() and (df["phase"] == "auction").any()
+
+
+def test_benchmark_private_schedule_records_diagnostic_absolute_offset():
+    cfg = load_dqn_cfg()
+    env = make_env(cfg)
+    agent = TWAPBenchmarkAgent(cfg)
+    agent.bind(env)
+    agent.start_episode(0)
+    rec = EpisodeTraceRecorder()
+    run_episode(env, agent, 19, chi=cfg.rl.chi, train=False, on_step=rec)
+
+    auction_rows = [row for row in rec.rows if row["phase"] == "auction"]
+    assert auction_rows
+    assert all(isinstance(row["act_b"], int) for row in auction_rows)
+    assert all(
+        row["act_ell"] == "" or isinstance(row["act_ell"], int)
+        for row in auction_rows
+    )

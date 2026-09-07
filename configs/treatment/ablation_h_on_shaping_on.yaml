@@ -1,0 +1,8 @@
+# Matched 2x2 arm: projected-clearing information present, shaping present.
+# Alias of the active headline; the treatment launcher reuses its artifacts.
+experiment:
+  ablation_label: H_on__shaping_on__auction_on
+rl:
+  h_cl_feature_enabled: true
+reward:
+  shaping_enabled: true

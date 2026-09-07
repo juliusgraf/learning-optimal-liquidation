@@ -1,24 +1,18 @@
-"""Benchmark policies (paper `sec:benchmark`): Avellaneda-Stoikov and TWAP.
+"""Avellaneda--Stoikov and physical-time TWAP benchmark policies.
 
-Both share the auction heuristic: a SINGLE order at the auction open with the
-one-sided supply z * q_{tau_op} * (p - S_tilde)_+, z = 10, S_tilde = average
-of the mean and max executed CLOB prices (ruling D16: one-sided curve —
-benchmarks only liquidate; the legacy linear curve could clear as a buyer,
-AUDIT N7). Subsequent auction steps abstain (K^a = 0); dust threshold
-q < dust_threshold => no order. One reward definition for all policies
-(AUDIT C.4: the legacy penalty override is deleted).
+Both submit one capped positive-part auction schedule at the opening and then
+abstain.  This benchmark schedule is intentionally outside the learned
+two-sided action family and is cleared by the general monotone solver.
 
-Conventions (Phase 4 resolutions, recorded in audit/AUDIT.md):
-- "executed CLOB price" = the agent's submitted price S^bullet_t on steps
-  with E_t > 0 (legacy main.py:547-551), tracked via Transition.info;
-- S_tilde is snapped to the tick grid through the auction offset
-  (author-confirmed, ruling D19):
-  offset = round(S_tilde/alpha) - floor(S_mid_frozen/alpha), so the env's
-  quote alpha*(floor(S_mid/alpha) + offset) equals alpha*round(S_tilde/alpha);
-- the one-sided order's reward uses the positive-part gap with no wrong-side
-  penalty (author-confirmed, ruling D18; see env/rewards.py);
-- benchmarks submit RAW ClobAction/AuctionAction values (off-grid allowed by
-  the env); admissibility (v <= inventory, K >= 0) holds by construction.
+Conventions from the revised manuscript:
+- "executed CLOB price" is the submitted price S^bullet_t on steps with
+  E_t > 0, tracked via ``Transition.info``;
+- S_tilde is the average of the mean and maximum executed CLOB prices, with
+  H at auction open as the no-execution fallback;
+- the benchmark's external one-sided schedule retains
+  ``K*(p-S_tilde)_+``, is capped by remaining inventory, and is not projected
+  onto the learned agent's treatment-anchored policy-template grid;
+- shaping is disabled for benchmarks, while genuine cancellation fees remain.
 
 Benchmarks run on the SAME env through the same episode loop as the DQN
 (rl/loops.run_episode) — the structural CRN guarantee (ruling D10).
@@ -33,7 +27,12 @@ import numpy as np
 
 from lmm.agents.base import Agent, Transition
 from lmm.config import BenchmarkParams, ExperimentConfig
-from lmm.env.action_spaces import AuctionAction, ClobAction
+from lmm.env.action_spaces import (
+    AuctionAction,
+    ClobAction,
+    _BenchmarkAuctionAction,
+    round_half_up,
+)
 from lmm.market.clob import OrderBook, sample_mo_volume
 
 __all__ = ["ASBenchmarkAgent", "TWAPBenchmarkAgent"]
@@ -43,7 +42,7 @@ _BOOK_EPS = 1e-9  # legacy estimate_K_from_env eps (main.py:1890)
 
 class _LiquidationBenchmark(Agent):
     """Shared scaffolding: env binding, executed-price tracking, and the
-    one-sided auction-open order (ruling D16)."""
+    capped auction-open schedule."""
 
     def __init__(self, cfg: ExperimentConfig) -> None:
         self.cfg = cfg
@@ -86,26 +85,34 @@ class _LiquidationBenchmark(Agent):
     def _clob_action(self) -> ClobAction:
         raise NotImplementedError
 
-    def _auction_action(self) -> AuctionAction:
-        """First auction decision: the single one-sided order
-        z * q_{tau_op} * (p - S_tilde)_+ (D16); abstain afterwards, and
-        entirely when q < dust_threshold or no CLOB execution happened
-        (S_tilde undefined)."""
+    def _auction_action(self) -> AuctionAction | _BenchmarkAuctionAction:
+        """Submit ``min(q, K*(p-S_tilde)_+)`` once at the auction open."""
         if self._auction_opened:
             return AuctionAction(0.0, 0, 0)
         self._auction_opened = True
         env = self._env
         q = float(env.inventory)
-        if q < self.params.dust_threshold or not self._exec_prices:
+        if q <= 0.0:
             return AuctionAction(0.0, 0, 0)
-        s_tilde = 0.5 * (max(self._exec_prices) + sum(self._exec_prices) / len(self._exec_prices))
-        alpha = env.grid.alpha
-        offset = round(s_tilde / alpha) - math.floor(env.s_mid / alpha)
-        return AuctionAction(self.params.z * q, int(offset), 0, one_sided=True)
+        if self._exec_prices:
+            s_tilde = 0.5 * (
+                max(self._exec_prices) + sum(self._exec_prices) / len(self._exec_prices)
+            )
+        else:
+            s_tilde = float(env.h_cl)
+        K = min(self.params.z * q, self.cfg.actions.auction_K_grid_max)
+        return _BenchmarkAuctionAction(
+            K_a=float(K),
+            reference_price=float(s_tilde),
+            quantity_cap=float(q),
+        )
 
     def _q_int(self) -> int:
-        """Inventory index: int() truncation clipped to [0, I_max]."""
-        return int(np.clip(int(self._env.inventory), 0, self.cfg.grid.I_max))
+        """AS inventory index ``max(1,ceil(q))`` for positive inventory."""
+        q = float(self._env.inventory)
+        if math.floor(q) < 1:
+            return 0
+        return int(np.clip(max(1, math.ceil(q)), 1, self.cfg.grid.I_max))
 
     def _t_idx(self) -> int:
         """Time index: floor of the (real-valued) CLOB decision time,
@@ -130,40 +137,39 @@ class ASBenchmarkAgent(_LiquidationBenchmark):
     grid); volume = full inventory exposure capped at V_max. Calibration:
     A = lambda_0 / gamma_m; k = gamma_m * K_hat with K_hat the least-squares
     coefficient of ln Q = K_hat * Delta p over ``as_n_samples`` simulated
-    executions on refreshed exogenous books (legacy main.py:1887-1939);
-    sigma = std(pooled log-returns, ddof=1)/sqrt(dt) over simulated mid
-    paths per ``as_sigma_rule`` (sigma only enters for gamma > 0; recorded
-    for completeness, as_gamma = 0 in all published runs).
+    executions on refreshed exogenous books. Avellaneda--Stoikov call the
+    order-size tail exponent ``alpha``; this repository calls it ``gamma_m``
+    because ``grid.alpha`` is already the price tick. Thus ``grid.alpha`` is
+    not the multiplier in the calibration of k. The implemented benchmark is
+    risk-neutral (``as_gamma = 0``), so volatility drops out of the quote and
+    is deliberately neither estimated nor stored.
     """
 
     def __init__(self, cfg: ExperimentConfig) -> None:
         super().__init__(cfg)
         self.A: float | None = None
         self.k: float | None = None
-        self.sigma: float | None = None
         self.delta_ticks: np.ndarray | None = None  # (T_as+1, I_max+1)
 
     # -- calibration (AUDIT A.9; seeded streams per ruling D10) -------------------
 
     def calibrate(
         self,
-        env,
         *,
         rng_k: np.random.Generator,
-        rng_sigma: np.random.Generator,
     ) -> dict[str, float]:
-        """Estimate (A, k, sigma) and precompute the delta^{a,*} table."""
+        """Estimate ``(A, k)`` and precompute the risk-neutral quote table."""
         cfg = self.cfg
         p = cfg.clob_flow
         if cfg.benchmark.as_gamma != 0.0:
             raise NotImplementedError(
                 "only the gamma -> 0 closed form is implemented (as_gamma = 0)"
             )
-        self.A = p.lambda0 / p.gamma_m
-        self.k = p.gamma_m * self._estimate_K_hat(rng_k)
-        self.sigma = self._estimate_sigma(env, rng_sigma)
+        tail_exponent = p.gamma_m
+        self.A = p.lambda0 / tail_exponent
+        self.k = tail_exponent * self._estimate_K_hat(rng_k)
         self.delta_ticks = self._build_delta_table()
-        return {"A": self.A, "k": self.k, "sigma": self.sigma}
+        return {"A": self.A, "k": self.k}
 
     def _estimate_K_hat(self, rng: np.random.Generator) -> float:
         """Least squares of ln Q on Delta p over simulated executions:
@@ -201,21 +207,6 @@ class ASBenchmarkAgent(_LiquidationBenchmark):
         y = np.asarray(d_p)
         return float(np.dot(x, y) / np.dot(y, y))
 
-    def _estimate_sigma(self, env, rng: np.random.Generator) -> float:
-        """Pooled std of log-returns over simulated mid paths on the integer
-        CLOB grid 0..tau_op, ddof=1, scaled by 1/sqrt(dt). ``single_path``
-        (historical, D13) uses one path; ``pooled_paths`` uses
-        ``as_sigma_n_paths``."""
-        g = self.cfg.grid
-        n_paths = 1 if self.params.as_sigma_rule == "single_path" else self.params.as_sigma_n_paths
-        rets: list[np.ndarray] = []
-        for _ in range(n_paths):
-            mid0 = env.midprice.reset(rng)
-            path = [mid0] + [env.midprice.advance_to(float(t)) for t in range(1, g.tau_op + 1)]
-            rets.append(np.diff(np.log(np.asarray(path))))
-        dt = g.T_physical / g.tau_cl
-        return float(np.std(np.concatenate(rets), ddof=1) / math.sqrt(dt))
-
     def _build_delta_table(self) -> np.ndarray:
         """delta^{a,*}(t, q) in ticks via the stable cumulative-logsumexp of
         the v_q(t) log-terms j ln(x) - ln(j!), x = A e^{-1} (T - t) (so the
@@ -246,31 +237,50 @@ class ASBenchmarkAgent(_LiquidationBenchmark):
         if q <= 0:
             return ClobAction(0.0, 0)
         a = self.cfg.actions
-        delta = int(
-            np.clip(round(self.delta_ticks[self._t_idx(), q]), a.clob_delta_min, a.clob_delta_max)
+        delta_raw = self._delta_at(float(self._env.t), q)
+        delta = int(np.clip(round_half_up(delta_raw), 0, a.clob_delta_max))
+        volume = float(
+            min(math.floor(float(self._env.inventory)), self.cfg.actions.clob_volume_max)
         )
-        volume = float(min(self._env.inventory, self.cfg.clob_flow.V_max))
         return ClobAction(volume, delta)
+
+    def _delta_at(self, t: float, q: int) -> float:
+        """Evaluate the gamma->0 quote on physical time, without flooring t."""
+        if self.A is None or self.k is None:
+            raise RuntimeError("ASBenchmarkAgent.calibrate() must run before acting")
+        x = (self.A / math.e) * max(self.T_as - float(t), 0.0)
+        j = np.arange(q + 1, dtype=float)
+        if x <= 0.0:
+            log_v = np.zeros(q + 1)
+        else:
+            log_terms = j * math.log(x) - np.asarray(
+                [math.lgamma(jj + 1.0) for jj in j]
+            )
+            log_v = np.logaddexp.accumulate(log_terms)
+        return float(
+            (1.0 + log_v[q] - log_v[q - 1])
+            / (self.k * self.cfg.grid.alpha)
+        )
 
     # -- persistence (calibration is the only state) ----------------------------------
 
     def save(self, path: str | Path) -> None:
         if self.delta_ticks is None:
             raise RuntimeError("nothing to save: calibrate() has not run")
-        np.savez(Path(path), A=self.A, k=self.k, sigma=self.sigma, delta_ticks=self.delta_ticks)
+        np.savez(Path(path), A=self.A, k=self.k, delta_ticks=self.delta_ticks)
 
     def load(self, path: str | Path) -> None:
         data = np.load(Path(path))
         self.A = float(data["A"])
         self.k = float(data["k"])
-        self.sigma = float(data["sigma"])
         self.delta_ticks = data["delta_ticks"]
 
 
 class TWAPBenchmarkAgent(_LiquidationBenchmark):
     """TWAP benchmark (`section:TWAP`): v_t = ceil(q_t / (T - t + 1)) capped
-    at the inventory and V_max, quoted at delta = clob_delta_min (= 1 tick,
-    ``twap_delta_mode = "min"``); same auction heuristic as AS."""
+    at the inventory and V_max, quoted at the manuscript best ask delta=1
+    (the config retains the legacy label ``twap_delta_mode = "min"``); same
+    auction heuristic as AS."""
 
     def __init__(self, cfg: ExperimentConfig) -> None:
         super().__init__(cfg)
@@ -281,6 +291,15 @@ class TWAPBenchmarkAgent(_LiquidationBenchmark):
         q = float(self._env.inventory)
         if q <= 0.0:
             return ClobAction(0.0, 0)
-        steps_left = max(1, self.T_as - self._t_idx() + 1)
-        volume = float(min(math.ceil(q / steps_left), q, self.cfg.clob_flow.V_max))
-        return ClobAction(volume, self.cfg.actions.clob_delta_min)
+        floor_q = math.floor(q)
+        if floor_q < 1:
+            return ClobAction(0.0, 0)
+        time_left = max(float(self.T_as) - float(self._env.t) + 1.0, 1.0)
+        volume = float(
+            min(
+                self.cfg.actions.clob_volume_max,
+                floor_q,
+                math.ceil(q / time_left),
+            )
+        )
+        return ClobAction(volume, 1)

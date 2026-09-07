@@ -1,28 +1,17 @@
-"""Action grids and admissibility masks (paper `sec:MDP`, Adm(x); AUDIT A.8).
+"""Discrete five-coordinate actions and projected continuous proposals.
 
-Discrete grids (legacy values as config defaults, main.py:1424-1435):
-- CLOB: {(0,0)} u {1..30} x {1..12} = 361 actions (v, delta), v-major order
-  (index-compatible with legacy). The delta grid is explicit and applied
-  LITERALLY — no silent clamping (fixes AUDIT N6): delta = 12 = Lc quotes one
-  tick past the deepest refreshed exogenous level (see market/clob.py).
-- Auction: K in {0} u linspace(1, K_max, 10), offset in {-12..12},
-  c in {0,1} = 550 actions, (K, offset, c)-major order. K^a = 0 == abstain;
-  S^a = alpha*(floor(S_mid_frozen/alpha) + offset) is tick-snapped by the
-  env (AUDIT N4), so S^a in alpha*N holds structurally.
-
-Admissibility (CLAUDE.md, time-free): a^1 <= x^1 (volume <= inventory),
-a^2 >= x^10/alpha (structural on these grids: delta >= 0 => price >= mid
-tick), a^5 <= C(x) (cancel-all only if a live prior K^a > 0 order exists).
-Exploration must SAMPLE from Adm(x): agents mask both the greedy argmax and
-the random draw (masking preferred over projection — fixes AUDIT N12; the
-stored action always equals the executed action). The env additionally
-REJECTS inadmissible submissions with ValueError (env/mdp.py).
+The manuscript action is ``(v, delta, K, ell, c)``.  The local auction
+coordinate ``ell`` is resolved around the treatment's observable price anchor
+to the absolute frozen-mid coordinate ``b``; those two quantities deliberately
+use different types.  H-on treatments use the indicative-price anchor, while
+H-off treatments use the frozen auction-open midprice (``b=0``).
 """
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Sequence
 
 import gymnasium
 import numpy as np
@@ -35,6 +24,10 @@ if TYPE_CHECKING:  # avoid the env <-> action_spaces import cycle at runtime
 __all__ = [
     "ClobAction",
     "AuctionAction",
+    "FiveCoordinateAction",
+    "to_five_coordinate",
+    "from_five_coordinate",
+    "round_half_up",
     "ClobActionGrid",
     "AuctionActionGrid",
     "ContinuousActionSpec",
@@ -53,65 +46,176 @@ class ClobAction:
     volume: float
     delta: int
 
+    def as_five_coordinate(self) -> "FiveCoordinateAction":
+        return FiveCoordinateAction(self.volume, self.delta, 0.0, 0, 0)
+
 
 @dataclass(frozen=True)
 class AuctionAction:
-    """Auction action (A^3, A^4, A^5): slope K^a, quote tick offset, scalar
-    cancel-all c_t in {0, 1} (ruling D4).
+    """Public manuscript auction action ``(K^a,ell,c)``.
 
-    ``one_sided=True`` marks the BENCHMARK hockey-stick supply
-    K^a (p - S^a)_+ (ruling D16; benchmarks only liquidate). It is never on
-    the discrete grid — only raw actions submitted by the benchmark agents
-    carry it."""
+    ``ell`` is the local integer displacement from the treatment-specific
+    price anchor. The environment privately derives and validates absolute
+    ``b``.
+    """
 
     K_a: float
-    offset: int
+    ell: int
     cancel: int
-    one_sided: bool = False
+
+    def as_five_coordinate(self) -> "FiveCoordinateAction":
+        return FiveCoordinateAction(0.0, 0, self.K_a, self.ell, self.cancel)
+
+
+@dataclass(frozen=True)
+class _BenchmarkAuctionAction:
+    """Private trusted path for the capped positive-part AS/TWAP schedule."""
+
+    K_a: float
+    reference_price: float
+    quantity_cap: float
+    cancel: int = 0
+
+
+@dataclass(frozen=True, order=True)
+class FiveCoordinateAction:
+    """Common manuscript action ``(v, delta, K, ell, c)``."""
+
+    volume: float
+    delta: int
+    K_a: float
+    ell: int
+    cancel: int
+
+    def as_tuple(self) -> tuple[float, int, float, int, int]:
+        return (self.volume, self.delta, self.K_a, self.ell, self.cancel)
+
+
+def to_five_coordinate(
+    action: ClobAction | AuctionAction | FiveCoordinateAction,
+) -> FiveCoordinateAction:
+    """Convert a phase action to the common five-coordinate representation."""
+    if isinstance(action, FiveCoordinateAction):
+        return action
+    if isinstance(action, (ClobAction, AuctionAction)):
+        return action.as_five_coordinate()
+    raise TypeError(f"unsupported action type {type(action).__name__}")
+
+
+def from_five_coordinate(
+    action: FiveCoordinateAction | Sequence[float], phase: str
+) -> ClobAction | AuctionAction:
+    """Convert a common action to the legacy phase-specific action object."""
+    if not isinstance(action, FiveCoordinateAction):
+        values = tuple(action)
+        if len(values) != 5:
+            raise ValueError(f"five-coordinate action must have length 5, got {len(values)}")
+        action = FiveCoordinateAction(
+            float(values[0]), int(values[1]), float(values[2]), int(values[3]), int(values[4])
+        )
+    if phase == "clob":
+        if (action.K_a, action.ell, action.cancel) != (0.0, 0, 0):
+            raise ValueError("CLOB action requires (K,ell,c)=(0,0,0)")
+        return ClobAction(action.volume, action.delta)
+    if phase == "auction":
+        if (action.volume, action.delta) != (0.0, 0):
+            raise ValueError("auction action requires (v,delta)=(0,0)")
+        return AuctionAction(action.K_a, action.ell, action.cancel)
+    raise ValueError(f"unknown phase {phase!r}")
+
+
+def round_half_up(value: float) -> int:
+    """Deterministic manuscript rounding: ``floor(value + 1/2)``."""
+    return math.floor(float(value) + 0.5)
+
+
+def _admissible_auction_ells(
+    params: ActionGridParams,
+    *,
+    frozen_mid: float,
+    alpha: float,
+    anchor_b_ticks: int,
+) -> tuple[int, ...]:
+    """Local offsets whose resolved positive-slope reference is admissible.
+
+    Both the discrete mask and continuous projection use this literal predicate
+    so their behavior cannot drift at floating-point price boundaries.
+    """
+
+    return tuple(
+        ell
+        for ell in range(-params.B_max, params.B_max + 1)
+        if abs(int(anchor_b_ticks) + ell) <= params.B_inf
+        and float(frozen_mid) + float(alpha) * (int(anchor_b_ticks) + ell) >= 0.0
+    )
 
 
 class ClobActionGrid:
-    """Discrete CLOB grid with admissibility masking (a^1 <= inventory)."""
+    """Lexicographic CLOB list: one wait plus ``v=1..V_max, delta=0..L_max``."""
 
     def __init__(self, params: ActionGridParams) -> None:
         self.params = params
-        deltas = range(params.clob_delta_min, params.clob_delta_max + 1)
+        deltas = range(0, params.L_max + 1)
         self.actions: tuple[ClobAction, ...] = (ClobAction(0.0, 0),) + tuple(
             ClobAction(float(v), d)
-            for v in range(1, params.clob_volume_max + 1)
+            for v in range(1, params.V_max + 1)
             for d in deltas
         )
+        keys = [to_five_coordinate(a).as_tuple() for a in self.actions]
+        assert keys == sorted(keys), "CLOB action list must be lexicographic"
 
     def __len__(self) -> int:
         return len(self.actions)
 
     def decode(self, index: int) -> ClobAction:
+        if isinstance(index, (bool, np.bool_)) or not isinstance(
+            index, (int, np.integer)
+        ):
+            raise TypeError("CLOB action index must be an integer")
+        if not 0 <= int(index) < len(self.actions):
+            raise ValueError(
+                f"CLOB action index {index} is outside [0,{len(self.actions) - 1}]"
+            )
         return self.actions[index]
 
     def mask(self, inventory: float) -> np.ndarray:
-        """Boolean mask: True where (v, delta) is admissible (v <= x^1).
-
-        The quote constraint a^2 >= x^10/alpha is structural (delta >= 0)."""
+        """Mask integer volume at ``min(V_max, floor(inventory))``."""
+        max_volume = min(self.params.V_max, max(0, math.floor(float(inventory))))
         return np.fromiter(
-            (a.volume <= inventory for a in self.actions), dtype=bool, count=len(self.actions)
+            (a.volume <= max_volume for a in self.actions), dtype=bool, count=len(self.actions)
         )
 
 
 class AuctionActionGrid:
-    """Discrete auction grid with admissibility masking (a^5 <= C(x))."""
+    """Lexicographic full manuscript lattice in ``(K^a,ell,c)``."""
 
     def __init__(self, params: ActionGridParams) -> None:
         self.params = params
-        K_choices = [0.0] + list(
-            np.linspace(params.auction_K_grid_min, params.auction_K_grid_max, params.auction_K_grid_n)
-        )
-        offsets = range(-params.auction_offset_max, params.auction_offset_max + 1)
-        self.actions: tuple[AuctionAction, ...] = tuple(
-            AuctionAction(float(K), off, c)
-            for K in K_choices
-            for off in offsets
-            for c in (0, 1)
-        )
+        K_choices = tuple(params.beta * k for k in params.auction_K_multipliers)
+        offsets = range(-params.B_max, params.B_max + 1)
+        if params.auction_cancel_mode == "enabled":
+            self.actions = (
+                AuctionAction(0.0, 0, 0),
+                AuctionAction(0.0, 0, 1),
+            ) + tuple(
+                AuctionAction(float(K), ell, c)
+                for K in K_choices
+                for ell in offsets
+                for c in (0, 1)
+            )
+        elif params.auction_cancel_mode == "never":
+            self.actions = (AuctionAction(0.0, 0, 0),) + tuple(
+                AuctionAction(float(K), ell, 0)
+                for K in K_choices
+                for ell in offsets
+            )
+        else:
+            raise ValueError(
+                "actions.auction_cancel_mode must be 'enabled' or 'never', "
+                f"got {params.auction_cancel_mode!r}"
+            )
+        keys = [to_five_coordinate(a).as_tuple() for a in self.actions]
+        assert keys == sorted(keys), "auction action list must be lexicographic"
         self._cancel_flags = np.fromiter(
             (a.cancel == 1 for a in self.actions), dtype=bool, count=len(self.actions)
         )
@@ -120,24 +224,64 @@ class AuctionActionGrid:
         return len(self.actions)
 
     def decode(self, index: int) -> AuctionAction:
+        """Return the public local-coordinate action at ``index``."""
+        if isinstance(index, (bool, np.bool_)) or not isinstance(
+            index, (int, np.integer)
+        ):
+            raise TypeError("auction action index must be an integer")
+        if not 0 <= int(index) < len(self.actions):
+            raise ValueError(
+                f"auction action index {index} is outside [0,{len(self.actions) - 1}]"
+            )
         return self.actions[index]
 
-    def mask(self, cancel_admissible: bool) -> np.ndarray:
-        """Boolean mask: c = 1 actions admissible iff ``cancel_admissible``
-        (= C(x) > 0, ruling D4). K >= 0 and the tick-grid quote are
-        structural on this grid."""
+    def mask(
+        self,
+        cancel_admissible: bool,
+        *,
+        frozen_mid: float | None = None,
+        alpha: float | None = None,
+        anchor_b_ticks: int = 0,
+    ) -> np.ndarray:
+        """Mask cancellation and resolved absolute-``b`` admissibility.
+
+        ``anchor_b_ticks`` is the treatment-specific anchor in frozen-mid
+        coordinates: the current ``H_t^cl`` coordinate for H-on and zero for
+        H-off. Execution resolves ``b=anchor_b_ticks+ell``. Supplying exactly
+        one of ``frozen_mid`` and ``alpha`` is an error.
+        """
         if cancel_admissible:
-            return np.ones(len(self.actions), dtype=bool)
-        return ~self._cancel_flags
+            mask = np.ones(len(self.actions), dtype=bool)
+        else:
+            mask = ~self._cancel_flags
+        if (frozen_mid is None) != (alpha is None):
+            raise ValueError("frozen_mid and alpha must be supplied together")
+        if frozen_mid is not None:
+            assert alpha is not None
+            admissible_ells = frozenset(
+                _admissible_auction_ells(
+                    self.params,
+                    frozen_mid=float(frozen_mid),
+                    alpha=float(alpha),
+                    anchor_b_ticks=int(anchor_b_ticks),
+                )
+            )
+            offset_admissible = np.fromiter(
+                (
+                    a.K_a == 0.0
+                    or a.ell in admissible_ells
+                    for a in self.actions
+                ),
+                dtype=bool,
+                count=len(self.actions),
+            )
+            mask &= offset_admissible
+        return mask
 
 
 @dataclass(frozen=True)
 class ContinuousActionSpec:
-    """Bounds of the continuous-action relaxation (Phase 5; DDPG/TD3/SAC).
-
-    A SEPARATE, clearly labeled relaxation of the discrete grids; every
-    mathematical change is documented in docs/continuous_action_extension.md.
-    """
+    """Normalized raw actor box; every coordinate lies in ``[-1, 1]``."""
 
     low: np.ndarray
     high: np.ndarray
@@ -157,27 +301,32 @@ class ContinuousActionSpec:
     @staticmethod
     def clob(params: ActionGridParams) -> "ContinuousActionSpec":
         return ContinuousActionSpec(
-            low=np.array([0.0, float(params.clob_delta_min)]),
-            high=np.array([float(params.clob_volume_max), float(params.clob_delta_max)]),
+            low=-np.ones(2, dtype=float),
+            high=np.ones(2, dtype=float),
         )
 
     @staticmethod
     def auction(params: ActionGridParams) -> "ContinuousActionSpec":
         return ContinuousActionSpec(
-            low=np.array([0.0, -float(params.auction_offset_max), 0.0]),
-            high=np.array([params.auction_K_grid_max, float(params.auction_offset_max), 1.0]),
+            low=-np.ones(3, dtype=float),
+            high=np.ones(3, dtype=float),
         )
 
 
-def continuous_action_specs(
-    cfg: ExperimentConfig, continuous_cancel: str = "threshold"
-) -> dict[str, ContinuousActionSpec]:
-    """Per-phase continuous action bounds (Phase 5; docs/continuous_action_extension.md §1.2).
+def _continuous_cancel_from_actions(params: ActionGridParams) -> str:
+    if params.auction_cancel_mode == "enabled":
+        return "threshold"
+    if params.auction_cancel_mode == "never":
+        return "never"
+    raise ValueError(
+        "actions.auction_cancel_mode must be 'enabled' or 'never', "
+        f"got {params.auction_cancel_mode!r}"
+    )
 
-    ``continuous_cancel`` selects the auction action dimension:
-    ``"threshold"`` (default) keeps the 3-dim (K^a, s_off, c_logit) action;
-    ``"never"`` drops the cancel coordinate (2-dim (K^a, s_off), c == 0).
-    """
+
+def continuous_action_specs(cfg: ExperimentConfig) -> dict[str, ContinuousActionSpec]:
+    """Per-phase normalized raw boxes for projected actor-critic policies."""
+    continuous_cancel = _continuous_cancel_from_actions(cfg.actions)
     clob = ContinuousActionSpec.clob(cfg.actions)
     auction = ContinuousActionSpec.auction(cfg.actions)
     if continuous_cancel == "never":
@@ -190,43 +339,26 @@ def continuous_action_specs(
 
 
 class ContinuousActionAdapter:
-    """Wrap :class:`~lmm.env.mdp.MarketMakingEnv` with per-phase Box action
-    spaces for the continuous-control relaxation (Phase 5; ruling D9).
+    """Project normalized raw actor actions in ``[-1,1]`` to market actions.
 
-    The discrete DQN setting is untouched: this adapter is only used by the
-    continuous agents (DDPG/TD3/SAC). It exposes ``gymnasium`` Box action
-    spaces per phase and projects/snaps a continuous action vector to a
-    :class:`ClobAction` / :class:`AuctionAction` before delegating to the inner
-    env (docs/continuous_action_extension.md §1.3):
-
-    - CLOB ``(v, delta)``: ``v`` projected to ``[0, min(V, I_t)]`` (continuous),
-      ``delta`` snapped to the nearest tick (integer book level);
-    - auction ``(K^a, s_off[, c_logit])``: ``K^a`` projected to ``[0, K_max]``
-      (continuous, NOT snapped), ``s_off`` snapped to the nearest integer tick
-      offset, ``c = 1{c_logit > 0.5}`` THEN masked by cancel-admissibility.
-
-    Execution and rewards run on the snapped action, so the env DYNAMICS are
-    identical to the discrete case (same transition function, possibly off-grid
-    inputs). ``info["executed_action_vec"]`` carries the committed continuous
-    action (after projection, before snapping) for the replay buffer.
-
-    Attribute access (``phase``, ``t``, ``grid``, ``eq2``, ``inventory``,
-    ``action_mask``, ``reset``) is delegated EXPLICITLY to the inner env, so
-    ``rl/loops.py::run_episode`` drives it exactly like the raw env.
+    The clipped *raw* proposal is retained in ``proposal_action_vec`` for
+    replay.  Integer coordinates use :func:`round_half_up`, never NumPy's
+    bankers' rounding.
     """
 
-    def __init__(self, env: "MarketMakingEnv", *, continuous_cancel: str = "threshold") -> None:
+    def __init__(self, env: "MarketMakingEnv") -> None:
         self.env = env
         self.cfg = env.cfg
+        continuous_cancel = _continuous_cancel_from_actions(env.cfg.actions)
         self.continuous_cancel = continuous_cancel
-        self.specs = continuous_action_specs(env.cfg, continuous_cancel)
+        self.specs = continuous_action_specs(env.cfg)
         self._boxes = {phase: spec.box() for phase, spec in self.specs.items()}
         ap = env.cfg.actions
-        self._delta_min = ap.clob_delta_min
-        self._delta_max = ap.clob_delta_max
-        self._volume_max = float(ap.clob_volume_max)
-        self._K_max = float(ap.auction_K_grid_max)
-        self._offset_max = ap.auction_offset_max
+        self._volume_max = int(ap.V_max)
+        self._delta_max = int(ap.L_max)
+        self._beta = float(ap.beta)
+        self._K_index_max = int(ap.K_max)
+        self._local_offset_max = int(ap.B_max)
         # The env always starts in the CLOB phase after reset(); _phase is not
         # set until then, so default to the CLOB box at construction.
         self.action_space = self._boxes["clob"]
@@ -259,8 +391,17 @@ class ContinuousActionAdapter:
         return self.env.s_mid
 
     @property
-    def generator(self):
-        return self.env.generator
+    def h_cl(self) -> float:
+        return self.env.h_cl
+
+    @property
+    def decision_index(self) -> int:
+        return self.env.decision_index
+
+    @property
+    def completed_episode_grid(self):
+        """The realized grid, available only after the episode has ended."""
+        return self.env.completed_episode_grid
 
     def action_mask(self) -> np.ndarray:
         return self.env.action_mask()
@@ -277,44 +418,128 @@ class ContinuousActionAdapter:
         """Project/snap ``action`` for the CURRENT phase, delegate to the inner
         env, and attach the committed continuous action vector to ``info``."""
         if self.env.phase == "clob":
-            order, committed = self._project_clob(action)
+            order, committed, projection = self._project_clob(action)
         else:
-            order, committed = self._project_auction(action)
+            order, committed, projection = self._project_auction(action)
         obs, reward, terminated, truncated, info = self.env.step(order)
         info = dict(info)
-        info["executed_action_vec"] = committed
-        self.action_space = self._boxes[self.env.phase]
+        info["proposal_action_vec"] = committed
+        info["raw_action_vec"] = np.asarray(action, dtype=np.float32).reshape(-1).copy()
+        info["projected_action_five"] = to_five_coordinate(order).as_tuple()
+        info["projection_diagnostics"] = projection
+        next_phase = self.env.phase
+        if next_phase in self._boxes:
+            self.action_space = self._boxes[next_phase]
+        elif not (terminated or truncated):
+            raise RuntimeError(f"no continuous action space for active phase {next_phase!r}")
         self.observation_space = self.env.observation_space
         return obs, reward, terminated, truncated, info
 
     # -- projection / snapping (docs/continuous_action_extension.md §1.3) ----
 
-    def _project_clob(self, action) -> tuple[ClobAction, np.ndarray]:
+    def _project_clob(
+        self, action
+    ) -> tuple[ClobAction, np.ndarray, dict[str, float | int | bool]]:
         a = np.asarray(action, dtype=float).reshape(-1)
-        inv = float(self.env.inventory)
-        # Floor the upper bound at 0: inventory can drift to a tiny negative
-        # float after near-full liquidation, and np.clip with lo > hi returns
-        # hi (which would be a negative volume the env rejects).
-        v = float(np.clip(a[0], 0.0, max(0.0, min(self._volume_max, inv))))
-        delta_c = float(np.clip(a[1], self._delta_min, self._delta_max))
-        committed = np.array([v, delta_c], dtype=np.float32)
-        order = ClobAction(volume=v, delta=int(np.round(delta_c)))
-        return order, committed
+        if a.size != 2:
+            raise ValueError(f"CLOB raw action must have length 2, got {a.size}")
+        raw = np.clip(a, -1.0, 1.0)
+        v_raw = (raw[0] + 1.0) * self._volume_max / 2.0
+        delta_raw = (raw[1] + 1.0) * self._delta_max / 2.0
+        inventory_cap = max(0, math.floor(float(self.env.inventory)))
+        v_rounded = round_half_up(v_raw)
+        delta_rounded = round_half_up(delta_raw)
+        v = min(inventory_cap, self._volume_max, v_rounded)
+        delta = 0 if v == 0 else int(np.clip(delta_rounded, 0, self._delta_max))
+        committed = raw.astype(np.float32, copy=True)
+        order = ClobAction(volume=float(v), delta=delta)
+        diagnostics: dict[str, float | int | bool] = {
+            "input_clipped": bool(np.any(a != raw)),
+            "bound_saturation_count": int(np.count_nonzero(np.isclose(np.abs(raw), 1.0))),
+            "rounded_coordinate_count": int(not np.isclose(v_raw, v_rounded))
+            + int(v > 0 and not np.isclose(delta_raw, delta_rounded)),
+            "inventory_projection": bool(v_rounded > inventory_cap),
+            "ell_admissibility_projection": False,
+            "slope_admissibility_projection": False,
+            "cancel_threshold_positive": False,
+            "cancel_executed": False,
+        }
+        return order, committed, diagnostics
 
-    def _project_auction(self, action) -> tuple[AuctionAction, np.ndarray]:
+    def _project_auction(
+        self, action
+    ) -> tuple[AuctionAction, np.ndarray, dict[str, float | int | bool | str]]:
         a = np.asarray(action, dtype=float).reshape(-1)
-        K = float(np.clip(a[0], 0.0, self._K_max))
-        off_c = float(np.clip(a[1], -self._offset_max, self._offset_max))
-        offset = int(np.clip(np.round(a[1]), -self._offset_max, self._offset_max))
+        expected = 2 if self.continuous_cancel == "never" else 3
+        if a.size != expected:
+            raise ValueError(f"auction raw action must have length {expected}, got {a.size}")
+        raw = np.clip(a, -1.0, 1.0)
+        K_raw = (raw[0] + 1.0) * self._beta * self._K_index_max / 2.0
+        k_unclipped = round_half_up(K_raw / self._beta)
+        k = int(np.clip(k_unclipped, 0, self._K_index_max))
+        K = self._beta * k
+        ell_raw = self._local_offset_max * raw[1]
+        ell_unclipped = round_half_up(ell_raw)
+        ell = int(
+            np.clip(
+                ell_unclipped,
+                -self._local_offset_max,
+                self._local_offset_max,
+            )
+        )
+        k_before_admissibility = k
+        ell_before_admissibility = ell
+        slope_admissibility_projection = False
+        if k > 0:
+            alpha = float(self.cfg.grid.alpha)
+            center_b = self.env._auction_anchor_b_ticks()
+            admissible_ells = _admissible_auction_ells(
+                self.cfg.actions,
+                frozen_mid=float(self.env.s_mid),
+                alpha=alpha,
+                anchor_b_ticks=center_b,
+            )
+            if not admissible_ells:
+                # The manuscript admissible set is still nonempty: its
+                # canonical zero-slope action has ell=0 and no reference price.
+                # DQN masks every positive-slope lattice point in this state;
+                # continuous proposals must implement the same total action
+                # contract rather than aborting an otherwise valid episode.
+                k = 0
+                K = 0.0
+                ell = 0
+                slope_admissibility_projection = True
+            else:
+                ell = int(np.clip(ell, admissible_ells[0], admissible_ells[-1]))
+        else:
+            ell = 0
         if self.continuous_cancel == "never":
             cancel = 0
-            committed = np.array([K, off_c], dtype=np.float32)
+            committed = raw.astype(np.float32, copy=True)
         else:
-            c_logit = float(np.clip(a[2], 0.0, 1.0))
-            # threshold THEN admissibility mask: a^5 <= C(x). In the auction
-            # phase action_mask().all() == ledger.cancel_admissible() (the grid
-            # mask is all-True iff a cancel-all is admissible).
-            cancel = int(c_logit > 0.5 and bool(self.env.action_mask().all()))
-            committed = np.array([K, off_c, c_logit], dtype=np.float32)
-        order = AuctionAction(K_a=K, offset=offset, cancel=cancel)
-        return order, committed
+            cancel = int(raw[2] >= 0.0 and bool(self.env.cancel_admissible))
+            committed = raw.astype(np.float32, copy=True)
+        order = AuctionAction(K_a=K, ell=ell, cancel=cancel)
+        diagnostics: dict[str, float | int | bool | str] = {
+            "input_clipped": bool(np.any(a != raw)),
+            "bound_saturation_count": int(np.count_nonzero(np.isclose(np.abs(raw), 1.0))),
+            "rounded_coordinate_count": int(
+                not np.isclose(K_raw / self._beta, k_unclipped)
+            )
+            + int(
+                k_before_admissibility > 0
+                and not np.isclose(ell_raw, ell_unclipped)
+            ),
+            "inventory_projection": False,
+            "ell_admissibility_projection": bool(
+                ell != ell_before_admissibility
+            ),
+            "slope_admissibility_projection": slope_admissibility_projection,
+            "cancel_threshold_positive": bool(
+                self.continuous_cancel == "threshold" and raw[2] >= 0.0
+            ),
+            "cancel_executed": bool(cancel),
+            "auction_anchor": self.env.auction_anchor,
+            "auction_anchor_b": self.env._auction_anchor_b_ticks(),
+        }
+        return order, committed, diagnostics

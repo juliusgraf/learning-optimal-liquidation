@@ -1,4 +1,8 @@
-"""Reward-scaling guard (maintenance fix; ruling D9, D10).
+"""Archival large-notional reward stress tests (including native learners).
+
+The DQN scale below is an explicit legacy fixture. Active weighted-reward,
+potential and SB3 contracts are tested in test_learning_repair.py. The former
+large-notional reward distribution is not the current replay distribution.
 
 The paper's three-regime rewards are LARGE: auction/terminal terms
 ~K^a * H * (H - S^a) with H ~ 100 give per-transition rewards O(1e3-1e4) and
@@ -33,7 +37,7 @@ from lmm.agents.ddpg import DDPGAgent
 from lmm.agents.dqn import DQNAgent
 from lmm.agents.sac import SACAgent
 from lmm.agents.td3 import TD3Agent
-from lmm.env.features import FeatureExtractor
+from lmm.env.features import COMMON_FEATURES, FeatureNormalizer
 from lmm.rl.continuous_replay import ContinuousReplayBatch
 from lmm.rl.loops import SEED_COMPONENTS
 from lmm.rl.replay import ReplayBatch
@@ -52,7 +56,8 @@ TRAINABLE_BAND = (0.1, 100.0)  # acceptable |scaled reward| for the typical case
 
 
 def build_agent(algo: str, *overrides: str, master_seed: int = 1234):
-    cfg = load_dqn_cfg(*overrides) if algo == "dqn" else load_algo_cfg(algo, *overrides)
+    cfg = (load_dqn_cfg('algo.hyperparams.reward_scale=0.01', *overrides)
+           if algo == "dqn" else load_algo_cfg(algo, *overrides))
     seeds = seed_everything(master_seed, SEED_COMPONENTS, seed_torch=True)
     return cfg, _AGENT_CLS[algo](cfg, seeds)
 
@@ -64,7 +69,9 @@ def _clob_action(algo: str, agent, rng: np.random.Generator | None = None):
             return 0
         return int(rng.integers(len(agent.clob_grid)))
     dim = agent._act_dim["clob"]
-    return np.zeros(dim, np.float32) if rng is None else rng.normal(size=dim).astype(np.float32)
+    if rng is None:
+        return np.zeros(dim, np.float32)
+    return np.clip(rng.normal(size=dim), -1.0, 1.0).astype(np.float32)
 
 
 def _clob_next_mask(algo: str, agent):
@@ -109,11 +116,10 @@ def _clob_targets(algo: str, agent, cfg, scaled_rewards: np.ndarray) -> np.ndarr
 
 @pytest.mark.parametrize("algo", ALGOS)
 def test_reward_scale_in_trainable_band(algo):
-    """The configured reward_scale maps a typical large paper reward into the
-    trainable band -- the regression guard against the divergent 1.0 default."""
+    """Every method uses the manuscript's common reward scale exactly."""
     _, agent = build_agent(algo)
     s = agent.hp.reward_scale
-    assert 0.0 < s < 1.0, f"{algo}: reward_scale={s} must be in (0, 1)"
+    assert s == pytest.approx(0.01 if algo == "dqn" else 1.0e-3, rel=0, abs=1e-15)
     scaled = abs(s * TYPICAL_PAPER_REWARD)
     lo, hi = TRAINABLE_BAND
     assert lo <= scaled <= hi, (
@@ -128,10 +134,6 @@ def test_observe_applies_reward_scale_on_the_replay_path(algo):
     cfg, agent = build_agent(algo)
     s = agent.hp.reward_scale
     clob_dim = len(cfg.features.clob)
-    # Use a reward whose SCALED value stays below reward_clip, so this test
-    # isolates the SCALE (the clip is exercised by
-    # test_reward_clip_bounds_the_stored_replay_reward). 1e3 paper -> 1.0 scaled,
-    # well under the continuous clip (8.0); DQN is unclipped anyway.
     raw = 1.0e3
     agent.observe(
         Transition(
@@ -151,18 +153,15 @@ def test_observe_applies_reward_scale_on_the_replay_path(algo):
 
 
 @pytest.mark.parametrize("algo", ALGOS)
-def test_terminal_reward_unfolded_not_folded(algo):
-    """Item 1: observe() does NOT fold the terminal clearing reward into the
+def test_terminal_reward_unfolded_and_added_exactly_once(algo):
+    """observe() does not fold the terminal clearing reward into the
     stored step reward. The env returns the combined reward r_step + r_tau_cl
     (with r_tau_cl in info['terminal_reward']); observe stores only the step
-    reward and carries g = r_tau_cl in ``terminal_value``, so compute_targets
-    bootstraps y = c_r*(r_step + chi*g) -- the rigorous Q* target, not the old
-    chi^0 fold y = c_r*(r_step + g). Covers DQN + DDPG/TD3/SAC."""
+    reward and carries g = r_tau_cl in ``terminal_value``. The undiscounted
+    terminal target is c_r*r_step + c_r*g exactly once."""
     cfg, agent = build_agent(algo)
-    s, chi = agent.hp.reward_scale, cfg.rl.chi
+    s = agent.hp.reward_scale
     clob_dim = len(cfg.features.clob)
-    # Scaled values 0.003 / 0.12 stay below any reward_clip (8.0), isolating
-    # the un-fold from clipping.
     r_step, r_term = 3.0, 120.0
     agent.observe(
         Transition(
@@ -181,8 +180,7 @@ def test_terminal_reward_unfolded_not_folded(algo):
     assert float(batch.reward[0]) == pytest.approx(r_step * s, rel=1e-6)
     assert float(batch.terminal_value[0]) == pytest.approx(r_term * s, rel=1e-6)
     y = agent.compute_targets("clob", batch).detach().cpu().numpy()
-    assert y[0] == pytest.approx((r_step + chi * r_term) * s, rel=1e-6)
-    assert y[0] != pytest.approx((r_step + r_term) * s, rel=1e-4)  # not the fold
+    assert y[0] == pytest.approx((r_step + r_term) * s, rel=1e-6)
 
 
 @pytest.mark.parametrize("algo", ALGOS)
@@ -196,7 +194,7 @@ def test_bellman_targets_finite_and_bounded_by_scaled_reward(algo):
     scaled = (raw * s).astype(np.float32)
     y = _clob_targets(algo, agent, cfg, scaled)
     assert np.all(np.isfinite(y)), f"{algo}: non-finite Bellman targets"
-    # y = r_scaled + chi * Q_target(x') (or just r_scaled on the terminal row);
+    # y = r_scaled + Q_target(x') (or just r_scaled on the terminal row);
     # at init Q is O(1), so |y| <= max|scaled| + a small slack.
     bound = float(np.abs(scaled).max()) * 1.5 + 100.0
     assert np.max(np.abs(y)) <= bound, f"{algo}: |target|={np.max(np.abs(y)):g} exceeds {bound:g}"
@@ -207,7 +205,12 @@ def test_gradient_updates_stay_finite_under_paper_scale_rewards(algo):
     """A short SEEDED training segment fed paper-scale rewards keeps the
     per-update losses / TD errors / gradient norms finite and non-divergent."""
     cfg, agent = build_agent(
-        algo, "algo.hyperparams.min_buffer=32", "algo.hyperparams.batch_size=16"
+        algo,
+        "rl.learning_starts_after_warmup=false",
+        "algo.hyperparams.min_buffer=32",
+        "algo.hyperparams.min_buffer_clob=32",
+        "algo.hyperparams.min_buffer_auction=32",
+        "algo.hyperparams.batch_size=16",
     )
     clob_dim = len(cfg.features.clob)
     rng = np.random.default_rng(0)
@@ -241,17 +244,13 @@ def test_gradient_updates_stay_finite_under_paper_scale_rewards(algo):
     )
 
 
-# -- reward clipping (continuous agents; part (a)) ----------------------------
+# -- no method-specific reward clipping ---------------------------------------
 
 
-@pytest.mark.parametrize("algo", CONTINUOUS_ALGOS)
-def test_reward_clip_bounds_the_stored_replay_reward(algo):
-    """The continuous configs clip the SCALED replay reward to +/- reward_clip,
-    so the fictive-auction-reward exploit cannot inject an unbounded Bellman
-    target; legitimate (sub-clip) rewards pass through with the scale only."""
+@pytest.mark.parametrize("algo", ALGOS)
+def test_large_rewards_are_scaled_but_never_clipped(algo):
     cfg, agent = build_agent(algo)
-    s, clip = agent.hp.reward_scale, agent.hp.reward_clip
-    assert clip is not None and clip > 0, f"{algo}: continuous configs must set reward_clip"
+    s = agent.hp.reward_scale
     clob_dim = len(cfg.features.clob)
 
     def observe_raw(raw: float) -> None:
@@ -264,113 +263,46 @@ def test_reward_clip_bounds_the_stored_replay_reward(algo):
                 done=False,
                 phase="clob",
                 next_phase="clob",
-                next_mask=None,
+                next_mask=_clob_next_mask(algo, agent),
             )
         )
 
-    observe_raw(1.0e8)  # scaled = 1e5 >> clip  (exploit regime) -> +clip
-    observe_raw(-1.0e8)  # -> -clip
-    small = 1.0e3  # scaled = small * s; well below clip -> unclipped
+    observe_raw(1.0e8)
+    observe_raw(-1.0e8)
+    small = 1.0e3
     observe_raw(small)
     stored = agent.replay["clob"]._reward  # FIFO positions 0,1,2
-    assert stored[0] == pytest.approx(clip, rel=1e-6)
-    assert stored[1] == pytest.approx(-clip, rel=1e-6)
+    assert stored[0] == pytest.approx(1.0e8 * s, rel=1e-6)
+    assert stored[1] == pytest.approx(-1.0e8 * s, rel=1e-6)
     assert stored[2] == pytest.approx(small * s, rel=1e-6)
 
 
-def test_dqn_reward_is_unclipped_by_default():
-    """The discrete DQN keeps reward_clip off (it uses robust Huber and is not
-    part of the continuous exploit fix); only the scale applies."""
-    _, agent = build_agent("dqn")
-    assert getattr(agent.hp, "reward_clip", None) is None
+# -- common frozen feature normalization -------------------------------------
 
 
-# Calibration of reward_clip to the MEASURED reward envelope (seed-42
-# reproduce_all analysis that motivated tightening clip 25.0 -> 8.0).
-#
-# The largest LEGITIMATE per-transition reward is the terminal reward, dominated
-# by the inventory penalty lambda * I_max^2 = 0.5 * 100^2 = 5000 plus bounded
-# execution PnL; the AS/TWAP benchmarks reach ~5500 paper units in the seed-42
-# synthetic eval. The clip must sit ABOVE this so it never truncates the real
-# objective signal (the terminal PnL / inventory term). The fictive per-step
-# auction reward K^a*H_cl*(H_cl-S^a) is unbounded: the actor quotes S^a above the
-# frozen mid -> cached H_cl ~115-136 -> single steps reach ~1.6e5 paper, and
-# small-slope clearing-blowup steps reach ~1e9. So the clip must also be well
-# BELOW the fictive exploit. These two bounds define the valid band.
-HONEST_TERMINAL_PAPER = 5.5e3   # ceiling on a legitimate transition (terminal-dominated)
-MILD_EXPLOIT_PAPER = 1.6e5      # representative fictive-reward exploit step
-MIN_EXPLOIT_SUPPRESSION = 10.0  # min factor by which the clip must suppress it
+@pytest.mark.parametrize("algo", ALGOS)
+def test_all_methods_use_the_same_frozen_training_normalizer(algo):
+    cfg = load_dqn_cfg() if algo == "dqn" else load_algo_cfg(algo)
+    assert tuple(cfg.features.clob) == COMMON_FEATURES
+    assert tuple(cfg.features.auction) == COMMON_FEATURES
+    rows = np.vstack([np.arange(18, dtype=float), np.arange(18, dtype=float) + 2.0])
+    normalizer = FeatureNormalizer(cfg.grid.tau_cl, relative_prices=cfg.rl.relative_price_features).fit(rows)
+    transformed = normalizer.transform(rows[0])
+    assert transformed.shape == (18,)
+    assert transformed[0] == pytest.approx(rows[0, 0] / cfg.grid.tau_cl)
+    assert transformed[4] == pytest.approx(rows[0, 4] / cfg.grid.tau_cl)
+    assert transformed[12] == rows[0, 12]
+    with pytest.raises(RuntimeError, match="frozen"):
+        normalizer.update(rows)
 
 
-@pytest.mark.parametrize("algo", CONTINUOUS_ALGOS)
-def test_reward_clip_calibrated_to_honest_envelope(algo):
-    """reward_clip sits in the calibrated band: ABOVE the honest terminal
-    envelope (so the real PnL/inventory objective is never clipped) yet well
-    BELOW the unbounded fictive-auction exploit (so the critic target stays at
-    the honest scale, killing the 1e9-1e11 divergence). The previous 2.0 was too
-    tight (clipped legitimate terminals) and 25.0 too loose (left the target
-    ~4.5x a legit terminal) -- this pins the regression on both sides."""
-    _, agent = build_agent(algo)
-    s, clip = agent.hp.reward_scale, agent.hp.reward_clip
-    assert clip is not None and clip > 0, f"{algo}: continuous configs must set reward_clip"
-
-    # (i) FLOOR: clip covers the honest terminal envelope in scaled units, else
-    #     the learner clips real terminal-PnL / inventory-penalty rewards.
-    honest_scaled = HONEST_TERMINAL_PAPER * s
-    assert clip >= honest_scaled, (
-        f"{algo}: reward_clip={clip} clips legitimate terminal rewards "
-        f"(honest terminal envelope = {honest_scaled:g} scaled)"
-    )
-    # (ii) CEILING: tight enough to suppress a representative exploit step >= 10x.
-    exploit_scaled = MILD_EXPLOIT_PAPER * s
-    assert exploit_scaled / clip >= MIN_EXPLOIT_SUPPRESSION, (
-        f"{algo}: reward_clip={clip} too loose -- suppresses the exploit only "
-        f"{exploit_scaled / clip:.1f}x (need >= {MIN_EXPLOIT_SUPPRESSION:g}x). "
-        f"The old reward_clip=25.0 failed this bound."
-    )
-
-
-# -- price-feature normalization (continuous agents; part (a)) -----------------
-
-
-class _StubEnv:
-    """Minimal env exposing the feature accessors (all O(1) except the price)."""
-
-    inventory = 0.0
-    depth_ask = depth_bid = top_ask = top_bid = 0.0
-    n_mm = n_buy = n_sell = 0.0
-    t = 0
-
-    def __init__(self, h_cl: float, s_mid: float) -> None:
-        self.h_cl = h_cl
-        self.s_mid = s_mid
-
-
-@pytest.mark.parametrize("algo", CONTINUOUS_ALGOS)
-def test_continuous_price_features_are_centered_and_clipped(algo):
-    """h_cl_norm / s_mid_norm are centered at S0 and clipped, so a spiking
-    per-step H_cl cannot blow up the network input (paper-unit metrics
-    unaffected -- this is observation-only)."""
-    cfg = load_algo_cfg(algo)
-    assert "h_cl_norm" in cfg.features.clob and "s_mid_norm" in cfg.features.clob
-    assert "h_cl_norm" in cfg.features.auction and "s_mid_norm" in cfg.features.auction
-    fe = FeatureExtractor(cfg.features, cfg.grid, cfg.clob_flow, cfg.auction_flow)
-    S0 = cfg.grid.S0
-    scale, clip = cfg.features.price_norm_scale, cfg.features.price_norm_clip
-    h_idx = cfg.features.clob.index("h_cl_norm")
-
-    # centered: H_cl == S0 maps to 0.
-    assert fe.clob_features(_StubEnv(h_cl=S0, s_mid=S0))[h_idx] == pytest.approx(0.0)
-    # in-range value: affine (x - S0) / scale.
-    val = fe.clob_features(_StubEnv(h_cl=S0 + 2.0 * scale, s_mid=S0))[h_idx]
-    assert val == pytest.approx(2.0)
-    # spike: clipped to +/- clip (bounded network input).
-    hi = fe.clob_features(_StubEnv(h_cl=S0 + 1e6, s_mid=S0))[h_idx]
-    lo = fe.clob_features(_StubEnv(h_cl=S0 - 1e6, s_mid=S0))[h_idx]
-    assert hi == pytest.approx(clip) and lo == pytest.approx(-clip)
-
-
-def test_dqn_keeps_raw_price_features():
-    cfg = load_dqn_cfg()
-    assert "h_cl" in cfg.features.clob and "h_cl_norm" not in cfg.features.clob
-    assert "s_mid" in cfg.features.auction and "s_mid_norm" not in cfg.features.auction
+def test_h_ablation_zeros_only_normalized_h_coordinate():
+    rows = np.vstack([np.zeros(18), np.ones(18)])
+    normal = FeatureNormalizer(150.0).fit(rows)
+    ablated = FeatureNormalizer(150.0, zero_h_cl=True).fit(rows)
+    x = np.arange(18, dtype=float)
+    expected = normal.transform(x)
+    actual = ablated.transform(x)
+    assert actual.shape == expected.shape == (18,)
+    assert actual[2] == 0.0
+    np.testing.assert_array_equal(actual[np.arange(18) != 2], expected[np.arange(18) != 2])

@@ -1,8 +1,18 @@
 # AUDIT.md — Phase 1 audit of the legacy code against the paper
 
+Historical audit of a superseded implementation. Manuscript references below
+refer to the private research archive; the current public model is described
+in [docs/model.md](../docs/model.md).
+
+> Historical record only. This audit predates the 2026-08-31 manuscript
+> revision and intentionally describes superseded action counts, feature maps,
+> rewards, discounting, and legacy pseudo-regret outputs. Current implementation
+> contracts are documented in `CLAUDE.md`, `docs/rl_design.md`, and
+> `docs/metrics_schema.md`; do not use the current-output claims below.
+
 **Inputs read in full:** `paper/main.tex` (787 lines), `main.py` (2,373 lines, synthetic /
 rough-Heston experiment), `data.py` (1,686 lines, historical S&P 500 experiment).
-**Binding conventions:** CLAUDE.md (author rulings D1–D14, corrected Eqs. (1)–(2),
+**Binding conventions:** CLAUDE.md (author rulings D1–D25, corrected Eqs. (1)–(2),
 corrected θ recursion, scalar cancel-all with admissibility constraint C(x)).
 **Nothing outside `audit/` and `tests/audit/` was modified.**
 
@@ -194,11 +204,16 @@ Phases 3–5.
 
 ### Implementation status (added Phase 8)
 
-Every ruling D1–D20 is implemented and verified. Phase 8 re-ran the full suite
+Every ruling through D22 was implemented and verified before the revision rulings.
+Phase 8 re-ran the then-current suite
 in a fresh venv (**278 not-slow + 22 slow tests passing**, plus the 10 legacy
 characterization tests), exercised the whole train→evaluate→regret→figures→tables
 pipeline end-to-end with `--smoke`, and confirmed a same-seed double run produces
 a **bit-identical `metrics.csv`** (modulo the `wall_clock_s` timing column).
+The D21/D22 revision gate subsequently passed **312 non-slow/non-legacy tests**
+and the **10 legacy characterization tests** on 2026-08-28.
+Author rulings D23–D25 below now supersede D16/D18 where stated and D20 for all
+new revision runs; their implementation/test references are included in the table.
 "Phase" below is the phase that landed the implementation; the per-ruling
 diagnosis and binding resolution follow in the entries beneath this table.
 
@@ -216,14 +231,19 @@ diagnosis and binding resolution follow in the entries beneath this table.
 | D10 — fresh per-component seeding | 2 | `utils/seeding.py` | `test_determinism` |
 | D11 — internal state + `paper_state()` | 3 | `env/{mdp,features}.py` | `test_admissibility`, `test_agent_env_contract` |
 | D12 — one library (no main/data dup) | 3 | `src/lmm` (whole package) | full suite |
-| D13 — historical data loader | 6 | `data/load_yfinance_data.py`, `configs/historical_sp500.yaml` | `test_data_loader` |
+| D13 — historical data loader (retired) | 6 | superseded by true-midquote loader/config | see current `test_midquote_data` |
 | D14 — vectorized rough Heston/book | 3 | `market/{midprice,clob}.py` | `test_rough_heston` (allclose vs naive) |
 | D15 — τ = 0.95, χ = 0.99 both settings | 2 | `configs/base.yaml`, `market/clearing.py` | `test_algorithm1` + config (cite D15) |
-| D16 — one-sided benchmark curve | 3–4 | `market/clearing.py`, `agents/benchmarks.py` | `test_clearing`, `test_agent_env_contract` |
+| D16 — one-sided benchmark curve (superseded by D23) | 3–4 | `market/clearing.py`, `agents/benchmarks.py` | historical: `test_clearing`, `test_agent_env_contract` |
 | D17 — degenerate fallback H_cl = S^mid | 3 | `market/clearing.py`, `env/mdp.py` | `test_clearing` |
-| D18 — benchmark one-sided reward | 4 | `env/rewards.py`, `env/mdp.py` | `test_rewards` |
+| D18 — benchmark one-sided reward (inapplicable after D23) | 4 | `env/rewards.py`, `env/mdp.py` | historical: `test_rewards` |
 | D19 — S̃ nearest-tick snapping | 4 | `agents/benchmarks.py` | benchmark eval traces (`test_agent_env_contract`, smoke) |
-| D20 — discounting conventions | 4 | `experiments/regret.py`, `agents/dqn.py` | `docs/metrics_schema.md`, `docs/rl_design.md` §5 |
+| D20 — split discounting conventions (superseded by D25) | 4 | `experiments/regret.py`, `agents/dqn.py` | historical: `docs/metrics_schema.md`, `docs/rl_design.md` §5 |
+| D21 — guaranteed auction slope (`p1=1`, `p2=0`) | revision | `configs/base.yaml`, `market/generator.py` | `test_skeleton`, `test_timing_conventions`; §F.2 |
+| D22 — continuous state; algorithm-specific actions | revision | `env/{mdp,features,action_spaces}.py`, `agents/*` | `test_continuous_adapter`; `docs/rl_design.md`, `docs/continuous_action_extension.md` |
+| D23 — common bounded action envelope; 502/251 grids; linear benchmarks | revision | `env/{action_spaces,mdp}.py`, `agents/benchmarks.py` | `test_admissibility`, `test_accounting` |
+| D24 — penalized economic objective and economic checkpoint selection | revision | `experiments/accounting.py`, `rl/loops.py`, `experiments/train.py` | `test_accounting`, `test_agent_env_contract` |
+| D25 — elapsed-time Bellman discount | revision | `rl/{loops,replay,continuous_replay}.py`, `agents/{dqn,continuous_base}.py` | `test_discounting`, `test_dqn`, `test_continuous_agents` |
 
 ### D1 (RULED) — Auction H_cl look-ahead. **Confirmed.**
 `main.py:639-658` (d:522-540). The time-t estimate is computed after sampling time-t
@@ -461,20 +481,24 @@ training seeds (CRN ✓). The *periodic* benchmark comparison plot is not seed-m
 
 ### C.3 MDP-side invariants the Phase 4 DQN must preserve
 
-1. **State/features:** the exact pruned vectors of A.7 (8-dim CLOB, 7-dim auction,
-   same normalizations and t_norm definitions) as configurable defaults; X3 must be
-   the D1/D2-corrected cached H_cl.
-2. **Actions:** the grids of A.8 (361 CLOB / 550 auction, scalar c) as configured
-   defaults; admissibility via masking in both argmax and random draws
+1. **State/features:** the revision keeps A.7's 8-dim CLOB vector and augments
+   the legacy 7-dim auction vector with observable `C(x)`, yielding 8 dimensions;
+   X3 must be the D1/D2-corrected cached H_cl. This removes DQN/continuous
+   information asymmetry about cancellation admissibility.
+2. **Actions:** D23 supersedes the old auction Cartesian grid: 361 CLOB / 502
+   auction actions for DQN when cancellation is enabled, and 251 in the shared
+   no-cancel sensitivity, inside the same configured bounded envelope used by
+   continuous agents and benchmarks; admissibility via masking in both argmax and random draws
    (a¹ ≤ x¹, a² ≥ x¹⁰/α, a⁵ ≤ C(x)); document masking choice.
 3. **Rewards:** corrected three-regime definitions (D4/D5 forms, D1/D2 timing,
    D8 no clipping); terminal reward folded into the final auction transition with
    done=True and zero bootstrap (documented equivalence).
 4. **Timing:** decisions at t ∈ {0..n} ∪ {n+1..m} (fixing N1), terminal clearing at
    τ_cl from end-of-t_m information.
-5. **Discounting:** χ = 0.99 in all Bellman targets; cross-phase junction — CLOB
-   transitions entering the auction bootstrap from the auction target network.
-6. **Evaluation:** undiscounted episode sums; common random numbers — identical env
+5. **Discounting:** D25 default Bellman coefficient is χ^(t_next−t), with χ=.99
+   per grid-time unit; cross-phase junctions bootstrap from the auction target network.
+6. **Evaluation:** D24's economic objective is primary; shaped episode returns
+   remain diagnostics. Common random numbers use an identical env
    seed for learned policy and benchmark within an episode, identical seed sets for
    any reported comparison (fixes N10); regret per the paper's PRegret with the
    benchmark as π°.
@@ -508,7 +532,8 @@ disabled the penalties).
 
 Q1–Q3 (Phase 1) are answered by rulings D15–D17 (2026-06-11); Q4–Q6 (Phase 4:
 D16 sub-questions and the discounting conventions) are answered by rulings
-D18–D20 (2026-06-12). All are binding for Phases 2–6.
+D18–D20 (2026-06-12). These remain the historical audit record; revision
+rulings D23–D25 below supersede D16/D18 where stated and D20.
 
 **Q1 — Algorithm-1 smoothing constant. ANSWERED (ruling D15).** Context: the
 instantiation sites pass `gamma=0.95` (synthetic, `main.py:1419`) and `gamma=0.99`
@@ -532,6 +557,8 @@ nondecreasing in p, so the root is found by a two-case analysis: solve the linea
 form excluding the benchmark order; if that root is ≤ S̃ it stands, otherwise re-solve
 with the benchmark slope included (and the benchmark order contributes only above S̃).
 The agent's own orders remain linear; Prop. linear is untouched for the agent.
+**Superseded by D23:** revision benchmarks use the common bounded LINEAR action
+family; the benchmark-only hockey-stick is not used in headline comparisons.
 
 **Q3 — Degenerate clearing fallbacks. ANSWERED (ruling D17).** Context: when the
 aggregate slope is zero, Eq. (2)/(1) has no solution; legacy uses H_cl = S^mid for
@@ -573,6 +600,8 @@ wrong-side penalty for the benchmark, because the benchmark is always selling.**
 Implemented in `src/lmm/env/rewards.py` (`one_sided` arguments) and
 `src/lmm/env/mdp.py::_terminal`; hand-checked in `tests/test_rewards.py` and
 `tests/test_agent_env_contract.py`.
+**D23 consequence:** this special reward is inapplicable to current headline
+benchmarks because their auction order is linear.
 
 **Q5 — Tick-snapping of S̃ for the benchmark auction order. ANSWERED (ruling D19).**
 S̃ (mean of the mean and max executed CLOB prices) is generally off-grid, while the
@@ -582,6 +611,7 @@ offset = round(S̃/α) − ⌊S^mid_{τop}/α⌋, i.e. the executed quote is α�
 nearest-tick rounding of S̃. (Legacy passed the raw float S̃, off-grid.)
 **Ruling: confirmed — the executed quote is the nearest-tick rounding of S̃.**
 Implemented in `src/lmm/agents/benchmarks.py::_LiquidationBenchmark._auction_action`.
+D23 retains that target snapping but clips the resulting offset to the common band.
 
 **Q6 — Discounting conventions for real-valued CLOB decision times. ANSWERED
 (ruling D20, 2026-06-12).** The CLOB decision times t̂_i are real-valued with a
@@ -597,6 +627,57 @@ paper objective it up-weights auction/terminal rewards vs CLOB rewards by at mos
 **Ruling: confirmed — keep both conventions as implemented; a semi-Markov χ^{Δt}
 target would be non-standard complexity for a negligible policy difference.** Both
 conventions are stated in `docs/metrics_schema.md` and `docs/rl_design.md` §5.
+
+**Superseded by D25:** elapsed-time `χ**Δt` is the revision default for both
+Bellman targets and reported discounted shaped return; one χ per transition is
+retained only as an explicit sensitivity.
+
+### Revision rulings D23–D25 (author, 2026-08-28)
+
+**D23 — common bounded action envelope; canonical grid; linear benchmarks.**
+All learned policies and benchmarks must execute inside the same configured
+envelope. CLOB submissions satisfy `0 <= v <= clob_volume_max` and `v <= I`;
+positive-volume quotes use the common tick-offset band, and DQN has one `(0,0)`
+no-op. Auction submissions satisfy `0 <= K <= K_max`,
+`|offset| <= offset_max`, and the common cancel rule. In the enabled headline
+regime DQN has 361 CLOB actions and exactly **502 auction actions**:
+`(0,0,0)`, `(0,0,1)`, and
+`10 positive K × 25 offsets × 2 cancel flags`; the economically duplicate K=0
+offsets are removed. One shared `actions.auction_cancel_mode` defines the
+matched no-cancel sensitivity for every algorithm: a 251-action DQN head, a
+two-dimensional continuous auction proposal, and env rejection of direct
+`c=1`. Continuous actors use the same bounds through their documented execution
+map. Their threshold-mode entropy is proposal-space entropy rather than entropy
+of executed cancellations; `C(x)` is included in the revision auction
+observation to remove the former DQN/continuous information asymmetry. AS/TWAP
+may choose off-grid values but are clipped to
+the envelope; their auction-open order is the bounded linear curve
+`K(p-S_tilde)`, `K=min(z*q_tau_op,K_max)`, with its target nearest-tick offset
+clipped to the common band. This supersedes D16; D18 is no longer applicable to
+headline benchmarks, while D19 is retained subject to band clipping.
+
+**D24 — economic liquidation objective; checkpoint selection.** The shaped
+three-regime reward remains the learning objective. Gross liquidation P&L is
+`PnL_gross = C_clob + S_cl*Z_tau_cl + S_ref*I_tau_cl - S_0*I_0`, where
+`C_clob = Σ_{t<tau_op} S_t_bullet E_t` and `S_ref=S_mid_tau_op` is the frozen,
+agent-independent residual-liquidation mark. Signed residual inventory is deemed
+closed at `S_ref`. The primary metric is
+`economic_objective = PnL_gross - Σd_t c_t - lambda*|I_tau_cl|^2` because the
+cancellation fee and terminal inventory penalty are economically meaningful.
+It excludes `f_c`, `f_a`, fictive rewards and the wrong-side shaping term.
+Gross P&L and `PnL_net=PnL_gross-Σd_t c_t` remain decomposition fields.
+`best.pt` defaults to strict maximization of mean `economic_objective` on the
+fixed `env_eval` seed list, disjoint from the `env_final_eval` test stream.
+Shaped validation return remains diagnostic only.
+
+**D25 — elapsed-time discount.** Keep D15's `χ=.99`, interpreted per grid-time
+unit. For every transition from decision time `t` to `t_next`, all algorithms
+use row coefficient `χ**(t_next-t)` in ordinary, junction and terminal Bellman
+targets. The reported discounted shaped return uses the same resolved mode, so
+products telescope to `χ**t` and the terminal is weighted at `χ**tau_cl`.
+Constant one-χ-per-decision discounting is retained only as the explicit
+`per_transition` sensitivity. Pre-D25 replay checkpoints must not be mixed into
+elapsed-time revision runs.
 
 ---
 
@@ -651,21 +732,21 @@ Regeneration instructions are in the test file's docstring.
 14. Historical protocol pinned: mid path = data.csv rows 0..119 (pre-normalized to
     100), same path every episode, auction mid frozen at row 119.
 15. The three Phase-1 questions are all ANSWERED (rulings D15–D17, Section D):
-    τ = 0.95 / χ = 0.99 in both settings; benchmarks use the one-sided
-    z·q(p−S̃)₊ curve; degenerate-clearing fallback is H_cl = S^mid in all cases.
-    No open questions remain — everything else is covered by rulings D1–D17.
+    τ = 0.95 / χ = 0.99 in both settings; D23 supersedes the earlier one-sided
+    benchmark with a bounded linear curve; degenerate fallback is H_cl = S^mid.
+    No open questions remain — everything else is covered by rulings D1–D25.
 
 ---
 
-## F. Maintenance-phase parameter changes (post-Phase-8; FOR AUTHOR RATIFICATION)
+## F. Maintenance-phase parameter changes (post-Phase-8)
 
 These are maintenance/extension-mode changes made while stabilising the
 continuous-action agents (DDPG/TD3/SAC) on the seeded `reproduce_all` run. They
 do **not** touch the clearing math, the reward forms, the timing conventions, or
 Algorithm 2's *structure*; one is a learner-side knob and one is a generative
-*parameter* value (config is the source of truth per D6). The second changes the
-auction's economic regime and is flagged here for the author to **ratify or
-revise** when regenerating `tab:params_generative`.
+*parameter* value. The second changes the auction's economic regime and was
+resolved by author ruling D21; it must be carried into the regenerated
+`tab:params_generative` and the revision's model description.
 
 ### F.0 The auction clearing singularity (diagnosis)
 
@@ -678,9 +759,11 @@ imbalance** `(Σν⁺−Σν⁻)` does not — so `p* → ∞`. `D → 0` requir
 MM present (M=0) AND the agent's live slope ≈ 0** (all slopes are ≥ 0). The
 continuous actor learns to set `K^a → 0` exactly in the `M=0` states, where the
 fictive per-step auction reward `K^a·H_cl·(H_cl−S^a)` diverges. This is faithful
-model behaviour (Prop. linear + ruling D17: economically-small slopes are NOT
-regularised), so it is handled at the learner/parameter level, never at the
-clearing.
+behavior of the unguarded model. The implementation switches to the D17
+fallback at total slope `<=1e-8`, so its values are finite but discontinuous and
+catastrophically large immediately above that threshold. Economically small
+slopes are otherwise not regularized, so the issue is handled at the
+learner/parameter level, never by silently changing the clearing equation.
 
 ### F.1 `reward_clip` 25 → 8 (continuous configs; learner-side, no model change)
 
@@ -696,41 +779,40 @@ Pinned by `tests/test_reward_scaling.py::test_reward_clip_calibrated_to_honest_e
 This is purely learner-side and does not affect the benchmarks or any reported
 metric definition.
 
-### F.2 `p1` 0.3 → 1.0, `p2` 0.2 → 0.0 (base.yaml; GENERATIVE PARAMETER — RATIFY)
+### F.2 `p1` 0.3 → 1.0, `p2` 0.2 → 0.0 (base.yaml; RESOLVED D21)
 
-`configs/base.yaml`. `p1` (new exogenous MM arrival prob) and `p2` (MM
-cancellation prob). With `p1=1, p2=0` at least one exogenous MM is present at
-every fresh auction solve (from `t_{n+2}`; the open `t_{n+1}` reads the cached
-CLOB `H`), so `D ≥ Σ_i K_i > 0` always and the `D → 0` singularity cannot occur —
-including when the agent zeroes its own `K^a` (it cannot remove the exogenous
-MMs). Verified (learner-independent, abstain policy, 30 episodes):
-degenerate-clearing fallbacks **313 → 0**, mean MMs/auction-step **1.84 → 9.48**,
-`frac(M=0)` 36.9% → 3.2% (the residual is exactly the safe cached-`H` open step).
-End-to-end (TD3 500-ep synthetic smoke, with F.1): singular episodes
-(`|ret|>1e5`) **15.8% → 0%**, eval returns bounded O(1e4) vs spikes to 1.38e10,
-median ≈ 10.6k ≈ AS.
+**RESOLVED — author ruling D21 (2026-08-28): retain `p1=1`, `p2=0`.** The
+legacy values do create a substantive clearing problem, not merely a logging
+artifact. Starting from an empty auction, the probability that the first
+post-event ledger is still empty is `(1-p1) + p1*p2 = 0.76`. Across the 30
+auction solves, the exact empty-ledger probability averages 22.21% for an
+abstaining agent and is 7.50% at the terminal solve. At zero aggregate slope,
+nonzero net taker imbalance gives no root; zero imbalance gives non-uniqueness.
+The D17 frozen-mid fallback makes the code finite at exactly zero slope but
+does not repair the model equation. With a continuous actor, a tiny positive
+agent slope above the numerical guard instead yields `p* ~ imbalance/K^a` and
+a fictive reward of order `1/K^a`. The unguarded mathematical limit diverges;
+the implemented `1e-8` guard bounds the numerical value but leaves a catastrophic
+discontinuity immediately above it. The current calibration guarantees a
+positive exogenous slope in every actual clearing recomputation, including the
+end-of-`t=tau_op` solve. Its denser-liquidity trade-off is accepted and must be
+reported in the revision.
 
-**TRADE-OFF the author must weigh.** `p1`/`p2` are D6-pinned to the legacy
-instantiation (0.3 / 0.2). Setting `p1=1, p2=0` is a deliberate config choice
-(D6: config is source of truth; `tab:params_generative` regenerated from it),
-NOT an author ruling. It **densifies auction liquidity** (≈9.5 MMs/step vs ≈1.8),
-making the closing auction a thicker-book regime than the paper's thin-liquidity
-calibration — which softens the very thin-liquidity phenomenon a closing-auction
-model studies. Note also `K_min` (`U₁`) is still 0.1, so a lone early MM gives
-only `D ≥ 0.1` (a weak floor); `|H_cl|` can still reach ~120 at the first fresh
-solve (bounded, no catastrophe). Options for the author:
-  (i) **Ratify** `p1=1, p2=0` (accept the denser-liquidity auction);
-  (ii) **Revise** to a milder `p1`/`p2`/`U₁` that lowers — but does not
-       eliminate — the singularity's frequency (it stays reachable for any
-       `p1<1`), relying more on F.1 + robust reporting;
-  (iii) Express guaranteed baseline liquidity **structurally** instead — a
-        persistent reserve MM with fixed slope `K_reserve` (always present, never
-        cancels) added to Algorithm 2 — which removes the singularity by
-        construction and is economically explicit, but is a model-structure
-        change (would be a new ruling, not a parameter).
-The singularity is `imbalance / slope`: `p1`/`p2`/`U₁` change its **rate**, only
-a structural floor (option iii, or a minimum agent slope `K^a ≥ 1` that removes
-the `K^a=0 ≡ abstain` action) changes its **existence**.
+For timing clarity, the auction-open observation reads the cached final-CLOB
+`H`, but the first fresh recomputation occurs at the end of that same
+`t=tau_op` action, after the first exogenous event draw. Under `p1=1,p2=0` it
+already contains one MM. Occupancy then grows deterministically to the cap,
+giving mean post-event occupancy 9.8 over the 30 solves, versus 2.315 under the
+legacy values. Earlier diagnostics that reported a residual empty fraction
+under the current calibration counted the pre-event open observation, not a
+clearing solve.
+
+Historical end-to-end evidence motivating the override remains relevant: in a
+TD3 500-episode synthetic smoke run (with F.1), singular episodes
+(`|return|>1e5`) fell from 15.8% to 0%, and spikes up to `1.38e10` disappeared.
+`K_min=0.1` still permits economically thin but finite first solves; it is a
+weak positive floor, not a price clamp or silent denominator regularizer. The
+accepted denser-liquidity trade-off must be reported in the revision.
 
 ### F.3 RL learning tuning (2026-06-15; learner-side only, no model change)
 
@@ -759,8 +841,8 @@ Section-4 rewrite.
   historical), `target_soft_tau` 0.005→0.0025, `eval_n_seeds` 8→24. The
   structural cure is clipped double-Q (= TD3, already provided); this is the
   within-DDPG fix so DDPG stands as a non-collapsing baseline.
-- **Episode counts**: synthetic 2000→1000, historical 1000→500
-  (`configs/{synthetic_rough_heston,historical_sp500}.yaml`). All four plateau
+- **Episode counts (superseded contract)**: synthetic 2000→1000, historical
+  1000→500 (the retired `historical_sp500` close-proxy setting). All four plateau
   well before these budgets; historical needs fewer (lambda0=60 ⇒ ~2× decisions
   /ep and a fixed mid path ⇒ lower variance). TD3/SAC unchanged (already stable).
 
@@ -773,23 +855,94 @@ ignored the init/training lottery.
 - **Early stopping (best.pt default).** `evaluate.py` now reports the
   best-VALIDATION checkpoint (`best.pt`, selected by `train.py` on the
   `env_eval` stream, **disjoint** from the `env_final_eval` test seeds) by
-  default; `--checkpoint final` available. Fixes e.g. TD3's late collapse
+  default. D24 now fixes the selection score to mean economic objective;
+  shaped validation return is diagnostic only. `--checkpoint final` remains
+  available. The earlier shaped-return selector fixed e.g. TD3's late collapse
   (GOOGL `final.pt` 9 989 → `best.pt` 26 376) without per-algo episode tuning,
   and is robust across tickers/seeds. `eval_n_seeds` 8→24 for TD3/SAC so the
   selection set matches DQN/DDPG. `metadata.yaml` gains `early_stopping`.
   Pinned by `tests/test_agent_env_contract.py::test_evaluate_defaults_to_best_checkpoint`.
 - **Multi-seed IQM/CI aggregation.** `scripts/run_multiseed.sh` runs the
-  pipeline under several master seeds (3 by default: 42, 7, 99) **disk-safe**
+  pipeline under five master seeds by default (42, 7, 99, 123, 2024) **disk-safe**
   (`--no-resume-ckpt`); `scripts/make_multiseed_outputs.sh` writes
   `results/<setting>/_multiseed/{tables,figures}/` — per-algo **IQM** of the
   per-seed mean returns with **bootstrap 95% CIs** over seeds (Agarwal et al.
   2021). New: `stats.iqm`/`iqm_ci`, `tables.build_*_multiseed`,
   `make_figures.fig_algorithm_comparison_multiseed`, `RunInfo.seed`. Pinned by
-  `tests/test_multiseed.py`, `tests/test_stats.py`. Caveat: 3 seeds ⇒ wide CIs,
-  IQM ≈ mean (no trimming below n=4); recorded as a limitation, not a defect.
+  `tests/test_multiseed.py`, `tests/test_stats.py`. Five seeds still imply
+  visibly uncertain intervals, but permit a non-degenerate trimmed IQM.
 
-Good-practice caveat (for the author): report `best.pt` AND show the full eval
-curves (so instability stays visible), and treat the multi-seed IQM/CI as the
-headline rather than any single-seed point estimate. The remaining open
-reporting item is the return decomposition (clob / auction-fictive / terminal)
-exposing that the edge over AS is ~99% the auction shaping reward (future §F.5).
+Good-practice caveat (for the author): report `best.pt`, show the economic-
+objective selection curve together with gross-P&L/cost decomposition and shaped-
+return diagnostics, and treat the multi-seed IQM/CI as the headline rather than
+any single-seed point estimate. Reward decomposition remains diagnostic for
+explaining how the shaped learning objective differs from the reported economic
+objective.
+
+### F.5 Mature economic checkpoint selection (2026-09-01; learner-side only)
+
+The earlier selector admitted the untrained safe policy and checkpoints created
+before DQN exposed the complete auction action set. This prevented a collapsed
+policy from being reported, but could label a pre-learning policy as the learned
+result. Revision v9 separates the two conditions:
+
+- CLOB and auction maturity require 5,000 and 2,000 optimizer updates;
+- DQN auction updates before `auction_learning_start_episode=200` do not count;
+- validation before joint maturity is diagnostic and does not consume patience;
+- the untrained economic score is a non-reportable safety floor;
+- a mature policy must beat that floor before `best.pt` exists; otherwise the
+  run writes `best_mature.pt` and `selection_failure.yaml` and fails selection.
+
+The phase networks are not selected independently. The CLOB Bellman target uses
+the auction network at the junction, and the auction policy is tested under the
+inventory distribution induced by the CLOB policy. Splicing snapshots from two
+episodes would produce an unvalidated pair. The maturity gates are phase-specific,
+but economic checkpoint selection remains joint. This changes no transition,
+reward, clearing, or accounting equation.
+
+### F.6 Indicative-centred policy templates restored (2026-09-01)
+
+The attempted 21-point absolute frozen-mid grid `b in [-10,10]` was rejected.
+Across 500 policy-free episodes it failed to cover the contemporaneous indicative
+center in 73.0% of synthetic and 69.5% of historical-MSFT auction states. In
+matched seed-42 bounded DQN comparisons, restoring local indicative-centred
+templates improved held-out mean risk-adjusted PnL by 70.81 (synthetic) and
+71.38 (historical MSFT). Neither bounded policy beat AS/TWAP.
+
+The executable action remains the manuscript coordinate
+`S_t^a=S_tau_op^mid+alpha*b_t^a`, with ambient `B_max=150`. The network emits
+`ell in [-10,10]` and the environment resolves
+`b=round_half_up((H_t^cl-S_tau_op^mid)/alpha)+ell`, masking/projecting only at
+the ambient boundary. `B_inf=150` independently defines exogenous bounds
+`M1=-B_inf`, `M2=B_inf`. Their equal numerical values do not identify their
+roles. DQN still has 254 templates with cancellation; all four learned methods
+share the same local offset parameterization.
+
+### F.7 Revision-v12 learning-pathology correction (2026-09-02)
+
+The revision-v11 confirmation runs exposed two distinct problems that
+supersede the checkpoint and DQN conclusions in F.5--F.6:
+
+- Exact `q=1` shaping is not policy-invariant when strategic auction schedules
+  persist. A positive-slope, below-indicative submission receives fictive
+  credit independently of eventual fill; `c=0` can stack surviving credits,
+  and clawback reverses only schedules actually canceled. The terminal
+  purchase correction can also neutralize negative auction cash. The active
+  headline therefore trains on centered economic risk-adjusted PnL, while the
+  exact shaped objective remains an explicit treatment whose economic effect
+  is measured rather than assumed beneficial.
+- A flat 1,346-output DQN auction head assigned unrelated output parameters to
+  sparsely visited structured actions. Revision v12 retains the exact grid and
+  masked Double-DQN maximization but scores normalized `(K,ell,c)` coordinates
+  with a shared rank-32 action embedding; the CLOB head uses the same design for
+  `(v,delta)`.
+- The initial network is retained as a non-reportable diagnostic, not an active
+  performance floor. In revision v11 its random CLOB component happened to be
+  economically strong, so an outcome-dependent floor rejected every mature
+  DQN checkpoint after training had completed. Phase-update maturity remains
+  mandatory, and `best.pt` is now the mature joint checkpoint maximizing fixed
+  validation risk-adjusted PnL.
+
+Revision-v11 outputs and flat-head checkpoints are not compatible with the
+revision-v12 artifact contract. Current details are authoritative in
+`docs/rl_design.md`, `docs/metrics_schema.md`, and `REPRODUCING.md`.

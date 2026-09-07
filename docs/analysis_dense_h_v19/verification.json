@@ -1,0 +1,9 @@
+{
+  "validated_pairs": 40,
+  "reproduced_effects": 40,
+  "configuration_and_completion_hash_checks": "passed",
+  "training_episodes": 24200,
+  "seed_separation": "passed",
+  "nonfinite_required_values": 0,
+  "economic_training_identity_max_error": 9.265477274311706e-12
+}

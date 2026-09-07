@@ -1,0 +1,7 @@
+# Apply after any algorithm overlay for a matched four-method representation
+# treatment. This changes no information, rewards or admissible controls.
+experiment:
+  ablation_label: representation_phase_asinh
+rl:
+  phase_normalization: true
+  auction_inventory_asinh: true

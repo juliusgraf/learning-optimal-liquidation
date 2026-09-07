@@ -84,11 +84,8 @@ features:
   - t_norm
 benchmark:
   z: 10.0
-  dust_threshold: 0.01
   as_n_samples: 10000
   as_gamma: 0.0
-  as_sigma_rule: pooled_paths
-  as_sigma_n_paths: 100
   twap_delta_mode: min
 algo:
   name: dqn

@@ -1,0 +1,10 @@
+# Matched 2x2 arm: H feature and H-centred action anchor absent, shaping present.
+# The shaping reward intentionally remains an H-derived training channel.
+experiment:
+  ablation_label: H_off__shaping_on__auction_on
+rl:
+  h_cl_feature_enabled: false
+actions:
+  auction_anchor: frozen_mid
+reward:
+  shaping_enabled: true

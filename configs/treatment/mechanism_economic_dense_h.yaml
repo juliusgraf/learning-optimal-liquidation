@@ -1,0 +1,14 @@
+# Matched preference ablation: economic objective, headline H anchor, and the
+# exact headline reward conditioning. Only manuscript preferences are removed.
+# All conditioning settings are inherited from the same headline configuration.
+experiment:
+  ablation_label: mechanism_economic_dense_h
+actions:
+  auction_anchor: indicative
+rl:
+  h_cl_feature_enabled: true
+reward:
+  shaping_enabled: false
+  clob_shaping_enabled: false
+  auction_shaping_enabled: false
+  clawback_shaping: false

@@ -1,0 +1,12 @@
+# Matched mechanism control; economic evaluation remains common.
+experiment:
+  ablation_label: mechanism_clob_shaping
+actions:
+  auction_anchor: frozen_mid
+rl:
+  h_cl_feature_enabled: true
+  learning_auction_inventory_potential: true
+reward:
+  shaping_enabled: true
+  clob_shaping_enabled: true
+  auction_shaping_enabled: false

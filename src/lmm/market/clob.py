@@ -1,22 +1,15 @@
-"""CLOB book state, refresh, and market-order processing (paper `sec:lob`).
+"""Continuous-limit-order-book mechanics for the revised simulator.
 
-Sign convention (BINDING, ruling D3 / CLAUDE.md): zeta = + is the ASK side
-for limit orders and the BUY side for market orders; buy market orders
-consume ask liquidity. The agent sells on the ask side; delta_t >= 0.
+The exogenous book has levels ``j = 1, ..., L_max`` at
+``k_mid + j`` (ask) and ``k_mid - j`` (bid).  The strategic liquidator may
+quote at any offset ``delta = 0, ..., L_max`` and has priority over exogenous
+ask volume at the same price.  A strategic order belongs to one decision
+interval only; :meth:`OrderBook.clear_agent_order` expires any remainder.
 
-Level/tick geometry: exogenous level j (0 <= j < Lc) sits at tick
-k_mid + j on the ask side and k_mid - j on the bid side (level 0 at the mid
-tick on BOTH sides — legacy convention, AUDIT A.2), with k_mid =
-floor(S^mid/alpha) (one rounding convention everywhere, AUDIT N3).
-
-Agent order semantics (AUDIT N6 — no silent clamping): the agent's level IS
-the action's delta, possibly == Lc (one tick past the deepest refreshed
-exogenous level). A buy market order consumes exogenous levels strictly
-cheaper than the agent's tick first, then fills the AGENT WITH PRIORITY at
-her own level, then the exogenous volume at her level, then deeper levels
-(legacy `process_buy_order`, main.py:462-502 — sequential processing within
-a step is equivalent to the paper's aggregate E_t formula, AUDIT A.2;
-`executed_volume` below is that closed form, asserted equal in tests).
+``BookSnapshot`` deliberately separates the exogenous book from the optional
+strategic remainder.  Algorithm 1 and the auction carry-over consume
+``exogenous_volume_by_tick`` and therefore cannot accidentally include the
+strategic order.
 """
 
 from __future__ import annotations
@@ -27,101 +20,138 @@ import numpy as np
 
 from lmm.config import ClobFlowParams, GridParams
 
-__all__ = ["BookSnapshot", "OrderBook", "executed_volume", "sample_mo_volume"]
+__all__ = [
+    "BookSnapshot",
+    "OrderBook",
+    "executed_volume",
+    "sample_mo_volume",
+]
 
 
-def sample_mo_volume(rng: np.random.Generator, v_m: float, gamma_m: float, V_max: float) -> float:
-    """Market-order volume min(Pareto(v_m, gamma_m), V) via the inverse CDF
-    (Algorithm 2; legacy `_sample_mo_volume`, main.py:193-196). Consumes
-    exactly one uniform. Used for CLOB market orders AND auction takers."""
-    u = rng.random()
+def sample_mo_volume(
+    rng: np.random.Generator,
+    v_m: float,
+    gamma_m: float,
+    V_max: float,
+) -> float:
+    """Draw ``min(Pareto(v_m, gamma_m), V_max)`` with one uniform draw."""
+    u = float(rng.random())
     vol = v_m / ((1.0 - u) ** (1.0 / gamma_m))
     return float(min(vol, V_max))
 
-# Volume below which a book level counts as empty (legacy depth rule 1e-6,
-# agent-residual rule 1e-9; main.py:487, 537-538).
-_DEPTH_EPS = 1e-6
+
 _AGENT_EPS = 1e-9
 
 
 @dataclass(frozen=True)
 class BookSnapshot:
-    """Post-flow standing book at the end of a CLOB step (Algorithm 1 input, D2).
+    """A finite CLOB snapshot anchored at ``k_mid``.
 
-    Includes the agent's unexecuted remainder at her level; taken BEFORE the
-    next-step book refresh.
+    ``ask_volumes[j-1]`` is the exogenous volume at tick ``k_mid + j`` and
+    ``bid_volumes[j-1]`` is the volume at ``k_mid - j``.  The optional agent
+    fields are retained for execution diagnostics and backwards-compatible
+    callers; the exogenous projection used by Algorithm 1 ignores them.
     """
 
-    k_mid: int  # mid tick index (floor convention, AUDIT N3 resolution)
-    ask_volumes: np.ndarray  # shape (Lc,), level j at tick k_mid + j
-    bid_volumes: np.ndarray  # shape (Lc,), level j at tick k_mid - j
-    agent_level: int | None  # agent's level offset on the ask side, if any
-    agent_remaining: float  # unexecuted remainder of the agent's time-t order
+    k_mid: int
+    ask_volumes: np.ndarray
+    bid_volumes: np.ndarray
+    agent_level: int | None = None
+    agent_remaining: float = 0.0
+
+    def __post_init__(self) -> None:
+        ask = np.asarray(self.ask_volumes, dtype=float).copy()
+        bid = np.asarray(self.bid_volumes, dtype=float).copy()
+        if ask.ndim != 1 or bid.ndim != 1:
+            raise ValueError("book sides must be one-dimensional")
+        if np.any(ask < 0.0) or np.any(bid < 0.0):
+            raise ValueError("book volumes must be nonnegative")
+        ask.setflags(write=False)
+        bid.setflags(write=False)
+        object.__setattr__(self, "ask_volumes", ask)
+        object.__setattr__(self, "bid_volumes", bid)
+
+    def exogenous_volume_by_tick(self, eps: float = 0.0) -> dict[int, float]:
+        """Aggregate the exogenous multiset into ``tick -> real volume``.
+
+        The strategic remainder is intentionally excluded.  Returning a map
+        preserves multiplicity after aggregation and makes absent levels
+        implicitly equal to zero in Algorithm 1's running moments.
+        """
+        out: dict[int, float] = {}
+        for idx, volume in enumerate(self.ask_volumes):
+            if volume > eps:
+                tick = self.k_mid + idx + 1
+                out[tick] = out.get(tick, 0.0) + float(volume)
+        for idx, volume in enumerate(self.bid_volumes):
+            if volume > eps:
+                tick = self.k_mid - idx - 1
+                out[tick] = out.get(tick, 0.0) + float(volume)
+        return out
+
+    def with_no_agent(self) -> "BookSnapshot":
+        """Return the same exogenous snapshot without strategic diagnostics."""
+        return BookSnapshot(self.k_mid, self.ask_volumes, self.bid_volumes)
 
 
 class OrderBook:
-    """Exogenous CLOB with the agent's single ask-side limit order.
-
-    Top-of-book V^{zeta,1} ~ V_inf * Beta(beta_a, beta_b) with geometric
-    depth decay rho, refreshed each CLOB step (Algorithm 2 lines 5-6;
-    legacy `_refresh_order_book`, main.py:183-191).
-    """
+    """Fresh real-valued exogenous depth plus one one-interval strategic ask."""
 
     def __init__(self, params: ClobFlowParams, grid: GridParams) -> None:
         self.params = params
         self.grid = grid
         self.k_mid: int = 0
-        self.ask_volumes = np.zeros(params.Lc)
-        self.bid_volumes = np.zeros(params.Lc)
+        self.ask_volumes = np.zeros(params.Lc, dtype=float)
+        self.bid_volumes = np.zeros(params.Lc, dtype=float)
         self._agent_level: int | None = None
         self._agent_volume: float = 0.0
 
     def refresh(self, rng: np.random.Generator) -> None:
-        """Redraw both sides' volumes (legacy `_refresh_order_book`).
-
-        Consumes exactly two Beta draws (ask first, then bid) — stream-stable.
-        The tick anchor ``k_mid`` is NOT touched here: the refreshed levels
-        belong to the NEXT decision time's mid, so the env sets ``k_mid`` =
-        floor(S^mid_t / alpha) when the next action is processed (legacy
-        recomputed it from the new mid at action time, main.py:447).
-        """
+        """Draw a fresh two-sided snapshot (ask draw first, then bid)."""
         p = self.params
-        v1a = float(p.V_inf * rng.beta(p.beta_a, p.beta_b))
-        v1b = float(p.V_inf * rng.beta(p.beta_a, p.beta_b))
-        decay = p.depth_decay ** np.arange(p.Lc)
-        self.ask_volumes = v1a * decay
-        self.bid_volumes = v1b * decay
+        ask_top = float(p.V_inf * rng.beta(p.beta_a, p.beta_b))
+        bid_top = float(p.V_inf * rng.beta(p.beta_a, p.beta_b))
+        self.load_snapshot(self.k_mid, ask_top, bid_top)
+
+    def load_snapshot(self, k_mid: int, ask_top: float, bid_top: float) -> None:
+        """Install a pre-sampled exogenous snapshot for a decision time."""
+        if ask_top < 0.0 or bid_top < 0.0:
+            raise ValueError("top-of-book volumes must be nonnegative")
+        decay = self.params.depth_decay ** np.arange(self.params.Lc, dtype=float)
+        self.k_mid = int(k_mid)
+        self.ask_volumes = float(ask_top) * decay
+        self.bid_volumes = float(bid_top) * decay
+        # A fresh decision snapshot must never inherit a strategic remainder.
+        self.clear_agent_order()
 
     def depth(self, side: int) -> int:
-        """Book depth L^zeta_t = inf{j+1 : V^{zeta,j} <= eps} (capped at Lc).
+        """Largest strictly positive exogenous level on ``side`` (ask ``+1``).
 
-        ``side`` = +1 for the ask, -1 for the bid (paper zeta). Matches the
-        legacy rule (main.py:537-538): depth = first level with volume
-        <= 1e-6, else Lc.
+        This implements the manuscript definition
+        ``sup {j in 1,...,L_inf : V[j] > 0}`` literally.  In particular, a
+        positive level after an empty one still determines the reported depth,
+        and arbitrarily small positive volume is not silently treated as zero.
         """
         vols = self.ask_volumes if side > 0 else self.bid_volumes
-        empty = np.flatnonzero(vols <= _DEPTH_EPS)
-        return int(empty[0] + 1) if empty.size else self.params.Lc
-
-    # -- agent order ----------------------------------------------------------
+        populated = np.flatnonzero(vols > 0.0)
+        return int(populated[-1] + 1) if populated.size else 0
 
     def place_agent_order(self, volume: float, level: int) -> None:
-        """Record the agent's time-t ask-side limit order at ``level`` >= 0.
-
-        ``level`` may equal or exceed Lc (a quote past the refreshed book,
-        AUDIT N6); volume 0 == no order.
-        """
-        if level < 0:
-            raise ValueError(f"agent level must be >= 0, got {level}")
+        """Place the strategic ask at ``delta=level`` for the current interval."""
+        if volume < 0.0:
+            raise ValueError(f"agent volume must be nonnegative, got {volume}")
+        if not 0 <= int(level) <= self.params.Lc:
+            raise ValueError(
+                f"agent level must lie in [0, {self.params.Lc}], got {level}"
+            )
         if volume > 0.0:
             self._agent_level = int(level)
             self._agent_volume = float(volume)
         else:
-            self._agent_level = None
-            self._agent_volume = 0.0
+            self.clear_agent_order()
 
     def clear_agent_order(self) -> None:
-        """Drop the agent's order (end of step; unfilled remainder lapses)."""
+        """Expire the strategic order and any unfilled remainder."""
         self._agent_level = None
         self._agent_volume = 0.0
 
@@ -129,78 +159,87 @@ class OrderBook:
     def agent_remaining(self) -> float:
         return self._agent_volume if self._agent_level is not None else 0.0
 
-    # -- market-order processing ----------------------------------------------
+    @property
+    def agent_level(self) -> int | None:
+        return self._agent_level
 
     def process_buy_market_order(self, volume: float) -> float:
-        """Consume ask liquidity; returns the agent volume executed.
+        """Consume asks low-to-high and return the strategic fill.
 
-        Implements the walk of legacy `process_buy_order` (main.py:462-502):
-        exogenous levels j < agent level first, then the agent (EXECUTION
-        PRIORITY at her own level, Sec. 2.1.1), then the exogenous volume at
-        her level, then deeper levels. With no agent order the whole book is
-        walked from level 0.
+        At strategic offset ``delta``, exogenous levels ``1,...,delta-1`` are
+        cheaper.  The agent executes next, before exogenous level ``delta``.
+        For ``delta=0`` the agent is ahead of every exogenous ask level.
         """
-        remain = float(volume)
-        lc = self.params.Lc
-        j_agent = self._agent_level if self._agent_level is not None else 0
+        remain = max(float(volume), 0.0)
+        if remain == 0.0:
+            return 0.0
 
-        for j in range(min(j_agent, lc)):
+        if self._agent_level is None:
+            self._consume_ask_range(remain, 0)
+            return 0.0
+
+        delta = self._agent_level
+        ahead_count = max(delta - 1, 0)
+        for idx in range(min(ahead_count, self.params.Lc)):
             if remain <= 0.0:
                 break
-            lvl = self.ask_volumes[j]
-            if lvl <= 0.0:
-                continue
-            take = min(remain, lvl)
-            self.ask_volumes[j] -= take
+            take = min(remain, float(self.ask_volumes[idx]))
+            self.ask_volumes[idx] -= take
             remain -= take
 
-        executed = 0.0
-        if remain > 0.0 and self._agent_level is not None:
-            take = min(remain, self._agent_volume)
-            if take > 0.0:
-                executed = take
-                self._agent_volume -= take
-                remain -= take
-                if self._agent_volume <= _AGENT_EPS:
-                    self._agent_level = None
-                    self._agent_volume = 0.0
+        executed = min(remain, self._agent_volume)
+        if executed > 0.0:
+            self._agent_volume -= executed
+            remain -= executed
+            if self._agent_volume <= _AGENT_EPS:
+                self._agent_volume = 0.0
+                self._agent_level = None
 
+        # At delta >= 1, exogenous array index delta-1 is the same price;
+        # at delta == 0, all exogenous asks are strictly more expensive.
+        start = max(delta - 1, 0)
         if remain > 0.0:
-            if j_agent < lc:
-                take = min(remain, self.ask_volumes[j_agent])
-                self.ask_volumes[j_agent] -= take
-                remain -= take
-            j = j_agent + 1
-            while remain > 0.0 and j < lc:
-                take = min(remain, self.ask_volumes[j])
-                self.ask_volumes[j] -= take
-                remain -= take
-                j += 1
-        # Residual beyond the book evaporates (Assumption ass:small_investors).
-        return executed
+            self._consume_ask_range(remain, start)
+        return float(executed)
+
+    def _consume_ask_range(self, volume: float, start: int) -> float:
+        """Consume exogenous asks from ``start`` and return unfilled volume."""
+        remain = float(volume)
+        for idx in range(max(0, start), self.params.Lc):
+            if remain <= 0.0:
+                break
+            take = min(remain, float(self.ask_volumes[idx]))
+            self.ask_volumes[idx] -= take
+            remain -= take
+        return remain
 
     def process_sell_market_order(self, volume: float) -> None:
-        """Consume bid liquidity (no agent interaction; the agent only sells)."""
-        remain = float(volume)
-        for j in range(self.params.Lc):
+        """Consume exogenous bids high-to-low (array order 1,2,...)."""
+        remain = max(float(volume), 0.0)
+        for idx in range(self.params.Lc):
             if remain <= 0.0:
                 break
-            lvl = self.bid_volumes[j]
-            if lvl <= 0.0:
-                continue
-            take = min(remain, lvl)
-            self.bid_volumes[j] -= take
+            take = min(remain, float(self.bid_volumes[idx]))
+            self.bid_volumes[idx] -= take
             remain -= take
 
-    def snapshot(self) -> BookSnapshot:
-        """Post-flow standing book for Algorithm 1 (end-of-step semantics, D2)."""
+    def snapshot(self, include_agent: bool = True) -> BookSnapshot:
+        """Return the current residual book; arrays are copied and immutable."""
         return BookSnapshot(
             k_mid=self.k_mid,
-            ask_volumes=self.ask_volumes.copy(),
-            bid_volumes=self.bid_volumes.copy(),
-            agent_level=self._agent_level,
-            agent_remaining=self.agent_remaining,
+            ask_volumes=self.ask_volumes,
+            bid_volumes=self.bid_volumes,
+            agent_level=self._agent_level if include_agent else None,
+            agent_remaining=self.agent_remaining if include_agent else 0.0,
         )
+
+    def exogenous_snapshot(self) -> BookSnapshot:
+        """Snapshot suitable for Algorithm 1 and final carry-over."""
+        return self.snapshot(include_agent=False)
+
+    def residual_exogenous_snapshot(self) -> BookSnapshot:
+        """Alias emphasizing the post-final-interval carry-over boundary."""
+        return self.exogenous_snapshot()
 
 
 def executed_volume(
@@ -209,16 +248,12 @@ def executed_volume(
     ask_volumes: np.ndarray,
     incoming_buy_volumes: np.ndarray,
 ) -> float:
-    """Aggregate E_t formula of the paper (exposed separately for unit tests).
+    """Closed-form strategic fill over one interval.
 
-    E_t = max(0, min(v_t, sum_i nu^{+,i} - sum_{j < delta} V^{+,j}))
-
-    over one step's buy market orders and the START-of-step exogenous ask
-    book. Sequential `OrderBook.process_buy_market_order` calls within a step
-    realize exactly this quantity because exogenous volume priced below the
-    agent is consumed before her on every order (AUDIT A.2); asserted in
-    tests/test_sign_conventions.py.
+    ``ask_volumes[0]`` is level one, hence only the first ``delta-1`` levels
+    are strictly cheaper than a strategic quote at offset ``delta``.
     """
-    total_buy = float(np.sum(incoming_buy_volumes))
-    ahead = float(np.sum(np.asarray(ask_volumes)[: int(agent_delta)]))
+    total_buy = float(np.sum(np.asarray(incoming_buy_volumes, dtype=float)))
+    ahead_count = max(int(agent_delta) - 1, 0)
+    ahead = float(np.sum(np.asarray(ask_volumes, dtype=float)[:ahead_count]))
     return max(0.0, min(float(agent_volume), total_buy - ahead))

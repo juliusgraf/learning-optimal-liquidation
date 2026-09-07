@@ -1,134 +1,202 @@
-# Output schemas (Phase 4)
+# Revised artifact and metrics schema
 
-Every run writes `results/<experiment_name>/<run_name>/` (CLAUDE.md
-engineering conventions). All floats are written with `%.17g` (repr-exact),
-so byte-identical files certify bit-identical runs (ruling D10). Missing
-values (e.g. losses before `min_buffer` is reached, `eval_return_mean` off
-the eval cadence, NaN placeholders) are empty cells.
+All current confirmation runs live under
+`results/revision_v17/<experiment_name>/<run_name>/`. Readers require both the
+current `artifact_schema_version` and the exact environment contract identifier
+stored in checkpoints and evaluation metadata. Missing or mismatched values are
+fatal; the pipeline does not load old checkpoints or result directories.
 
-## Discounted-return convention
+## Provenance
 
-`return_disc` = Σ_steps χ^{t} · r_t + χ^{τ_cl} · r_terminal, where t is the
-DECISION TIME on the paper grid (CLOB decision times are real-valued and
-their count varies per episode; auction times are the integers τ_op..m) and
-the terminal reward — although the env returns it combined with the final
-step reward — is re-discounted at χ^{τ_cl} in the reported value. This is
-consistent with the Bellman target, which bootstraps r_terminal at one χ from
-t_m (item 1, no fold; see `docs/rl_design.md` §5). `return_undisc` is the
-plain episode sum and is the headline evaluation number (CLAUDE.md).
+Every run saves:
 
-## metrics.csv (train.py; one row per training episode)
+- the complete resolved configuration;
+- master and component seed information, including train/validation/test and
+  normalizer-calibration episode seeds;
+- git state, Python/platform information, and package versions;
+- the realized decision grid for each train and test episode;
+- fitted training-only feature-normalization state;
+- the verified historical dataset manifest (digest, assets, timezone,
+  missing-data rule, split identifiers/date ranges, and concrete session lists)
+  when applicable;
+- checkpoint-selection metric (`risk_adjusted_pnl`), ablation label, auction
+  switch, explicit auction anchor, and deterministic DQN tie-breaking rule;
+- risk-neutral AS calibration values `(A, k)`, their configured/seeded sources,
+  and an explicit marker that no irrelevant volatility parameter was fitted;
+- the physical clock (`time_unit=minutes`, `tau_op=120`, `tau_cl=150`) in the
+  resolved config, runtime metadata, evaluation metadata, and realized-grid
+  records.
 
-| column | meaning |
+## Episode accounting
+
+The following economic and shaping quantities are separate fields in both
+training metrics and evaluation records:
+
+| Field | Meaning |
 |---|---|
-| episode | 0-based training episode index |
-| env_seed | the episode's env seed (drawn from the `env_train` stream) |
-| epsilon | exploration rate used this episode |
-| return_undisc | undiscounted episode return (training policy) |
-| return_disc | discounted return per the convention above |
-| clob_reward_sum | Σ of CLOB-phase step rewards |
-| auction_step_reward_sum | Σ of auction step rewards EXCLUDING the terminal part |
-| terminal_reward | r_{τ_cl} (clearing + inventory penalty + wrong-side terms) |
-| S_cl | terminal clearing price (corrected Eq. (1)) |
-| Z_tau_cl | terminal auction execution Z_{τ_cl} |
-| I_final | I_{τ_cl} = I_{τ_op} − Z_{τ_cl} (no clipping, D8) |
-| H_at_tau_op | the H_cl cache at the first auction decision (Algorithm 1's last CLOB output) |
-| cancel_count | number of auction steps with c_t = 1 |
-| n_steps | decisions taken (CLOB steps + 30 auction steps) |
-| n_clob_steps | CLOB decisions (varies; Assumption assump:presence grid) |
-| n_degenerate_fallbacks | D17 fallbacks in the episode's Eq. (2)/(1) solves |
-| loss_{clob,auction} | mean minibatch loss over the episode's gradient steps |
-| grad_norm_{clob,auction} | mean pre-clip global gradient norm |
-| td_abs_mean_{clob,auction} | mean over updates of mean abs TD error |
-| td_abs_max_{clob,auction} | max over updates of max abs TD error |
-| n_grad_steps_{clob,auction} | gradient steps taken this episode |
-| buffer_{clob,auction} | replay sizes at episode end |
-| eval_return_mean | mean undiscounted greedy return on the fixed `env_eval` seed list (eval episodes only) |
-| wall_clock_s | episode wall time — LAST column, EXCLUDED from determinism comparisons |
+| `clob_economic_cash` | sum of actual CLOB execution cash |
+| `auction_economic_cash` | clearing price times actual rationed signed auction fill |
+| `cancellation_fees` / `cancel_cost` | actual cancellation fees |
+| `residual_mark` | terminal inventory marked at frozen auction-open midprice |
+| `terminal_penalty` / `inventory_penalty` | `lambda_inv * I_final^2` |
+| `clob_shaping_adjustment` | CLOB training reward minus CLOB economic cash |
+| `auction_interim_shaping` | net cumulative fictive interim shaping after cancellation clawbacks |
+| `auction_shaping_clawback` | signed cumulative shaping originally credited to canceled schedules and subtracted from reward |
+| `auction_terminal_shaping` | terminal purchase-side shaping, applied once to aggregate cash |
+| `reward_baseline_adjustment` | optional policy-invariant subtraction of initial inventory value from the training reward |
+| `training_return` / `return_undisc` | undiscounted resolved reward (centered shaped J in headline and shaping-on training; economic with the resolved centering switch in shaping-off training and evaluation; the raw cash-flow arm is uncentered) |
+| `replay_return_unscaled` | sum of conditioned one-transition rewards before replay scaling or overlapping n-step accumulation |
+| `potential_adjustment` | sum of Phi(next)-Phi(now); zero over a complete rebased episode |
+| `pnl` | marked-to-market PnL, including cancellation fees |
+| `risk_adjusted_pnl` | `pnl - inventory_penalty` (`Pi_lambda`) |
 
-### Continuous agents (DDPG/TD3/SAC) — same schema, remapped columns
+Compatibility aliases `liquidation_pnl_gross`, `liquidation_pnl_net`, and
+`economic_objective` are written for decomposition checks, but they are not
+used to select the reported policy. The canonical identities are:
 
-The continuous-action variants (Phase 5; `docs/continuous_action_extension.md`)
-use the **same** `metrics.csv` columns. The loss/TD columns hold **critic**
-statistics: `loss_{phase}` is the mean critic loss (mean over the twin critics
-for TD3/SAC), `grad_norm_{phase}` the critic global gradient norm, and
-`td_abs_*_{phase}` the critic TD errors. The `epsilon` column holds the
-exploration-noise scale (`exploration_noise_std`; `0` for SAC, whose policy is
-intrinsically stochastic). Actor loss, the SAC temperature `alpha`, and the
-policy entropy are emitted to the per-update diagnostics and `logs/run.log` but
-are not written to `metrics.csv` (the CSV writer ignores the extra keys, so the
-DQN schema is byte-for-byte unchanged).
+```text
+pnl = clob_economic_cash
+    + auction_economic_cash
+    + residual_mark
+    - initial_mid * initial_inventory
+    - cancellation_fees
 
-## eval/records.csv (evaluate.py; one row per (policy, episode))
+risk_adjusted_pnl = pnl - terminal_penalty
+```
 
-Columns: `policy` (dqn | initial | as | twap), `episode`, `env_seed` (shared
-across policies within an episode — CRN), then the return decomposition
-exactly as in metrics.csv: `return_undisc`, `return_disc`, `clob_reward_sum`,
-`auction_step_reward_sum`, `terminal_reward`, `S_cl`, `Z_tau_cl`, `I_final`,
-`H_at_tau_op`, `cancel_count`, `n_steps`, `n_clob_steps`,
-`n_degenerate_fallbacks`.
+With shaping disabled and reward centering disabled:
 
-## eval/metadata.yaml
+```text
+return_undisc = risk_adjusted_pnl + initial_mid * initial_inventory
+```
 
-`master_seed`, `checkpoint`, `early_stopping`, `n_episodes`, `policies`, the
-CRN statement, the return-convention statement, `reward_params_shared_by_all_policies`
-(the single RewardParams applied to every policy — AUDIT C.4) and
-`as_calibration` (A, k, sigma). `checkpoint` is the resolved path of the
-evaluated learned-policy snapshot; `early_stopping` is `true` when that is
-`best.pt` (the default — see "Reported checkpoint" below).
+With `reward.center_initial_inventory_value=true`, the same value is removed
+incrementally as inventory changes and at the terminal mark.  This is a
+potential-based numerical transformation: the full-episode adjustment is
+exactly `-initial_mid * initial_inventory`, policy rankings are unchanged, and
+an unshaped `return_undisc` equals `risk_adjusted_pnl`.
 
-### Reported checkpoint (early stopping)
+Normalized fields are also written:
 
-`evaluate.py` evaluates the learned policy from `best.pt` by **default**
-(`early_stopping: true`): the best-VALIDATION checkpoint, selected by `train.py`
-on the `env_eval` seed stream, which is **disjoint** from the `env_final_eval`
-test stream used for these records. This is standard model selection, not
-test-set cherry-picking, and it discards training episodes that *degraded* the
-policy (e.g. TD3's late collapse). Pass `--checkpoint final` for the
-last-episode model. The full eval trajectory is in `metrics.csv`
-(`eval_return_mean`) / the `training_diagnostics` figure, so instability remains
-visible.
+- `pnl_per_initial_notional`;
+- `risk_adjusted_pnl_per_initial_notional`;
+- `pnl_bps`;
+- `risk_adjusted_pnl_bps`.
 
-## eval/regret_<benchmark>.csv (regret.py)
+## `metrics.csv`
 
-Columns: `episode`, `env_seed`, `v_benchmark`, `v_policy`, `regret`,
-`cum_regret`; the final `cum_regret` is PRegret(T) with T = (m+2)E printed to
-stdout. `--returns discounted` (default; the paper's V_0) selects
-`return_disc`, `--returns undiscounted` selects `return_undisc`.
+One row is written per training episode. In addition to the accounting fields,
+it contains:
 
-## checkpoints/ (train.py)
+- episode/environment seed and epsilon;
+- initial and final inventory, negative-terminal-inventory indicator and
+  magnitude, CLOB and auction executed quantities, clearing price, and signed
+  terminal fill;
+- continuous clearing price, rounded price, residual imbalance,
+  `Q_supply`, `Q_demand`, `rho_supply`, and `rho_demand`;
+- carry-over slope, fallback use, leave-agent-out price, agent price
+  displacement, and self-trade count;
+- `H_cl` bias/MAE/RMSE and improvement against contemporaneous/opening mids;
+- phase-specific loss, gradient, TD-error, update-count, and replay-size
+  diagnostics;
+- native continuous `actor_loss_clob/auction` and SAC
+  `ent_coef_clob/auction`; absent quantities are blank, never invented zeros;
+- cumulative phase-specific maturity update counts and whether each periodic
+  validation candidate was maturity-eligible and economically reportable;
+- `eval_return_mean`, `eval_pnl_mean`,
+  `eval_risk_adjusted_pnl_mean`, and `eval_checkpoint_score` at validation
+  checkpoints;
+- `wall_clock_s`, the only intentionally nondeterministic column.
 
-- `initial.pt` — untrained networks, saved before training (the
-  "initial-DQN" baseline).
-- `best.pt` — best periodic-eval mean return so far.
-- `final.pt` — end of training.
-- `ckpt_ep{N}.pt` + `ckpt_ep{N}_trainstate.pt` — resumable pair: the agent
-  checkpoint includes replay contents and RNG states; the sidecar holds the
-  training loop's episode counter, best-eval value and the `env_train`
-  seed-stream state. `lmm-train --resume <ckpt_ep{N}.pt>` restores both.
+The initial untrained policy and every pre-maturity validation are diagnostic
+only. `best_selection.yaml` records the required and observed phase counts,
+the initial-policy validation score, and whether improvement over that score
+was required. The active configuration requires a mature validation score
+above the initial policy's economic validation score.
+Early-stopping patience starts only after the first eligible validation, and
+`best_mature.pt` remains diagnostic. `selection_failure.yaml` is written only
+when the run never reaches checkpoint maturity or no mature candidate passes
+the initial-improvement gate.
 
-Agent checkpoints contain: hyperparams, episode/env-step counters, both
-Q-networks and both targets, both optimizers, the exploration generator
-state, the torch global RNG state, and (resumable pairs only) the full
-replay buffers including their sampling-generator states.
+Every nonterminal replay row has Bellman coefficient one. All four methods
+use one-step rows, continuing through the auction network at the junction.
+Training applies the potential and frozen market-reference subtraction
+described in `docs/rl_design.md`. `market_baseline_adjustment` records the
+latter separately from reported J and PnL. Replay uses scale 1 and is never
+clipped. Actor rates are recorded separately from critic rates.
 
-## Cross-seed aggregates (multi-seed reporting)
+## `eval/records.csv`
 
-`scripts/run_multiseed.sh` runs the pipeline under several master seeds, then
-`scripts/make_multiseed_outputs.sh` writes per-setting aggregates to
-`results/<setting>/_multiseed/{tables,figures}/` (built via `make_tables
---multiseed` / `make_figures --multiseed`). Each **seed contributes one number
-per policy** (its 100-episode mean return); these are aggregated across seeds
-with the **IQM** (interquartile mean; `scipy.stats.trim_mean(·, 0.25)`) and a
-percentile-**bootstrap 95% CI** over seeds (Agarwal et al. 2021, `rliable`).
+There is one row per `(policy, test episode)`. Policies share the same
+`env_seed` within an episode. The record includes all primary accounting
+outputs and terminal diagnostics, notably:
 
-| Artifact | What |
-|---|---|
-| `tables/eval_summary_multiseed.{tex,csv}` | synthetic: per-algo IQM [95% CI], mean-of-seed-means, seed count, IQM improvement vs AS/TWAP |
-| `tables/dqn_results_multiseed.{tex,csv}` | historical: per-ticker IQM across seeds; final row pools all ticker×seed runs into IQM [95% CI] |
-| `figures/algorithm_comparison_multiseed.{pdf,png}` | per-algo IQM bars with bootstrap-CI whiskers, AS/TWAP IQM reference lines |
-| `figures/regret_multiseed.{pdf,png}` | DQN cumulative regret vs AS/TWAP, central line = IQM per eval episode, band = bootstrap 95% CI, both **across all runs of the setting** (CRN within each run). Historical aggregates all ticker×seed configs (same configs as `convergence_curves`); pass `--regret-symbol <ticker>` to restrict to one ticker, which writes `regret_multiseed_<ticker>.{pdf,png}` instead |
-| `figures/reward_decomposition.{pdf,png}` (+`.csv`) | per-method reward split (CLOB / fictive auction / realized terminal); each run contributes **one number per component** (its 100-episode mean), aggregated **across all runs of the setting** with IQM and bootstrap 95% CI (same construction as the multiseed tables, so component bars roughly add up to the eval-table totals); historical spans all ticker×seed configs |
+- `pnl`, `risk_adjusted_pnl`, and normalized/bps versions;
+- `I_final`, negative-inventory frequency/magnitude;
+- CLOB cash, auction cash, cancellation fees, and signed fill;
+- economic reward decomposition and economic-only evaluation return;
+- continuous/rounded clearing prices and residual;
+- pro-rata quantities/ratios, carry-over/fallback state, price displacement,
+  and self-trade count.
 
-With few seeds (e.g. 3) the CIs are wide and IQM ≈ mean (no trimming below n=4)
-— the honest multi-seed signal, not a defect.
+`self_trade_count` must be zero. Inventory and cash use the actual pro-rata
+fill, never requested quantity.
+
+## Evaluation diagnostics
+
+The evaluation directory also contains:
+
+- `realized_grids.jsonl` — test grid, terminal time, and physical time unit per
+  policy/episode;
+- `proposal_diagnostics.csv` — proposed, accepted, validity-rejected, and
+  ineligible counts/rates for each of the six exogenous proposal types;
+- `action_diagnostics.csv` — raw normalized proposals, projected five-coordinate
+  actions, configured/per-step auction-anchor coordinates,
+  saturation/rounding/projection counts, and cancellation execution;
+- `clearing_diagnostics.csv` — continuous and rounded prices, residual,
+  allocation quantities/ratios, carry-over/fallback, and price displacement;
+- `h_forecasts.csv` and `h_forecast_summary.csv` — signed bias, MAE, RMSE, and
+  benchmark improvements grouped by physical time-to-close in minutes;
+- `traces/<policy>_ep<i>.csv` — per-step anatomy traces, including auction
+  anchor label, absolute anchor coordinate, and anchor price.
+
+## Paired policy differences
+
+`eval/policy_difference_<benchmark>.csv` contains:
+
+```text
+episode, env_seed, benchmark_value, policy_value,
+policy_minus_benchmark, cumulative_policy_minus_benchmark
+```
+
+The default value is `risk_adjusted_pnl`; `pnl` is an explicit alternative.
+The policy and benchmark rows must have identical episode sets and environment
+seeds. These are fixed-policy cumulative differences, not regret.
+
+## Tables and figures
+
+Single-setting tables use risk-adjusted PnL as the primary outcome. Headline
+training return is centered shaped J; shaping-off training uses the economic
+criterion. All evaluation records use the economic-only accounting contract. Cross-seed synthetic comparisons report an
+IQM and bootstrap interval over per-seed means; policy-vs-benchmark intervals
+are computed from paired per-seed differences.
+
+The synthetic cross-treatment generator emits
+`synthetic_treatment_contrasts_multiseed.{tex,csv}` plus
+`synthetic_treatment_contrasts_by_seed.csv`. The latter retains the positive
+and negative run directories, algorithm, master seed, episode count, mean
+difference, and a SHA-256 digest of the exactly matched evaluation-seed list.
+Every contrast uses the sign first-named treatment minus second-named treatment.
+
+Historical outputs include both forms required for cross-asset comparison:
+
+- `historical_results_full` and `historical_results_improvements` — currency units;
+- `historical_results_full_bps` and `historical_results_improvements_bps` — basis points of
+  initial notional;
+- `historical_results_multiseed` and `historical_results_multiseed_bps` — cross-seed forms.
+
+Figure inputs are saved artifacts only; figure generation never steps an
+environment. Main products include training diagnostics, paired policy
+difference curves, episode/benchmark anatomy, cancellation behavior,
+evaluation distributions, algorithm comparisons, convergence, reward
+decomposition, and multiseed policy differences.

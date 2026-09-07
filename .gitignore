@@ -5,11 +5,28 @@ __pycache__/
 .env
 .venv
 .envrc
-results/
+# Experiment outputs and separately maintained writing are local.
+/results/
+/paper/
+/docs/manuscript_drafts/
+/docs/manuscript_recommendations*.patch
+/docs/prism_handoff/
+/.claude/
+/.codex/
 *.egg-info/
 .pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
 build/
-# Phase 6: loader outputs + download cache (data/README.md is tracked)
+dist/
+.DS_Store
+# Third-party market data are retained locally, not distributed.
 data/*.csv
 data/*.meta.json
+/data/raw/
+/legacy/data.csv
 .cache/
+# Bounded verification keeps numeric evidence, not binary model weights.
+/docs/verification_v19/**/*.pt
+/docs/verification_v19/forecast_*/forecasts.csv

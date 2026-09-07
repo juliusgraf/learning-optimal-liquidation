@@ -1,57 +1,20 @@
-# SAC hyperparameters (Phase 5; continuous-action relaxation, ruling D9).
-# Standard literature defaults (Haarnoja et al. 2018, automatic temperature).
-# Spec + update rules: docs/continuous_action_extension.md. The discrete DQN
-# setting is untouched. chi lives in rl.chi (shared, D15).
-#
-# Phase 7: kept exactly as the Phase 5 tuned defaults. Deviations from
-# configs/algo/dqn.yaml are intentional and standard for continuous control:
-# wider [64,64] nets (DQN uses [16,16]), Polyak target updates, twin critics,
-# and the entropy-temperature schedule (auto_alpha / target_entropy).
-
+# Stable-Baselines3 2.7.1; standard updates with a shared optimizer gradient-norm bound.
 algo:
   name: sac
+  backend: sb3
   hyperparams:
-    # -- shared run/eval/replay (mirror configs/algo/dqn.yaml) ---------------
     buffer_size: 50000
-    min_buffer: 5000
+    min_buffer_clob: 512
+    min_buffer_auction: 512
     batch_size: 128
-    hidden_layers: [64, 64]
-    grad_clip_norm: 1.0
-    updates_per_env_step: 1
-    update_every: 1
-    reward_scale: 1.0e-3        # see configs/algo/ddpg.yaml: paper rewards
-                                # O(1e3-1e6); 1.0 diverged the MSE critic (loss
-                                # ~1e26, grad inf). 1e-3 keeps targets O(1-100)
-                                # and rebalances the entropy temperature.
-    reward_clip: 8.0            # symmetric clip on the SCALED replay reward,
-                                # calibrated to the honest terminal envelope (~5.5
-                                # scaled); see configs/algo/ddpg.yaml. Sits just above
-                                # legitimate rewards, bounds the critic target to the
-                                # honest scale (kills the 1e9-1e11 divergence); the old
-                                # 25.0 was ~4.5x a legit terminal (too loose).
-    activation: relu
-    device: cpu
-    continuous_cancel: threshold  # threshold (default) | never
-    eval_interval_episodes: 100
-    eval_n_seeds: 24           # WIDENED from 8 (2026-06-15): best.pt early-stopping
-                               # selection (env_eval, disjoint from the test seeds);
-                               # matches the other algos for consistent selection.
-    final_eval_n_seeds: 100
-    checkpoint_interval_episodes: 100
-    # -- SAC-specific ---------------------------------------------------------
-    actor_lr: 3.0e-4
-    critic_lr: 3.0e-4
+    hidden_layers:
+    - 256
+    - 256
+    learning_rate: 0.0003
     target_soft_tau: 0.005
-    alpha_lr: 3.0e-4            # temperature Adam lr
-    auto_alpha: true           # auto-tune entropy temperature
-    target_entropy: auto       # "auto" => -dim(A) per phase
-
-# Continuous agents normalize the raw price features (see configs/algo/ddpg.yaml);
-# the discrete DQN keeps the legacy raw h_cl/s_mid. Mirrors base.yaml exactly
-# (only h_cl->h_cl_norm, s_mid->s_mid_norm).
-features:
-  clob:
-    [inv_norm, h_cl_norm, s_mid_norm, depth_ask_norm, depth_bid_norm,
-     top_ask_norm, top_bid_norm, t_norm]
-  auction:
-    [inv_norm, h_cl_norm, s_mid_norm, n_mm_norm, n_buy_norm, n_sell_norm, t_norm]
+    reward_scale: 1.0
+    device: cpu
+    checkpoint_interval_episodes: 100
+    ent_coef: auto_0.001
+    target_entropy: auto
+    grad_clip_norm: 1.0

@@ -5,17 +5,20 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "lmm"
 version = "0.1.0"
-description = "Learning Market Making with Closing Auctions (Graf & Mastrolia) — code revision"
+description = "Learning Optimal Liquidation with Closing Auctions — research code"
+readme = "README.md"
+license = {file = "LICENSE"}
 requires-python = ">=3.10"
 dependencies = [
+    "certifi>=2025.1.31",
     "numpy>=2.0",
     "pandas>=2.3",
     "matplotlib>=3.9",
     "scipy>=1.11",
     "pyyaml>=6.0",
     "torch>=2.11",
-    "gymnasium>=1.2",
-    "yfinance>=0.2",
+    "gymnasium>=1.2,<1.3",
+    "stable-baselines3==2.7.1",
 ]
 
 [project.optional-dependencies]
@@ -26,16 +29,22 @@ lmm-train = "lmm.experiments.train:main"
 lmm-evaluate = "lmm.experiments.evaluate:main"
 lmm-make-figures = "lmm.experiments.make_figures:main"
 lmm-make-tables = "lmm.experiments.make_tables:main"
-lmm-regret = "lmm.experiments.regret:main"
-lmm-load-data = "lmm.data.load_yfinance_data:main"
+lmm-make-report = "lmm.experiments.make_report:main"
+lmm-policy-differences = "lmm.experiments.policy_differences:main"
+lmm-load-midquotes = "lmm.data.load_midquote_data:main"
+lmm-diagnose-simulator = "lmm.experiments.diagnose_simulator:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+"lmm.experiments" = ["*.mplstyle"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = [
     "slow: slow integration tests (deselect with -m 'not slow')",
     "legacy: characterization tests of the legacy main.py/data.py emulators (pre-refactor golden values)",
-    "network: tests that hit the network (e.g. a live yfinance download; deselect with -m 'not network')",
+    "network: tests that hit an external data API (deselect with -m 'not network')",
+    "market_data: integration tests requiring separately obtained market data",
 ]

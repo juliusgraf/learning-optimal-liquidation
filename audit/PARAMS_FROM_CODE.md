@@ -1,7 +1,12 @@
-# PARAMS_FROM_CODE.md — Parameter source-of-truth extraction (Phase 1, ruling D6)
+# PARAMS_FROM_CODE.md — Historical parameter extraction (superseded)
+
+> **Historical audit only.** This file records the inputs used to construct an
+> earlier configuration and is not a source of truth for the active project.
+> Resolve current numerical values from `configs/base.yaml`, one setting
+> overlay, one learner overlay, and any requested treatment overlay.
 
 Per author rulings D6–D7, the values **actually passed at the legacy code's
-instantiation sites** are the source of truth for Phase 2 configs:
+instantiation sites** were the source of truth for the Phase 2 extraction:
 
 - Synthetic instantiation: `main.py:1417-1422` (`MarketEmulator(...)` at module level).
 - Historical instantiation: `data.py:1386-1398` (inside `train_and_evaluate_one_asset`,

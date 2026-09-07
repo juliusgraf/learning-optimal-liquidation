@@ -6,8 +6,7 @@ PDF (LaTeX) and PNG, and thin readers for the saved run-directory artifacts
 (``make_figures`` / ``make_tables`` regenerate from these only — no env
 stepping). ``collect_runs`` aggregates several run dirs for the cross-algorithm
 figure/tables, keying the learned policy by each run's ``algo.name`` (the
-records always label the learned policy ``"dqn"``, so identity MUST come from
-the resolved config).
+records label the learned policy with the resolved ``algo.name``).
 """
 
 from __future__ import annotations
@@ -24,7 +23,12 @@ import matplotlib.pyplot as plt  # noqa: E402
 import pandas as pd  # noqa: E402
 import yaml  # noqa: E402
 
-from lmm.config import ExperimentConfig, load_config
+from lmm.agents.base import ENVIRONMENT_CONTRACT
+from lmm.config import (
+    ACTIVE_ARTIFACT_SCHEMA_VERSION,
+    ExperimentConfig,
+    load_config,
+)
 
 __all__ = [
     "apply_style",
@@ -34,14 +38,17 @@ __all__ = [
     "POLICY_LABELS",
     "POLICY_ORDER",
     "ALGO_ORDER",
+    "HISTORICAL_SETTING",
+    "is_historical_setting",
     "read_metrics",
     "read_records",
-    "read_regret",
+    "read_policy_difference",
     "read_trace",
     "read_metadata",
     "read_config",
     "RunInfo",
     "collect_runs",
+    "validate_evaluation_records",
 ]
 
 _STYLE_PATH = Path(__file__).with_name("paper.mplstyle")
@@ -58,7 +65,9 @@ POLICY_COLORS = {
 }
 POLICY_LABELS = {
     "dqn": "DQN",
-    "initial": "Initial DQN",
+    # The saved ``initial`` policy is the untrained instance of whichever
+    # learned algorithm owns the run, not necessarily DQN (and never NFQ).
+    "initial": "Initial policy",
     "as": "AS",
     "twap": "TWAP",
     "ddpg": "DDPG",
@@ -69,6 +78,12 @@ POLICY_LABELS = {
 POLICY_ORDER = ["initial", "as", "twap", "dqn", "ddpg", "td3", "sac"]
 # Learned algorithms compared in figure (f) / per-ticker tables.
 ALGO_ORDER = ["dqn", "ddpg", "td3", "sac"]
+HISTORICAL_SETTING = "historical_sp500_midquotes"
+
+
+def is_historical_setting(setting: str) -> bool:
+    """Return whether a run uses the publication true-midquote setting."""
+    return setting == HISTORICAL_SETTING
 
 
 def apply_style() -> None:
@@ -116,8 +131,8 @@ def read_records(run_dir: str | Path) -> Optional[pd.DataFrame]:
     return _read_csv(Path(run_dir) / "eval" / "records.csv")
 
 
-def read_regret(run_dir: str | Path, benchmark: str) -> Optional[pd.DataFrame]:
-    return _read_csv(Path(run_dir) / "eval" / f"regret_{benchmark}.csv")
+def read_policy_difference(run_dir: str | Path, benchmark: str) -> Optional[pd.DataFrame]:
+    return _read_csv(Path(run_dir) / "eval" / f"policy_difference_{benchmark}.csv")
 
 
 def read_trace(run_dir: str | Path, policy: str, episode: int = 0) -> Optional[pd.DataFrame]:
@@ -144,18 +159,117 @@ class RunInfo:
 
     run_dir: Path
     cfg: ExperimentConfig
-    setting: str        # cfg.experiment.name ("synthetic_rough_heston" | "historical_sp500")
+    setting: str        # cfg.experiment.name (synthetic or true-midquote historical)
     algo: str           # cfg.algo.name ("dqn" | "ddpg" | "td3" | "sac")
     symbol: Optional[str]
     records: Optional[pd.DataFrame]
     metadata: dict
-    seed: Optional[int]  # master seed from seed.txt (cross-seed aggregation key)
+    seed: int  # mandatory master seed from seed.txt (cross-seed aggregation key)
+
+
+def validate_evaluation_records(
+    run_dir: str | Path,
+    cfg: ExperimentConfig,
+    metadata: dict,
+    records: pd.DataFrame | None,
+) -> None:
+    """Fail closed unless records.csv is the complete metadata-declared CRN matrix."""
+    run_dir = Path(run_dir)
+    if records is None:
+        raise ValueError(f"{run_dir}: eval/records.csv is missing or empty")
+    if cfg.algo is None:
+        raise ValueError(f"{run_dir}: evaluated run has no configured learned algorithm")
+
+    required_metadata = (
+        "n_episodes",
+        "policies",
+        "learned_policy_label",
+        "evaluation_episode_seeds",
+    )
+    missing = [key for key in required_metadata if key not in metadata]
+    if missing:
+        raise ValueError(
+            f"{run_dir}: eval metadata is missing completeness fields {missing}"
+        )
+
+    try:
+        n_episodes = int(metadata["n_episodes"])
+        policies = [str(value) for value in metadata["policies"]]
+        evaluation_seeds = [int(value) for value in metadata["evaluation_episode_seeds"]]
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{run_dir}: malformed evaluation completeness metadata") from exc
+    if n_episodes <= 0:
+        raise ValueError(f"{run_dir}: metadata.n_episodes must be positive")
+    if len(policies) != len(set(policies)):
+        raise ValueError(f"{run_dir}: metadata.policies contains duplicates")
+    expected_policies = {cfg.algo.name, "initial", "as", "twap"}
+    if set(policies) != expected_policies:
+        raise ValueError(
+            f"{run_dir}: metadata.policies must equal {sorted(expected_policies)}; "
+            f"got {sorted(policies)}"
+        )
+    if metadata["learned_policy_label"] != cfg.algo.name:
+        raise ValueError(
+            f"{run_dir}: metadata.learned_policy_label disagrees with configured algo"
+        )
+    if len(evaluation_seeds) != n_episodes:
+        raise ValueError(
+            f"{run_dir}: metadata evaluation seed count {len(evaluation_seeds)} "
+            f"does not equal n_episodes={n_episodes}"
+        )
+
+    required_columns = {"policy", "episode", "env_seed"}
+    missing_columns = required_columns.difference(records.columns)
+    if missing_columns:
+        raise ValueError(
+            f"{run_dir}: records.csv is missing columns {sorted(missing_columns)}"
+        )
+    if records[list(required_columns)].isna().any().any():
+        raise ValueError(f"{run_dir}: records.csv has missing policy/episode/env_seed values")
+
+    observed_pairs: list[tuple[str, int]] = []
+    observed_seeds: list[int] = []
+    try:
+        for row in records[["policy", "episode", "env_seed"]].itertuples(index=False):
+            episode_float = float(row.episode)
+            seed_float = float(row.env_seed)
+            if not episode_float.is_integer() or not seed_float.is_integer():
+                raise ValueError("non-integral episode or env_seed")
+            observed_pairs.append((str(row.policy), int(episode_float)))
+            observed_seeds.append(int(seed_float))
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError(
+            f"{run_dir}: records.csv contains malformed episode/env_seed values"
+        ) from exc
+
+    expected_pairs = {
+        (policy, episode)
+        for policy in policies
+        for episode in range(n_episodes)
+    }
+    if len(observed_pairs) != len(set(observed_pairs)):
+        raise ValueError(f"{run_dir}: records.csv contains duplicate policy/episode rows")
+    if set(observed_pairs) != expected_pairs:
+        missing_pairs = expected_pairs.difference(observed_pairs)
+        extra_pairs = set(observed_pairs).difference(expected_pairs)
+        raise ValueError(
+            f"{run_dir}: records.csv is not the complete metadata-declared matrix "
+            f"(missing={len(missing_pairs)}, extra={len(extra_pairs)})"
+        )
+    for (policy, episode), observed_seed in zip(observed_pairs, observed_seeds):
+        expected_seed = evaluation_seeds[episode]
+        if observed_seed != expected_seed:
+            raise ValueError(
+                f"{run_dir}: CRN seed mismatch for policy={policy!r}, "
+                f"episode={episode}: records={observed_seed}, metadata={expected_seed}"
+            )
 
 
 def collect_runs(run_dirs) -> list[RunInfo]:
     """Resolve each run dir into a :class:`RunInfo` (config + records +
     metadata). Skips dirs without a resolvable config (with a warning)."""
     runs: list[RunInfo] = []
+    identities: dict[tuple[str, Optional[str], str, int], Path] = {}
     for rd in run_dirs:
         rd = Path(rd)
         cfg_path = rd / "config_resolved.yaml"
@@ -163,18 +277,88 @@ def collect_runs(run_dirs) -> list[RunInfo]:
             warnings.warn(f"skipping {rd}: no config_resolved.yaml", stacklevel=2)
             continue
         cfg = load_config(cfg_path)
+        if not (rd / "eval" / "metadata.yaml").is_file():
+            failure = rd / "checkpoints" / "selection_failure.yaml"
+            detail = (
+                " Training finished but checkpoint selection failed; see "
+                "checkpoints/selection_failure.yaml. A non-improving mature policy "
+                "needs an explicit reporting-protocol amendment and evaluation."
+                if failure.is_file() else " Complete evaluation before reporting."
+            )
+            raise ValueError(f"{rd}: missing eval/metadata.yaml.{detail}")
         meta = read_metadata(rd)
+        if meta.get("environment_contract") != ENVIRONMENT_CONTRACT:
+            raise ValueError(
+                f"{rd}: result artifact does not match {ENVIRONMENT_CONTRACT!r}; "
+                "old result files are not accepted by the revised pipeline"
+            )
+        metadata_schema = meta.get("artifact_schema_version")
+        if metadata_schema is None or int(metadata_schema) != ACTIVE_ARTIFACT_SCHEMA_VERSION:
+            raise ValueError(
+                f"{rd}: eval/metadata.yaml artifact_schema_version must equal "
+                f"the active schema {ACTIVE_ARTIFACT_SCHEMA_VERSION}; got "
+                f"{metadata_schema!r}"
+            )
+        if int(metadata_schema) != cfg.experiment.artifact_schema_version:
+            raise ValueError(
+                f"{rd}: eval/metadata.yaml artifact_schema_version "
+                f"({metadata_schema}) disagrees with config_resolved.yaml "
+                f"({cfg.experiment.artifact_schema_version})"
+            )
         algo = cfg.algo.name if cfg.algo is not None else "unknown"
         seed_file = rd / "seed.txt"
-        seed = int(seed_file.read_text().strip()) if seed_file.exists() else None
+        if not seed_file.exists():
+            raise ValueError(f"{rd}: result artifact is missing seed.txt")
+        seed = int(seed_file.read_text().strip())
+        if seed != cfg.experiment.master_seed:
+            raise ValueError(
+                f"{rd}: seed.txt ({seed}) disagrees with "
+                f"config_resolved.yaml experiment.master_seed "
+                f"({cfg.experiment.master_seed})"
+            )
+        metadata_seed = meta.get("master_seed")
+        if metadata_seed is not None and int(metadata_seed) != seed:
+            raise ValueError(
+                f"{rd}: eval/metadata.yaml master_seed ({metadata_seed}) "
+                f"disagrees with seed.txt ({seed})"
+            )
+        symbol = meta.get("symbol")
+        if cfg.experiment.name == HISTORICAL_SETTING:
+            configured_symbols = (
+                cfg.midprice.historical.symbols
+                if cfg.midprice.historical is not None
+                else ()
+            )
+            if symbol not in configured_symbols:
+                raise ValueError(
+                    f"{rd}: historical result metadata must identify one configured "
+                    f"symbol; got {symbol!r}"
+                )
+        elif symbol is not None:
+            raise ValueError(
+                f"{rd}: non-historical result metadata must have symbol=null; "
+                f"got {symbol!r}"
+            )
+        identity = (cfg.experiment.name, symbol, algo, seed)
+        previous = identities.get(identity)
+        if previous is not None:
+            raise ValueError(
+                "duplicate run identity "
+                f"(setting={identity[0]!r}, symbol={identity[1]!r}, "
+                f"algo={identity[2]!r}, seed={identity[3]}): "
+                f"{previous} and {rd}"
+            )
+        identities[identity] = rd
+        records = read_records(rd)
+        validate_evaluation_records(rd, cfg, meta, records)
         runs.append(
             RunInfo(
                 run_dir=rd,
                 cfg=cfg,
                 setting=cfg.experiment.name,
                 algo=algo,
-                symbol=meta.get("symbol"),
-                records=read_records(rd),
+                symbol=symbol,
+                records=records,
                 metadata=meta,
                 seed=seed,
             )

@@ -1,34 +1,11 @@
-"""Clearing-price machinery (paper `sec:clearing`, `sec:proj`).
-
-Implements:
-- Algorithm 1 (`alg:hyp_clearing_price`) with end-of-step-t semantics (D2);
-- the corrected Eq. (2) estimator with the end-of-(t-1) cache (D1);
-- the corrected Eq. (1) / Prop. linear closed form, plus the two-case solve
-  for the benchmarks' one-sided hockey-stick order (ruling D16) and a
-  bracketed root-finder for general monotone curves (Theorem `th:clearing`).
-
-Sign convention (D3, corrected equations): the excess-supply function is
-
-    Phi(p) = sum_i g_i(p) + sum_s (1 - theta^{(s-n)}) K^a_s (p - S^a_s)
-             - (sum_i nu^{+,i} - sum_i nu^{-,i}),
-
-so ``net_market_volume`` (buys positive) enters the linear numerator with a
-PLUS sign: buy market volume weakly raises p*, sell volume weakly lowers it
-(invariants asserted in tests/test_sign_conventions.py).
-
-Degenerate fallback (ruling D17): H_cl = S^mid in ALL zero-slope cases,
-estimate and terminal alike; logged when it binds. A machine-scale
-``_SLOPE_EPS`` float-safety guard treats an aggregate slope that should be
-exactly zero (but for floating-point residue) as zero (author refinement,
-2026-06-14); it does NOT regularize economically small slopes.
-"""
+"""Projected-price calibration, clearing, tick projection, and allocation."""
 
 from __future__ import annotations
 
 import logging
-from collections import defaultdict
-from dataclasses import dataclass
-from typing import Callable
+import math
+from dataclasses import dataclass, replace
+from typing import Callable, Mapping, Protocol
 
 import numpy as np
 
@@ -36,9 +13,19 @@ from lmm.config import Algo1Params, GridParams
 from lmm.market.clob import BookSnapshot
 
 __all__ = [
+    "Algo1Diagnostics",
+    "CarryoverCalibration",
     "Algo1Estimator",
     "ClearingInputs",
+    "ClearingResult",
+    "TerminalAllocation",
+    "CappedPositivePartSchedule",
     "Eq2Cache",
+    "round_half_up_to_tick",
+    "clear_linear",
+    "clear_with_external_schedule",
+    "allocate_pro_rata",
+    "allocate_terminal",
     "solve_clearing",
     "solve_linear_clearing",
     "solve_clearing_with_hockey_stick",
@@ -47,214 +34,550 @@ __all__ = [
 
 logger = logging.getLogger(__name__)
 
-_EPS = 1e-12  # legacy eps (main.py:379)
+_EPS = 1e-12
+_SLOPE_EPS = 1e-8  # compatibility path only; revised clearing uses D_mu.
 
-# Float-safety slope guard (ruling D17, author refinement 2026-06-14): an
-# aggregate clearing slope ΣK that should be exactly zero can leave a tiny
-# non-zero residue from floating-point cancellation; dividing by it would
-# produce a spurious clearing price. We treat ΣK <= _SLOPE_EPS as zero and take
-# the S^mid fallback. This is a NUMERICAL guard ONLY (cf. the legacy _EPS
-# above), deliberately at machine scale: economically small-but-real slopes
-# (ΣK ~ 1e-2, which legitimately produce large clearing prices) are NOT
-# regularized — that is faithful model behavior, and RL-side instability from
-# chasing it is handled by the agents' reward clipping, not here.
-_SLOPE_EPS = 1e-8
+
+def _plain_map(values: Mapping[int, float]) -> dict[int, float]:
+    return {int(k): float(v) for k, v in sorted(values.items())}
+
+
+@dataclass(frozen=True)
+class Algo1Diagnostics:
+    """All quantities required to audit one Algorithm-1 observation."""
+
+    decision_index: int
+    Q: Mapping[int, float]
+    e_hat: Mapping[int, float]
+    varsigma_hat: Mapping[int, float]
+    K_hat: Mapping[int, float]
+    s_tilde: float | None
+    H: float
+
+
+@dataclass(frozen=True)
+class CarryoverCalibration:
+    """Final moments after replacing ``O_n`` by the residual CLOB book."""
+
+    n: int
+    Q_star: Mapping[int, float]
+    e_hat: Mapping[int, float]
+    varsigma_hat: Mapping[int, float]
+    K_hat: Mapping[int, float]
+    ticks: np.ndarray
+    slopes: np.ndarray
+    references: np.ndarray
+
+    def __post_init__(self) -> None:
+        for name in ("ticks", "slopes", "references"):
+            values = np.asarray(getattr(self, name)).copy()
+            values.setflags(write=False)
+            object.__setattr__(self, name, values)
+
+    @property
+    def total_slope(self) -> float:
+        return float(np.sum(self.slopes))
 
 
 class Algo1Estimator:
-    """Algorithm 1: hypothetical clearing price during the CLOB phase.
+    """Decision-indexed implementation of manuscript Algorithm 1.
 
-    At the END of each CLOB step t (ruling D2), over the post-flow standing
-    book (incl. the agent's unexecuted remainder, before refresh): update
-    per-level running moments e_hat^k (mean volume) and sigma_hat^k (mean
-    squared volume); K_hat^k = (2 e_hat - sigma_hat/e_hat)/alpha clamped at 0
-    (legacy choice, counted in ``n_khat_clamped``);
-    S_tilde = sum_k K_hat alpha k / sum_k K_hat;
-    H_{t+1} = H_t + tau (S_tilde - H_t), smoothing SKIPPED when
-    sum_k K_hat <= _SLOPE_EPS (counted in ``n_zero_slope_skips``;
-    float-safety guard, was == 0).
-    H_0 = initial mid (= 100); ruling D15: tau = 0.95 in both settings.
-    The output is H_{t+1}: input to the agent's time-(t+1) state and reward;
-    the reward at t = 0 uses H_0.
-
-    Matches legacy ``_update_hyp_clearing_price_from_book``
-    (main.py:377-427) except the snapshot's mid tick uses the env-wide
-    floor convention (AUDIT N3; legacy rounded here but floored elsewhere).
-    Moments are keyed by ABSOLUTE tick k; levels absent from a snapshot
-    implicitly contribute 0 (the per-snapshot count is global).
+    ``H_{t_0}=H0`` is established by :meth:`reset`; there is no observation at
+    index zero.  For each ``i>=1``, :meth:`observe` consumes the *pre-action
+    exogenous* snapshot ``O_i``.  Missing price levels contribute zero to the
+    moments.  The strategic CLOB remainder is structurally ignored because
+    only :meth:`BookSnapshot.exogenous_volume_by_tick` is read.
     """
 
     def __init__(self, params: Algo1Params, grid: GridParams) -> None:
         self.params = params
         self.grid = grid
-        self.n_khat_clamped: int = 0
-        self.n_zero_slope_skips: int = 0
-        self._mom_sum: defaultdict[int, float] = defaultdict(float)
-        self._mom_sum_sq: defaultdict[int, float] = defaultdict(float)
-        self._mom_count: int = 0
-        self._h: float = grid.S0
+        self.n_khat_clamped = 0
+        self.n_zero_slope_skips = 0
+        self._h = float(grid.S0)
+        self._last_index = 0
+        self._history: dict[int, dict[int, float]] = {}
+        self._diagnostics: dict[int, Algo1Diagnostics] = {}
+        # Running first and second raw sums make the per-observation moment
+        # update O(number of active levels), rather than repeatedly scanning
+        # the complete O_1,...,O_i history.  Missing levels are zeros and hence
+        # require no explicit update.  This is algebraically identical to the
+        # manuscript formula and matters for empirically wide historical books.
+        self._sum_q: dict[int, float] = {}
+        self._sum_q2: dict[int, float] = {}
 
-    def reset(self, h0: float) -> None:
-        """New episode: clear moments, set H = h0 (= initial mid)."""
-        self._mom_sum.clear()
-        self._mom_sum_sq.clear()
-        self._mom_count = 0
+    @property
+    def eta_H(self) -> float:
+        # ``tau`` is the pre-revision field name; the compatibility fallback
+        # lets config integration land independently.
+        return float(getattr(self.params, "eta_H", getattr(self.params, "tau")))
+
+    def reset(self, h0: float | None = None) -> None:
+        """Start at ``i=0`` with explicit ``H0`` and no moment observation."""
+        configured = getattr(self.params, "H0", None)
+        if h0 is None:
+            h0 = self.grid.S0 if configured is None else configured
         self._h = float(h0)
+        self._last_index = 0
+        self._history.clear()
+        self._diagnostics.clear()
+        self._sum_q.clear()
+        self._sum_q2.clear()
         self.n_khat_clamped = 0
         self.n_zero_slope_skips = 0
 
-    def update(self, snapshot: BookSnapshot) -> float:
-        """End-of-step update over ``snapshot``; returns the new H (= H_{t+1})."""
-        alpha = self.grid.alpha
-        k0 = snapshot.k_mid
+    def observe(self, decision_index: int, snapshot: BookSnapshot) -> Algo1Diagnostics:
+        """Observe ``O_i`` immediately before the action at ``t_i`` (``i>=1``)."""
+        i = int(decision_index)
+        if i < 1:
+            raise ValueError("Algorithm 1 has H0 at i=0; observations start at i=1")
+        if i != self._last_index + 1:
+            raise ValueError(
+                f"Algorithm-1 observations must be sequential; expected "
+                f"{self._last_index + 1}, got {i}"
+            )
+        q = snapshot.exogenous_volume_by_tick(eps=_EPS)
+        self._history[i] = q
+        for tick, volume in q.items():
+            self._sum_q[tick] = self._sum_q.get(tick, 0.0) + float(volume)
+            self._sum_q2[tick] = self._sum_q2.get(tick, 0.0) + float(volume) ** 2
+        e_hat, var_hat, k_hat = self._moments_from_sums(
+            sum_q=self._sum_q,
+            sum_q2=self._sum_q2,
+            denominator=i,
+            active_ticks=tuple(q),
+        )
 
-        vol_by_k: dict[int, float] = {}
-        for j, v in enumerate(snapshot.ask_volumes):
-            if v > _EPS:
-                k = k0 + j
-                vol_by_k[k] = vol_by_k.get(k, 0.0) + float(v)
-        for j, v in enumerate(snapshot.bid_volumes):
-            if v > _EPS:
-                k = k0 - j
-                vol_by_k[k] = vol_by_k.get(k, 0.0) + float(v)
-        if snapshot.agent_level is not None and snapshot.agent_remaining > _EPS:
-            k = k0 + snapshot.agent_level
-            vol_by_k[k] = vol_by_k.get(k, 0.0) + float(snapshot.agent_remaining)
-
-        self._mom_count += 1
-        for k, v in vol_by_k.items():
-            self._mom_sum[k] += v
-            self._mom_sum_sq[k] += v * v
-
-        num = 0.0
-        den = 0.0
-        count = self._mom_count
-        for k, s in self._mom_sum.items():
-            e_hat = s / count
-            if e_hat <= _EPS:
-                continue
-            sig_hat = self._mom_sum_sq[k] / count
-            raw = (2.0 * e_hat - sig_hat / max(e_hat, _EPS)) / alpha
-            if raw < 0.0:
-                self.n_khat_clamped += 1
-                logger.debug("Algorithm 1: K_hat clamped to 0 at tick %d (raw %.6g)", k, raw)
-            k_hat = max(0.0, raw)
-            if k_hat > 0.0:
-                num += k_hat * (alpha * k)
-                den += k_hat
-
-        if den > _SLOPE_EPS:
-            s_tilde = num / den
-            self._h = self._h + self.params.tau * (s_tilde - self._h)
+        den = float(sum(k_hat.values()))
+        s_tilde: float | None = None
+        if q and den > 0.0:
+            s_tilde = float(
+                sum(k_hat[k] * self.grid.alpha * k for k in k_hat) / den
+            )
+            self._h += self.eta_H * (s_tilde - self._h)
         else:
-            # (Near-)zero aggregate K_hat: skip smoothing, keep H (same
-            # float-safety guard as the clearing solves; was den > 0.0).
             self.n_zero_slope_skips += 1
-        return self._h
+
+        diag = Algo1Diagnostics(
+            decision_index=i,
+            Q=_plain_map(q),
+            e_hat=_plain_map(e_hat),
+            varsigma_hat=_plain_map(var_hat),
+            K_hat=_plain_map(k_hat),
+            s_tilde=s_tilde,
+            H=float(self._h),
+        )
+        self._diagnostics[i] = diag
+        self._last_index = i
+        self._log_diagnostics(diag)
+        return diag
+
+    def update(self, snapshot: BookSnapshot) -> float:
+        """Compatibility shim: observe the next index and return only ``H``."""
+        return self.observe(self._last_index + 1, snapshot).H
+
+    def final_replacement_calibration(
+        self,
+        residual: BookSnapshot,
+        n: int | None = None,
+    ) -> CarryoverCalibration:
+        """Replace ``O_n`` by ``O*`` without changing the already observed H.
+
+        For ``n>=1`` this uses ``O_1,...,O_{n-1},O*`` with denominator ``n``.
+        The explicit ``n=0`` edge case uses the residual snapshot alone with
+        denominator one.  Only levels still present in ``O*`` can carry over.
+        """
+        final_index = self._last_index if n is None else int(n)
+        q_star = residual.exogenous_volume_by_tick(eps=_EPS)
+        if final_index < 0:
+            raise ValueError("n must be nonnegative")
+        if final_index == 0:
+            histories = {1: q_star}
+            denominator = 1
+        else:
+            missing = [i for i in range(1, final_index) if i not in self._history]
+            if missing:
+                raise ValueError(f"missing Algorithm-1 snapshots before n: {missing}")
+            histories = {i: self._history[i] for i in range(1, final_index)}
+            histories[final_index] = q_star
+            denominator = final_index
+
+        if final_index == self._last_index and final_index > 0:
+            # Common environment path: replace O_n in the running sufficient
+            # statistics without rebuilding all prior per-tick histories.
+            sum_q = dict(self._sum_q)
+            sum_q2 = dict(self._sum_q2)
+            for tick, volume in self._history[final_index].items():
+                sum_q[tick] = sum_q.get(tick, 0.0) - float(volume)
+                sum_q2[tick] = sum_q2.get(tick, 0.0) - float(volume) ** 2
+            for tick, volume in q_star.items():
+                sum_q[tick] = sum_q.get(tick, 0.0) + float(volume)
+                sum_q2[tick] = sum_q2.get(tick, 0.0) + float(volume) ** 2
+            e_hat, var_hat, k_hat = self._moments_from_sums(
+                sum_q=sum_q,
+                sum_q2=sum_q2,
+                denominator=denominator,
+                active_ticks=tuple(q_star),
+                count_clamps=False,
+            )
+        else:
+            e_hat, var_hat, k_hat = self._moments(
+                histories=histories,
+                denominator=denominator,
+                active_ticks=tuple(q_star),
+                count_clamps=False,
+            )
+        kept_ticks = np.asarray(
+            sorted(k for k, q in q_star.items() if q > 0.0 and k_hat.get(k, 0.0) > 0.0),
+            dtype=int,
+        )
+        slopes = np.asarray([k_hat[int(k)] for k in kept_ticks], dtype=float)
+        references = self.grid.alpha * kept_ticks.astype(float)
+        calibration = CarryoverCalibration(
+            n=final_index,
+            Q_star=_plain_map(q_star),
+            e_hat=_plain_map(e_hat),
+            varsigma_hat=_plain_map(var_hat),
+            K_hat=_plain_map(k_hat),
+            ticks=kept_ticks,
+            slopes=slopes,
+            references=references,
+        )
+        logger.debug(
+            "Algorithm 1 residual replacement n=%d Q*=%s K*=%s D*=%.12g",
+            final_index,
+            calibration.Q_star,
+            calibration.K_hat,
+            calibration.total_slope,
+        )
+        return calibration
+
+    # Alias chosen for readable integration call sites.
+    calibrate_carryover = final_replacement_calibration
+
+    def _moments(
+        self,
+        histories: Mapping[int, Mapping[int, float]],
+        denominator: int,
+        active_ticks: tuple[int, ...],
+        count_clamps: bool = True,
+    ) -> tuple[dict[int, float], dict[int, float], dict[int, float]]:
+        if denominator <= 0:
+            raise ValueError("moment denominator must be positive")
+        sum_q: dict[int, float] = {}
+        sum_q2: dict[int, float] = {}
+        for values in histories.values():
+            for tick, volume in values.items():
+                sum_q[tick] = sum_q.get(tick, 0.0) + float(volume)
+                sum_q2[tick] = sum_q2.get(tick, 0.0) + float(volume) ** 2
+        return self._moments_from_sums(
+            sum_q=sum_q,
+            sum_q2=sum_q2,
+            denominator=denominator,
+            active_ticks=active_ticks,
+            count_clamps=count_clamps,
+        )
+
+    def _moments_from_sums(
+        self,
+        sum_q: Mapping[int, float],
+        sum_q2: Mapping[int, float],
+        denominator: int,
+        active_ticks: tuple[int, ...],
+        count_clamps: bool = True,
+    ) -> tuple[dict[int, float], dict[int, float], dict[int, float]]:
+        """Evaluate Algorithm-1 moments from exact sufficient statistics."""
+        if denominator <= 0:
+            raise ValueError("moment denominator must be positive")
+        e_hat: dict[int, float] = {}
+        var_hat: dict[int, float] = {}
+        k_hat: dict[int, float] = {}
+        for tick in sorted(set(active_ticks)):
+            total = float(sum_q.get(tick, 0.0))
+            total_sq = float(sum_q2.get(tick, 0.0))
+            e = total / denominator
+            var = total_sq / denominator
+            raw = 0.0 if e <= 0.0 else (2.0 * e - var / e) / self.grid.alpha
+            if raw < 0.0 and count_clamps:
+                self.n_khat_clamped += 1
+            e_hat[tick] = e
+            var_hat[tick] = var
+            k_hat[tick] = max(0.0, raw)
+        return e_hat, var_hat, k_hat
+
+    @staticmethod
+    def _log_diagnostics(diag: Algo1Diagnostics) -> None:
+        logger.debug(
+            "Algorithm 1 i=%d Q=%s e=%s varsigma=%s K=%s S_tilde=%s H=%.12g",
+            diag.decision_index,
+            diag.Q,
+            diag.e_hat,
+            diag.varsigma_hat,
+            diag.K_hat,
+            diag.s_tilde,
+            diag.H,
+        )
 
     @property
     def h(self) -> float:
-        """Current smoothed hypothetical clearing price H."""
-        return self._h
+        return float(self._h)
+
+    @property
+    def diagnostics(self) -> Mapping[int, Algo1Diagnostics]:
+        return dict(self._diagnostics)
 
 
 @dataclass(frozen=True)
 class ClearingInputs:
-    """End-of-step inputs to corrected Eq. (1)/(2) (paper convention, D3).
+    """Linear book components using the manuscript buy-positive convention."""
 
-    ``K_agent``/``S_agent`` contain only the LIVE agent orders — the
-    (1 - theta^{(s-n)}) factors are realized by the ledger's live mask
-    before these arrays are built. ``hockey`` is the single live one-sided
-    benchmark order (K, S) contributing K (p - S)_+ (ruling D16; None for
-    the RL agent, whose orders are all linear).
-    """
-
-    K_exo: np.ndarray  # exogenous MM slopes K^i
-    S_exo: np.ndarray  # exogenous MM quotes S^i
-    K_agent: np.ndarray  # live agent slopes (1 - theta) already applied
-    S_agent: np.ndarray  # corresponding agent quotes
-    net_market_volume: float  # sum nu^{+,i} - sum nu^{-,i} (buys positive)
-    fallback_mid: float  # H_cl = S^mid fallback when slope is zero (D17)
-    hockey: tuple[float, float] | None = None  # live one-sided (K, S) (D16)
+    K_exo: np.ndarray
+    S_exo: np.ndarray
+    K_agent: np.ndarray
+    S_agent: np.ndarray
+    net_market_volume: float
+    fallback_mid: float
+    hockey: tuple[float, float] | None = None  # compatibility only
+    buy_market_volume: float = 0.0
+    sell_market_volume: float = 0.0
 
 
-def solve_clearing(inputs: ClearingInputs) -> tuple[float, bool]:
-    """Dispatch on ``inputs.hockey``: the pure linear closed form, or the
-    two-case solve with the single one-sided benchmark order (ruling D16)."""
-    if inputs.hockey is None:
-        return solve_linear_clearing(inputs)
-    z_slope, s_tilde = inputs.hockey
-    return solve_clearing_with_hockey_stick(inputs, z_slope, s_tilde)
+@dataclass(frozen=True)
+class ClearingResult:
+    """Continuous and tick-projected clearing diagnostics."""
+
+    D: float
+    R: float
+    continuous_price: float
+    tick_price: float
+    residual_at_tick: float
+    nonlinear: bool = False
 
 
-def solve_linear_clearing(inputs: ClearingInputs) -> tuple[float, bool]:
-    """Corrected Prop. linear closed form (all curves linear):
+@dataclass(frozen=True)
+class TerminalAllocation:
+    """Pro-rata terminal allocation after aggregating the strategic schedule."""
 
-    p* = [sum K_i S_i + sum (1-theta) K^a S^a + (sum nu^+ - sum nu^-)]
-         / [sum K_i + sum (1-theta) K^a].
+    requested_agent: float
+    actual_agent: float
+    Q_supply: float
+    Q_demand: float
+    rho_supply: float
+    rho_demand: float
+    executed_supply: float
+    executed_demand: float
+    self_trade_count: int = 0
 
-    Invariants (asserted in tests): adding buy market volume weakly RAISES
-    p*; sell volume weakly LOWERS it. (Near-)zero denominator => ``fallback_mid``
-    (ruling D17 + the ``_SLOPE_EPS`` float-safety guard); the second return
-    value flags the degenerate case so the caller can count and log it.
-    """
-    den = float(np.sum(inputs.K_exo)) + float(np.sum(inputs.K_agent))
-    if den <= _SLOPE_EPS:
-        return inputs.fallback_mid, True
-    num = (
-        float(inputs.K_exo @ inputs.S_exo)
-        + float(inputs.K_agent @ inputs.S_agent)
-        + inputs.net_market_volume
+
+class NetSupplySchedule(Protocol):
+    def value(self, price: float) -> float: ...
+
+
+@dataclass(frozen=True)
+class CappedPositivePartSchedule:
+    """External benchmark schedule ``min(cap, slope*(p-reference)_+)``."""
+
+    slope: float
+    reference: float
+    cap: float
+
+    def __post_init__(self) -> None:
+        if self.slope < 0.0 or self.cap < 0.0:
+            raise ValueError("benchmark slope and cap must be nonnegative")
+
+    def value(self, price: float) -> float:
+        return float(min(self.cap, self.slope * max(float(price) - self.reference, 0.0)))
+
+    __call__ = value
+
+
+def round_half_up_to_tick(price: float, alpha: float) -> float:
+    """Deterministic ``alpha*floor(price/alpha + 1/2)`` projection."""
+    if alpha <= 0.0:
+        raise ValueError("tick size alpha must be positive")
+    return float(alpha * math.floor(float(price) / alpha + 0.5))
+
+
+def _linear_aggregates(inputs: ClearingInputs) -> tuple[float, float]:
+    K_exo = np.asarray(inputs.K_exo, dtype=float)
+    S_exo = np.asarray(inputs.S_exo, dtype=float)
+    K_agent = np.asarray(inputs.K_agent, dtype=float)
+    S_agent = np.asarray(inputs.S_agent, dtype=float)
+    if K_exo.shape != S_exo.shape or K_agent.shape != S_agent.shape:
+        raise ValueError("each slope array must match its reference-price array")
+    if np.any(K_exo < 0.0) or np.any(K_agent < 0.0):
+        raise ValueError("linear schedule slopes must be nonnegative")
+    D = float(np.sum(K_exo) + np.sum(K_agent))
+    R = float(K_exo @ S_exo + K_agent @ S_agent + inputs.net_market_volume)
+    return D, R
+
+
+def clear_linear(inputs: ClearingInputs, alpha: float, D_mu: float) -> ClearingResult:
+    """Clear a valid linear book and project the root half-up to a tick."""
+    D, R = _linear_aggregates(inputs)
+    if D + _EPS < D_mu:
+        raise AssertionError(f"invalid auction book: D={D} < D_mu={D_mu}")
+    if R < -_EPS:
+        raise AssertionError(f"invalid auction book: R={R} < 0")
+    R = max(R, 0.0)
+    continuous = R / D
+    tick = round_half_up_to_tick(continuous, alpha)
+    residual = D * tick - R
+    return ClearingResult(D, R, continuous, tick, residual)
+
+
+def clear_with_external_schedule(
+    inputs: ClearingInputs,
+    schedule: NetSupplySchedule,
+    alpha: float,
+    D_mu: float,
+) -> ClearingResult:
+    """Clear a linear background plus one external monotone benchmark order."""
+    D, R = _linear_aggregates(inputs)
+    if D + _EPS < D_mu:
+        raise AssertionError(f"invalid auction book: D={D} < D_mu={D_mu}")
+    if R < -_EPS:
+        raise AssertionError(f"invalid auction book: R={R} < 0")
+    R = max(R, 0.0)
+
+    def excess(price: float) -> float:
+        return D * price - R + float(schedule.value(price))
+
+    upper = max(float(inputs.fallback_mid) * 2.0, R / D + 1.0, 1.0)
+    continuous = solve_monotone_clearing(excess, (0.0, upper))
+    tick = round_half_up_to_tick(continuous, alpha)
+    return ClearingResult(D, R, continuous, tick, excess(tick), nonlinear=True)
+
+
+def allocate_pro_rata(
+    exogenous_schedule_values: np.ndarray,
+    agent_net_quantity: float,
+    buy_market_volume: float,
+    sell_market_volume: float,
+) -> TerminalAllocation:
+    """Allocate the rounded-price imbalance with the manuscript robust ratios."""
+    values = np.asarray(exogenous_schedule_values, dtype=float)
+    agent = float(agent_net_quantity)  # aggregate before positive/negative split
+    Q_supply = (
+        float(np.sum(np.maximum(values, 0.0)))
+        + max(agent, 0.0)
+        + float(sell_market_volume)
     )
-    return num / den, False
+    Q_demand = (
+        float(np.sum(np.maximum(-values, 0.0)))
+        + max(-agent, 0.0)
+        + float(buy_market_volume)
+    )
+    if min(Q_supply, Q_demand) < -_EPS:
+        raise ValueError("market-order volumes must be nonnegative")
+
+    rho_supply = 1.0 if Q_supply == 0.0 or Q_supply <= Q_demand else Q_demand / Q_supply
+    rho_demand = 1.0 if Q_demand == 0.0 or Q_demand <= Q_supply else Q_supply / Q_demand
+    actual = rho_supply * max(agent, 0.0) - rho_demand * max(-agent, 0.0)
+    executed_supply = rho_supply * Q_supply
+    executed_demand = rho_demand * Q_demand
+    if not math.isclose(executed_supply, executed_demand, rel_tol=1e-10, abs_tol=1e-10):
+        raise AssertionError(
+            f"pro-rata allocation is unbalanced: {executed_supply} != {executed_demand}"
+        )
+    return TerminalAllocation(
+        requested_agent=agent,
+        actual_agent=float(actual),
+        Q_supply=Q_supply,
+        Q_demand=Q_demand,
+        rho_supply=float(rho_supply),
+        rho_demand=float(rho_demand),
+        executed_supply=float(executed_supply),
+        executed_demand=float(executed_demand),
+        self_trade_count=0,
+    )
+
+
+def allocate_terminal(
+    inputs: ClearingInputs,
+    tick_price: float,
+    external_agent_schedule: NetSupplySchedule | None = None,
+) -> TerminalAllocation:
+    """Evaluate all schedules at the rounded price and allocate actual ``Z``."""
+    p = float(tick_price)
+    K_exo = np.asarray(inputs.K_exo, dtype=float)
+    S_exo = np.asarray(inputs.S_exo, dtype=float)
+    K_agent = np.asarray(inputs.K_agent, dtype=float)
+    S_agent = np.asarray(inputs.S_agent, dtype=float)
+    exogenous_values = K_exo * (p - S_exo)
+    agent_value = float(np.sum(K_agent * (p - S_agent)))
+    if external_agent_schedule is not None:
+        agent_value += float(external_agent_schedule.value(p))
+    return allocate_pro_rata(
+        exogenous_values,
+        agent_value,
+        inputs.buy_market_volume,
+        inputs.sell_market_volume,
+    )
 
 
 class Eq2Cache:
-    """Auction-phase H_cl estimate: corrected Eq. (2) with D1 caching.
-
-    The estimate used in the time-t_j state and reward is computed at the END
-    of step t_{j-1}: exogenous orders as of end of t_{j-1}, agent orders
-    s <= j-1, cancellation state theta_{t_j} (embedding c_{t_{j-1}}). Nothing
-    sampled or decided at t_j may enter it. At t_{n+1} the cache holds
-    Algorithm 1's last CLOB output. Setting j = m+1 recovers Eq. (1) exactly
-    (theta_{t_{m+1}} embeds c_{t_m}), so the terminal clearing price S_cl is
-    the recompute performed at the end of step t_m.
-    """
+    """Lagged auction indicative-price cache with revised rounded-result API."""
 
     def __init__(self, grid: GridParams) -> None:
         self.grid = grid
-        self.n_degenerate_fallbacks: int = 0
-        self._h: float = grid.S0
+        self.n_degenerate_fallbacks = 0  # compatibility metric; revised path stays zero
+        self._h = float(grid.S0)
+        self._result: ClearingResult | None = None
 
     def reset(self, h_from_algo1: float) -> None:
-        """Auction open: seed the cache with Algorithm 1's last CLOB output."""
         self._h = float(h_from_algo1)
+        self._result = None
         self.n_degenerate_fallbacks = 0
 
+    def recompute_result(
+        self,
+        inputs: ClearingInputs,
+        D_mu: float,
+        external_schedule: NetSupplySchedule | None = None,
+    ) -> ClearingResult:
+        result = (
+            clear_linear(inputs, self.grid.alpha, D_mu)
+            if external_schedule is None
+            else clear_with_external_schedule(inputs, external_schedule, self.grid.alpha, D_mu)
+        )
+        self._result = result
+        self._h = result.tick_price
+        return result
+
     def recompute(self, inputs: ClearingInputs) -> float:
-        """End-of-step t-1: solve corrected Eq. (2); cache and return the root."""
+        """Compatibility continuous-root path for the pre-integration env."""
         root, degenerate = solve_clearing(inputs)
-        if degenerate:
-            self.n_degenerate_fallbacks += 1
-            # DEBUG, not WARNING: this is an EXPECTED, designed fallback (D17)
-            # that fires routinely whenever the auction has no live supply
-            # curve (abstaining policy + no exogenous MM) -- e.g. the greedy
-            # untrained baseline abstains, making ~25% of its auction steps
-            # degenerate. It is already counted in ``n_degenerate_fallbacks``
-            # (surfaced per-episode as metrics.csv ``n_degenerate_fallbacks``),
-            # so a per-occurrence WARNING would only flood the console. Mirrors
-            # the K_hat-clamp counter above, which is logged at DEBUG too.
-            logger.debug(
-                "Eq. (2)/(1) degenerate (zero aggregate slope): falling back to "
-                "S^mid = %.6f (ruling D17)",
-                inputs.fallback_mid,
-            )
-        self._h = root
+        self.n_degenerate_fallbacks += int(degenerate)
+        self._h = float(root)
+        self._result = None
         return self._h
 
     def read(self) -> float:
-        """The cached estimate, valid for the CURRENT decision time (D1)."""
-        return self._h
+        return float(self._h)
+
+    @property
+    def result(self) -> ClearingResult | None:
+        return self._result
+
+
+# ---------------------------------------------------------------------------
+# Compatibility clearing API.  New code should call clear_linear /
+# clear_with_external_schedule and consume ClearingResult.
+# ---------------------------------------------------------------------------
+
+
+def solve_linear_clearing(inputs: ClearingInputs) -> tuple[float, bool]:
+    D, R = _linear_aggregates(inputs)
+    if D <= _SLOPE_EPS:
+        return float(inputs.fallback_mid), True
+    return float(R / D), False
+
+
+def solve_clearing(inputs: ClearingInputs) -> tuple[float, bool]:
+    if inputs.hockey is None:
+        return solve_linear_clearing(inputs)
+    return solve_clearing_with_hockey_stick(inputs, *inputs.hockey)
 
 
 def solve_clearing_with_hockey_stick(
@@ -262,36 +585,21 @@ def solve_clearing_with_hockey_stick(
     z_slope: float,
     s_tilde: float,
 ) -> tuple[float, bool]:
-    """Clearing with one one-sided benchmark order z_slope * (p - s_tilde)_+
-    on top of the linear aggregate (ruling D16; benchmarks only liquidate).
-
-    Two-case solve: root of the linear form excluding the benchmark order; if
-    it is <= s_tilde it stands (the benchmark contributes nothing there),
-    otherwise re-solve with the benchmark slope included. The LHS stays
-    continuous and nondecreasing in p, so the two cases are exhaustive and
-    consistent. Returns ``(p*, degenerate)`` like ``solve_linear_clearing``.
-    """
+    """Old uncapped hockey-stick solver retained for staged integration."""
     if z_slope < 0.0:
-        raise ValueError(f"benchmark slope must be >= 0, got {z_slope}")
-    root, degenerate = solve_linear_clearing(inputs)
+        raise ValueError("benchmark slope must be nonnegative")
+    base = replace(inputs, hockey=None)
+    root, degenerate = solve_linear_clearing(base)
     if not degenerate and root <= s_tilde:
         return root, False
-    den = float(np.sum(inputs.K_exo)) + float(np.sum(inputs.K_agent)) + z_slope
-    if den <= _SLOPE_EPS:
-        return inputs.fallback_mid, True
-    num = (
-        float(inputs.K_exo @ inputs.S_exo)
-        + float(inputs.K_agent @ inputs.S_agent)
-        + z_slope * s_tilde
-        + inputs.net_market_volume
-    )
-    root_with = num / den
+    D, R = _linear_aggregates(base)
+    D_with = D + z_slope
+    if D_with <= _SLOPE_EPS:
+        return float(inputs.fallback_mid), True
+    root_with = (R + z_slope * s_tilde) / D_with
     if root_with >= s_tilde:
-        return root_with, False
-    # Phi(s_tilde) > 0 >= Phi(linear root): with the linear part degenerate
-    # (den - z_slope == 0) and net demand short of the benchmark's kink, no
-    # root exists above s_tilde and the equation is flat below it (D17).
-    return inputs.fallback_mid, True
+        return float(root_with), False
+    return float(inputs.fallback_mid), True
 
 
 def solve_monotone_clearing(
@@ -300,27 +608,22 @@ def solve_monotone_clearing(
     tol: float = 1e-10,
     max_widen: int = 200,
 ) -> float:
-    """Bracketed root-finder for general monotone supply curves
-    (Theorem `th:clearing` existence; bisection on a widening bracket).
-
-    ``excess_supply`` must be continuous and nondecreasing in p. The initial
-    ``bracket`` is widened geometrically until it straddles a sign change.
-    """
-    lo, hi = float(bracket[0]), float(bracket[1])
+    """Bisection with geometric bracket widening for monotone net supply."""
+    lo, hi = map(float, bracket)
     if lo >= hi:
         raise ValueError(f"invalid bracket {bracket!r}")
-    f_lo, f_hi = excess_supply(lo), excess_supply(hi)
+    f_lo, f_hi = float(excess_supply(lo)), float(excess_supply(hi))
     width = hi - lo
     n = 0
     while f_lo > 0.0 and n < max_widen:
         lo -= width
         width *= 2.0
-        f_lo = excess_supply(lo)
+        f_lo = float(excess_supply(lo))
         n += 1
     while f_hi < 0.0 and n < max_widen:
         hi += width
         width *= 2.0
-        f_hi = excess_supply(hi)
+        f_hi = float(excess_supply(hi))
         n += 1
     if f_lo > 0.0 or f_hi < 0.0:
         raise ValueError("no sign change found; excess supply has no root")

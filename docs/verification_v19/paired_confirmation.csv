@@ -1,0 +1,12 @@
+contrast,positive,negative,mean_difference_bps,n_training_seed_pairs,n_matched_confirmation_paths
+final_spec_vs_v18,confirm_dqn1951_candidate,confirm_dqn1951_v18,0.765697188863022,1,128
+final_spec_vs_v18,confirm_dqn1973_candidate,confirm_dqn1973_v18,1.4381228120533676,1,128
+final_spec_vs_v18,confirm_ddpg1951_candidate,confirm_ddpg1951_v18,1.1451832621961264,1,128
+final_spec_vs_v18,confirm_ddpg1973_candidate,confirm_ddpg1973_v18,-1.2194268314854557,1,128
+final_spec_vs_v18,confirm_td31951_candidate,confirm_td31951_v18,0.29033123992274906,1,128
+final_spec_vs_v18,confirm_td31973_candidate,confirm_td31973_v18,-1.5985620333948145,1,128
+final_spec_vs_v18,confirm_sac1951_candidate,confirm_sac1951_v18,1.4934473568159814,1,128
+final_spec_vs_v18,confirm_sac1973_candidate,confirm_sac1973_v18,-0.38484044350305024,1,128
+critic_layer_norm_only,cat811_ln,cat811_v18,6.1962350141766525,1,128
+critic_layer_norm_only,synthetic1907_ln,synthetic1907_v18,0.7579512405263883,1,128
+critic_layer_norm_only,confirm_cat1979_ln,confirm_cat1979_v18,0.8204394451326993,1,128

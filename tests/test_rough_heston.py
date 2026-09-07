@@ -62,7 +62,7 @@ def test_first_steps_match_independent_reference(cfg):
 
     # Reference: replay the same Gaussian stream.
     rng = np.random.default_rng(42)
-    dt_unit = (g.T_physical / g.tau_cl) / p.seconds_per_year
+    dt_unit = 1.0 / p.time_units_per_year
     gamma_const = 1.0 / math.gamma(p.H + 0.5)
 
     def kernel(u):
@@ -97,8 +97,13 @@ def test_draws_consumed_when_variance_truncated(cfg):
     (legacy stream stability, AUDIT A.11)."""
     p0 = cfg.midprice.rough_heston
     p = RoughHestonParams(
-        H=p0.H, rho=p0.rho, v0=0.0, theta=p0.theta, kappa=p0.kappa,
-        xi=p0.xi, seconds_per_year=p0.seconds_per_year,
+        H=p0.H,
+        rho_h=p0.rho_h,
+        v0=0.0,
+        theta=p0.theta,
+        varsigma=p0.varsigma,
+        nu=p0.nu,
+        s_star=p0.s_star,
     )
     model = RoughHestonMidPrice(p, cfg.grid)
     rng = np.random.default_rng(5)
@@ -113,11 +118,13 @@ def test_draws_consumed_when_variance_truncated(cfg):
     assert rng.random() == ref.random()
 
 
-def test_physical_time_scaling(cfg):
-    """One grid unit = T_physical/tau_cl seconds (legacy main.py:25-33)."""
+def test_annualized_time_scaling(cfg):
+    """Minute-clock model time uses bar(t)=t/s_star in trading years."""
     p, g = cfg.midprice.rough_heston, cfg.grid
     model = RoughHestonMidPrice(p, g)
     model.reset(np.random.default_rng(0))
     model.advance_to(1.0)
-    expected_dt_years = (g.T_physical / g.tau_cl) / p.seconds_per_year
+    expected_dt_years = 1.0 / p.time_units_per_year
     assert model._times[1] == pytest.approx(expected_dt_years, rel=1e-15)
+    assert cfg.grid.time_unit == "minutes"
+    assert p.s_star == pytest.approx(252 * 6.5 * 60)

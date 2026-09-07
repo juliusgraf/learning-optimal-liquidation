@@ -9,6 +9,7 @@ docs/continuous_action_extension.md.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Optional
 
 import numpy as np
 import torch
@@ -26,9 +27,12 @@ class TD3Hyperparams(ContinuousHyperparams):
 
     exploration_noise: str  # "gaussian" | "ou"
     exploration_noise_std: float
-    target_noise_std: float  # target-policy smoothing sigma (x half-range)
-    target_noise_clip: float  # smoothing clip c (x half-range)
+    target_noise_std: float  # target-policy smoothing sigma in normalized space
+    target_noise_clip: float  # smoothing clip in normalized space
     policy_delay: int  # delayed actor / target-sync cadence
+    min_buffer_clob: Optional[int] = None
+    min_buffer_auction: Optional[int] = None
+    safe_auction_initialization: bool = False
 
 
 class TD3Agent(ContinuousActorCriticAgent):
@@ -49,13 +53,10 @@ class TD3Agent(ContinuousActorCriticAgent):
         return self._update_count[phase] % self.hp.policy_delay == 0
 
     def _target_next_action(self, phase: str, next_obs: torch.Tensor, cadm: np.ndarray):
-        """Target action with clipped-Gaussian smoothing, scaled to the action
-        half-range, then re-clipped to the box and cancel-clamped."""
+        """Apply clipped-Gaussian smoothing directly in normalized space."""
         low, high = self._low[phase], self._high[phase]
-        half = (high - low) / 2.0
         a = self.actor_target[phase](next_obs)
-        noise = torch.randn_like(a) * (self.hp.target_noise_std * half)
-        noise = torch.clamp(noise, -self.hp.target_noise_clip * half, self.hp.target_noise_clip * half)
+        noise = torch.randn_like(a) * self.hp.target_noise_std
+        noise = torch.clamp(noise, -self.hp.target_noise_clip, self.hp.target_noise_clip)
         a = torch.clamp(a + noise, low, high)
-        a = self._clamp_cancel(phase, a, cadm)
         return a, None

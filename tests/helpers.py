@@ -48,7 +48,10 @@ def load_algo_cfg(algo: str, *overrides: str):
     return load_config(
         CONFIGS / "base.yaml",
         CONFIGS / "synthetic_rough_heston.yaml",
-        CONFIGS / "algo" / f"{algo}.yaml",
+        # Handwritten-agent characterization tests keep their original
+        # algorithm settings. Active SB3 factory coverage is separate in
+        # test_learning_repair.py and the production pipeline tests.
+        REPO_ROOT / "tests/fixtures/native_algorithms" / f"{algo}.yaml",
         overrides=list(overrides),
     )
 
@@ -68,7 +71,7 @@ def load_sac_cfg(*overrides: str):
 def load_historical_cfg(*overrides: str):
     return load_config(
         CONFIGS / "base.yaml",
-        CONFIGS / "historical_sp500.yaml",
+        CONFIGS / "historical_sp500_midquotes.yaml",
         overrides=list(overrides),
     )
 

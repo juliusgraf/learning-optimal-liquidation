@@ -1,0 +1,12 @@
+include LICENSE README.md
+recursive-include src/lmm *.py *.mplstyle
+prune data
+prune paper
+prune legacy
+prune docs
+prune audit
+prune tests
+prune results
+prune .claude
+prune .codex
+global-exclude __pycache__ *.py[cod]

@@ -230,22 +230,13 @@ def test_economically_small_slope_is_not_regularized():
     assert p > 1e6
 
 
-def test_eq2_cache_counts_and_logs_fallback(synthetic_cfg, caplog):
+def test_compatibility_eq2_cache_counts_fallback(synthetic_cfg):
     cache = Eq2Cache(synthetic_cfg.grid)
     cache.reset(101.0)
-    with caplog.at_level(logging.DEBUG, logger="lmm.market.clearing"):
-        h = cache.recompute(degenerate_inputs())
+    h = cache.recompute(degenerate_inputs())
     assert h == FALLBACK
     assert cache.read() == FALLBACK
-    # The durable record is the counter (surfaced as metrics.csv
-    # n_degenerate_fallbacks); the per-occurrence message stays at DEBUG so it
-    # never floods the console for this expected D17 fallback.
     assert cache.n_degenerate_fallbacks == 1
-    d17 = [rec for rec in caplog.records if "D17" in rec.getMessage()]
-    assert len(d17) == 1
-    assert d17[0].levelno == logging.DEBUG
-    # And nothing at WARNING or above for this expected condition.
-    assert not [rec for rec in caplog.records if rec.levelno >= logging.WARNING]
 
 
 # ---------------------------------------------------------------------------

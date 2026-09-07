@@ -15,12 +15,54 @@ set).
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from typing import Sequence
 
 import numpy as np
 
 __all__ = ["SeedBundle", "seed_everything", "spawn_child"]
+
+_configured_torch_interop_threads: int | None = None
+
+
+def _positive_thread_count_from_env(name: str) -> int | None:
+    raw = os.environ.get(name)
+    if raw is None:
+        return None
+    try:
+        value = int(raw)
+    except ValueError as exc:
+        raise ValueError(f"{name} must be a positive integer, got {raw!r}") from exc
+    if value <= 0:
+        raise ValueError(f"{name} must be a positive integer, got {raw!r}")
+    return value
+
+
+def _configure_torch_threads(torch) -> None:
+    """Honor the multiseed launcher's explicit per-worker CPU budget."""
+
+    global _configured_torch_interop_threads
+    intra = _positive_thread_count_from_env("LMM_TORCH_INTRAOP_THREADS")
+    inter = _positive_thread_count_from_env("LMM_TORCH_INTEROP_THREADS")
+    if intra is not None:
+        torch.set_num_threads(intra)
+    if inter is None:
+        return
+    if _configured_torch_interop_threads is None:
+        try:
+            torch.set_num_interop_threads(inter)
+        except RuntimeError as exc:
+            raise RuntimeError(
+                "LMM_TORCH_INTEROP_THREADS must be applied before Torch starts "
+                "parallel work"
+            ) from exc
+        _configured_torch_interop_threads = inter
+    elif _configured_torch_interop_threads != inter:
+        raise RuntimeError(
+            "cannot change Torch inter-op threads within one process: "
+            f"{_configured_torch_interop_threads} -> {inter}"
+        )
 
 
 @dataclass(frozen=True)
@@ -64,6 +106,7 @@ def seed_everything(
     if seed_torch:
         import torch
 
+        _configure_torch_threads(torch)
         torch.manual_seed(master_seed)
         torch.use_deterministic_algorithms(True, warn_only=True)
         if torch.backends.cudnn.is_available():
@@ -77,7 +120,7 @@ def spawn_child(bundle: SeedBundle, component: str) -> np.random.Generator:
     """Spawn a fresh, reproducible child generator from a component's sequence.
 
     Successive calls for the same component yield a deterministic sequence of
-    independent generators (used e.g. for per-episode env seeds; the regret
+    independent generators (used e.g. for per-episode env seeds; the paired
     estimator replays the same children for benchmark episodes — CRN).
     """
     if component not in bundle.sequences:

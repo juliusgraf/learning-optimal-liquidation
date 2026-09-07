@@ -1,63 +1,116 @@
-# `data/` — historical mid-price datasets
+# Historical mid-price data
 
-This directory holds **loader-regenerated** historical mid-price CSVs. The
-historical experiments do **not** read from here by default.
+## Frozen publication input: true quote midpoints
 
-## What the historical experiments actually use
+The current true-midquote historical path is `historical_sp500_midquotes_1m.csv`, with
+sidecar `historical_sp500_midquotes_1m.csv.meta.json`. It is generated from
+timestamped bid/ask quote events, not trade bars. The price at each decision
+minute is
 
-The committed **frozen experimental input** is [`../legacy/data.csv`](../legacy/data.csv)
-— real S&P 500 1-minute mid prices, Dec 31 2025, normalized to 100 at session
-start (ruling D13, `audit/AUDIT.md` A.12). `configs/historical_sp500.yaml` points
-`midprice.historical.csv_path` at that file, and it is the source of truth for
-every historical run. Do not edit or delete it.
-
-## Why a frozen CSV (and not a live download)
-
-yfinance only serves **1-minute** bars for a **~30-day lookback**. The paper's
-Dec 2025 session is already outside that window, so it cannot be re-fetched. The
-loader therefore exists to *regenerate* an equivalent dataset for **new** dates,
-not to reproduce the frozen file byte-for-byte.
-
-## Regenerating a dataset
-
-```bash
-python -m lmm.data.load_yfinance_data \
-    --tickers CAT PG GOOGL JPM MSFT \
-    --date 2025-12-31 \
-    --interval 1m \
-    --session-start 14:30 --session-end 17:00 \
-    --clob-minutes 120 --auction-minutes 30 \
-    --normalize first=100 \
-    --out data/mid_prices_2025-12-31.csv
+```text
+midquote = (best bid + best ask) / 2
 ```
 
-(equivalently the `lmm-load-data` console script). This writes the CSV plus a
-JSON sidecar `data/mid_prices_<date>.csv.meta.json` recording tickers, date,
-interval, source, mid proxy, normalization, fill policy, download timestamp, and
-yfinance version.
+using the latest valid quote at or before that timestamp. The builder rejects
+nonpositive, crossed, zero-size, or stale quotes; it never interpolates from a
+future observation. The publication configuration requests Alpaca's `sip`
+feed (consolidated US quotes). The `iex` feed is supported only as an explicitly
+tagged single-venue diagnostic.
 
-To actually run experiments on a regenerated file, set
-`midprice.historical.csv_path` and `midprice.historical.date` in
-`configs/historical_sp500.yaml` (the **date is a config value, never a hard-coded
-constant**) and pick `symbols` present in the new CSV.
+Market data are not included in the current source tree. Historical experiments
+require an authorized local CSV, provenance sidecar and matching raw archives
+under `raw/alpaca/sp500_midquotes_sip_2026-08_v1/`. These paths are ignored by Git.
+Synthetic experiments and the offline tests need no market-data credentials.
+Historical integration tests skip when the private files are absent; existing
+but invalid data still fail validation.
 
-## Conventions
+To reproduce the original runs exactly, restore the original verified artifacts
+from your authorized private archive. To conduct a new historical experiment,
+obtain data using the command below and validate the resulting artifact. New
+retrievals are not guaranteed to be byte-identical to the original dataset.
 
-- **Mid proxy.** yfinance 1m bars are not true midpoints; we use the bar
-  **close** as the mid proxy (recorded in the sidecar).
-- **Timezone.** `--session-start`/`--session-end` are wall-clock in `--timezone`
-  (default `America/New_York`, i.e. Eastern — EST on Dec 31). The loader writes
-  correct tz-aware Eastern `Datetime` values. (The legacy `legacy/data.csv`
-  labels its Eastern timestamps `+00:00` — a known quirk, audit A.12/D13 — which
-  the loader does **not** reproduce.)
-- **Row → decision time (ruling D13).** Row `r` is the mid at decision time
-  `t = r`. The CLOB phase consumes rows `0..tau_op-1` (`tau_op = clob_minutes`);
-  the auction mid is frozen at row `tau_op-1`; clearing is at
-  `tau_cl = clob_minutes + auction_minutes`. The CSV spans the full decision grid
-  (`tau_cl + 1` rows); the env reads only `n_rows = tau_op` via config.
-- **Completeness.** The session grid is validated bar-by-bar; missing minutes
-  fail loudly (`--fill error`, default) or are forward-filled (`--fill ffill`,
-  recorded in the sidecar).
+The chronological pools are fixed in both the sidecar and
+`configs/historical_sp500_midquotes.yaml`:
 
-Regenerated CSVs and the `.cache/` download cache are git-ignored; this README is
-committed.
+- training: 2026-08-03 through 2026-08-14 (10 sessions);
+- validation: 2026-08-17 through 2026-08-21 (5 sessions);
+- test: 2026-08-24 through 2026-08-28 (5 sessions).
+
+The processed CSV stays in raw provider price units. Only after a session is
+selected does the environment rebase its path to `S0=100`; this is a modeling
+coordinate transform, not source-data normalization. Compressed raw quote
+events are archived separately under `data/raw/alpaca/<dataset-id>/`.
+
+The loader verifies the CSV and raw-archive SHA-256 digests, source, price type, feed,
+normalization declaration, dataset ID, tickers, timezone, missing-data rule,
+split ranges, and nonempty split membership whenever a historical environment
+is constructed. Every run copies the verified sidecar to
+`historical_data_manifest.json`.
+
+### Obtain a local quote artifact
+
+To fetch a new candidate, set credentials in the environment; do not
+put them in YAML or command-line arguments. The account must have access to the
+requested historical feed.
+
+```bash
+export APCA_API_KEY_ID='...'
+export APCA_API_SECRET_KEY='...'
+
+python3 -m lmm.data.load_midquote_data \
+  --tickers CAT PG GOOGL JPM MSFT \
+  --start-date 2026-08-03 --end-date 2026-08-28 \
+  --train-range 2026-08-03 2026-08-14 \
+  --validation-range 2026-08-17 2026-08-21 \
+  --test-range 2026-08-24 2026-08-28 \
+  --dataset-id sp500_midquotes_sip_2026-08_v1 \
+  --feed sip \
+  --session-start 13:30 --session-end 16:00 \
+  --max-quote-age-seconds 60 \
+  --out data/historical_sp500_midquotes_1m.csv
+```
+
+The command is cache-aware and paginates until all quote events have been
+retrieved. It fails closed on an incomplete weekday by default and records raw
+archive digests plus quote-age, spread, and displayed-size diagnostics.
+
+Before any training, run the policy-free simulator gate on the new artifact:
+
+```bash
+python3 -m lmm.experiments.diagnose_simulator \
+  --config configs/base.yaml \
+  --config configs/historical_sp500_midquotes.yaml \
+  --episodes 20 --assert-ready \
+  --json-out results/data_checks/midquote_simulator_gate.json
+```
+
+## Data interpretation
+
+- Source: historical best-bid/best-ask quote events; SIP is required for the
+  publication candidate.
+- Window: 13:30–16:00 America/New_York, producing 151 rows per session.
+- Physical units: one simulator unit is one minute.
+- CLOB input: rows 0 through 120 supply the path through `tau_op = 120`. A
+  realized noninteger decision time uses the latest observation at or before
+  that time.
+- Auction input: the row-120 midquote is frozen for the 30-minute call. Later
+  source rows are retained for source-window provenance but are not revealed
+  to the environment.
+- Source normalization: none. The environment performs an explicit per-session
+  model rebase after split selection.
+- Missing/stale quotes: error; there is no cross-session or future fill.
+
+Order flow, CLOB depth, auction proposals, clearing, and allocation remain
+synthetic.
+# Quote-size label erratum (September 2026)
+
+The frozen August 2026 SIP sidecar's `*_size_round_lots` names and
+`quote_size_unit` label are incorrect. The stored numbers are **shares**:
+Alpaca changed CTA/UTP quote-size display on November 3, 2025. Do not multiply
+these values by a round-lot size. The original CSV, sidecar and raw archives
+are preserved for provenance; midpoint calculations and all learning results
+are unaffected. See [Alpaca's dated announcement](https://docs.alpaca.markets/us/v1.1/changelog/marketdata-bid-and-ask-size-display-change)
+and the archived training-only audit, whose recovery path is recorded in
+[the cleanup manifest](../docs/cleanup_manifest.json).
+Future regeneration uses schema 4, neutral provider-unit field names and
+date/feed-specific units; it omits aggregate size medians across mixed units.

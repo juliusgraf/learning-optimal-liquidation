@@ -19,7 +19,6 @@ reward_params_shared_by_all_policies:
 as_calibration:
   A: 0.4
   k: 128.74210844258175
-  sigma: 5.7760310093468186e-05
 trace_episodes: 1
 setting: synthetic_rough_heston
 symbol: null
