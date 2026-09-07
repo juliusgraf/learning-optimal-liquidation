@@ -1,0 +1,127 @@
+{
+  "reviewed_commit": "272ca910f60126b92358df71e9c0fc5159bd8eb6",
+  "scope": "Read-only saved-result audit; no training, no new evaluation rollouts, no checkpoint binary rehash.",
+  "campaigns": {
+    "revision_v19": {
+      "runs": 440,
+      "source_commits": [
+        "95fc54841616d2c2fd27865ec77e095d51e2b82b"
+      ],
+      "eval_rows": 176000,
+      "training_rows": 243750,
+      "checked_record_hash_mismatches_or_count_errors": [],
+      "max_absolute_accounting_residual": {
+        "inventory": 1.0591527654923993e-13,
+        "pnl": 5.4578563890572696e-12,
+        "economic": 5.4569682106375694e-12,
+        "training_reward": 9.244160992238903e-12,
+        "replay_reward": 1.7053025658242404e-13,
+        "eval_return_after_configured_centering": 8.776090965056937e-12
+      },
+      "cells": {
+        "historical_sp500_midquotes | H_on__shaping_on__auction_on | ddpg": 50,
+        "historical_sp500_midquotes | H_on__shaping_on__auction_on | dqn": 50,
+        "historical_sp500_midquotes | H_on__shaping_on__auction_on | sac": 50,
+        "historical_sp500_midquotes | H_on__shaping_on__auction_on | td3": 50,
+        "synthetic_rough_heston | H_on__shaping_on__auction_on | ddpg": 10,
+        "synthetic_rough_heston | H_on__shaping_on__auction_on | dqn": 10,
+        "synthetic_rough_heston | H_on__shaping_on__auction_on | sac": 10,
+        "synthetic_rough_heston | H_on__shaping_on__auction_on | td3": 10,
+        "synthetic_rough_heston | mechanism_economic_dense | ddpg": 10,
+        "synthetic_rough_heston | mechanism_economic_dense | dqn": 10,
+        "synthetic_rough_heston | mechanism_economic_dense | sac": 10,
+        "synthetic_rough_heston | mechanism_economic_dense | td3": 10,
+        "synthetic_rough_heston | mechanism_economic_sparse | ddpg": 10,
+        "synthetic_rough_heston | mechanism_economic_sparse | dqn": 10,
+        "synthetic_rough_heston | mechanism_economic_sparse | sac": 10,
+        "synthetic_rough_heston | mechanism_economic_sparse | td3": 10,
+        "synthetic_rough_heston | mechanism_fixed_anchor | ddpg": 10,
+        "synthetic_rough_heston | mechanism_fixed_anchor | dqn": 10,
+        "synthetic_rough_heston | mechanism_fixed_anchor | sac": 10,
+        "synthetic_rough_heston | mechanism_fixed_anchor | td3": 10,
+        "synthetic_rough_heston | mechanism_h_feature_off | ddpg": 10,
+        "synthetic_rough_heston | mechanism_h_feature_off | dqn": 10,
+        "synthetic_rough_heston | mechanism_h_feature_off | sac": 10,
+        "synthetic_rough_heston | mechanism_h_feature_off | td3": 10,
+        "synthetic_rough_heston | H_off__shaping_off__auction_off | ddpg": 10,
+        "synthetic_rough_heston | H_off__shaping_off__auction_off | dqn": 10,
+        "synthetic_rough_heston | H_off__shaping_off__auction_off | sac": 10,
+        "synthetic_rough_heston | H_off__shaping_off__auction_off | td3": 10
+      },
+      "evaluation_return_offset_from_risk_adjusted_pnl": [
+        0
+      ]
+    },
+    "revision_v19_cashflow": {
+      "runs": 40,
+      "source_commits": [
+        "a632ad7899c3bf471704c0e533ed72774d2a7e19"
+      ],
+      "eval_rows": 16000,
+      "training_rows": 14500,
+      "checked_record_hash_mismatches_or_count_errors": [],
+      "max_absolute_accounting_residual": {
+        "inventory": 9.059419880941277e-14,
+        "pnl": 3.639755163931113e-12,
+        "economic": 3.639755163931113e-12,
+        "training_reward": 5.4569682106375694e-12,
+        "replay_reward": 0.0,
+        "eval_return_after_configured_centering": 5.4569682106375694e-12
+      },
+      "cells": {
+        "synthetic_rough_heston | mechanism_economic_cashflow | ddpg": 10,
+        "synthetic_rough_heston | mechanism_economic_cashflow | dqn": 10,
+        "synthetic_rough_heston | mechanism_economic_cashflow | sac": 10,
+        "synthetic_rough_heston | mechanism_economic_cashflow | td3": 10
+      },
+      "evaluation_return_offset_from_risk_adjusted_pnl": [
+        10000
+      ]
+    },
+    "revision_v19_economic_dense_h": {
+      "runs": 40,
+      "source_commits": [
+        "83c35645edfe2d15733f91ede4a54e1bd9660fde"
+      ],
+      "eval_rows": 16000,
+      "training_rows": 24200,
+      "checked_record_hash_mismatches_or_count_errors": [],
+      "max_absolute_accounting_residual": {
+        "inventory": 7.460698725481052e-14,
+        "pnl": 3.6415315207705135e-12,
+        "economic": 3.6415315207705135e-12,
+        "training_reward": 9.265477274311706e-12,
+        "replay_reward": 8.526512829121202e-14,
+        "eval_return_after_configured_centering": 9.272582701669307e-12
+      },
+      "cells": {
+        "synthetic_rough_heston | mechanism_economic_dense_h | ddpg": 10,
+        "synthetic_rough_heston | mechanism_economic_dense_h | dqn": 10,
+        "synthetic_rough_heston | mechanism_economic_dense_h | sac": 10,
+        "synthetic_rough_heston | mechanism_economic_dense_h | td3": 10
+      },
+      "evaluation_return_offset_from_risk_adjusted_pnl": [
+        0
+      ]
+    }
+  },
+  "main_report_hash_mismatches": [],
+  "main_report_files_hashed": 4424,
+  "core_differences_from_main_training_commit": [],
+  "reward_audit_conventions": [
+    "CSV auction_interim_shaping is already net of clawbacks; do not subtract the separate clawback diagnostic again.",
+    "Uncentered cashflow training AND evaluation return_undisc include initial notional; risk_adjusted_pnl is centered in every arm."
+  ],
+  "offline_tests": {
+    "passed": 607,
+    "deselected": 23,
+    "warnings": 14,
+    "command": ".venv/bin/python -m pytest -q -m 'not network and not slow'"
+  },
+  "latex": {
+    "compiled_in_temporary_copy": true,
+    "overfull_boxes": 3,
+    "underfull_boxes": 1,
+    "note": "Existing layout warnings; no manuscript edits or PDF visual audit."
+  }
+}
