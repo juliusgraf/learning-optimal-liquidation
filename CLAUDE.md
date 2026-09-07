@@ -16,9 +16,9 @@ cannot become a competing specification. The current result namespace and
 artifact schema are likewise defined by `experiment.results_root` and
 `experiment.artifact_schema_version` in `configs/base.yaml`.
 
-`paper/main.tex` is the mathematical specification. Do not edit it unless the
-user explicitly requests a manuscript change. `docs/rl_design.md` explains
+`docs/model.md` describes the simulator; `docs/rl_design.md` explains
 the learner representation, and `REPRODUCING.md` is the operational guide.
+The manuscript is maintained outside this repository.
 Files under `legacy/` and `audit/` document superseded implementations and are
 not implementation specifications.
 
@@ -38,16 +38,14 @@ not implementation specifications.
 - Multiple strategic auction schedules may remain live. Cancel-all removes
   all schedules submitted strictly before the current action and never removes
   the replacement submitted by that same action.
-- The manuscript auction coordinates use `B_inf` for the absolute admissible
+- The auction coordinates use `B_inf` for the absolute admissible
   offset of executed `b` and `B_max` for the local policy coordinate `ell`.
   Config and documentation must preserve those distinct roles.
 - H-off treatments use the `frozen_mid` auction anchor so masks, projection,
   and execution cannot leak the ablated indicative signal. H-visible controls
   may use either anchor to distinguish forecast information from quote anchoring.
 - Training uses the reward selected by the resolved configuration: the
-  headline uses the author-approved weighted, centered shaped J. The exact
-  unapplied manuscript edits are in docs/manuscript_recommendations_v19.patch,
-  with current integration guidance in docs/research_writeup_plan_v19.md.
+  headline uses the author-approved weighted, centered shaped J. The reward formulas are documented in docs/model.md.
   Shaping-off specifications are explicit treatments. The telescoping
   potential and frozen exogenous-price reference preserve policy differences;
   neither enters reported training J or economic PnL. Validation, checkpoint
@@ -71,12 +69,12 @@ not implementation specifications.
   `requirements.txt` delegates to that canonical metadata.
 - Run `pytest -q tests/test_revision_acceptance.py` before long experiments,
   then `pytest -q -m 'not network and not slow'`.
-- Treat the frozen historical CSV and its sidecar as version-controlled inputs.
-  Provider-side regeneration is optional provenance work, not a prerequisite
-  for running a clean checkout; tracked raw archives support digest validation.
+- Historical data, sidecars and raw archives are local inputs excluded from
+  the public distribution. Preserve their digests and provenance; do not
+  add them to Git or weaken historical validation when they are absent.
 - Preserve unrelated changes. Generate figures and tables from saved outputs;
   output generation must not step an environment.
-- The completed study and its follow-ups are the basis for writing. Keep
+- Preserve the completed study and its follow-ups. Keep
   diagnostic output under `results/`; retain only compact evidence in `docs/`.
   Superseded development files are indexed with exact recovery hashes in
   `docs/cleanup_manifest.json`; do not restore them into the active workflow

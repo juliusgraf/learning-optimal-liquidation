@@ -1,5 +1,9 @@
 # Repository cleanup — September 6, 2026
 
+This is a historical cleanup record. A subsequent cleanup removes the
+manuscript and market data from the current source tree while preserving
+local copies. Git history, including the recovery commits below, is unchanged.
+
 Removed **858 of the 1,116 previously tracked files**
 (76.9%), plus 99 ignored development checkpoint/cache files.
 The removed files occupied **530.7 MiB**:
@@ -59,7 +63,7 @@ git archive 83c35645edfe2d15733f91ede4a54e1bd9660fde \
 
 For executable reproduction of an old investigation, use a separate checkout at
 its original recorded revision so code and configurations remain matched.
-Retain Git history when distributing an archival copy of this research repository.
+The current tree's exclusions do not remove files from earlier commits.
 The deleted ignored `.pt` files were development checkpoint caches and were never
 in Git; the cache section of the manifest records their paths and sizes, not a
 claim that those binary files can be recovered from Git. Final campaign weights

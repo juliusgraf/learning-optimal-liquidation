@@ -50,7 +50,7 @@ if [[ "$PUBLICATION" -eq 1 ]]; then
   fi
 fi
 
-RESULTS_ROOT="${LMM_RESULTS_ROOT:-results/revision_v18}"
+RESULTS_ROOT="${LMM_RESULTS_ROOT:-results/revision_v19}"
 [[ -d "$RESULTS_ROOT" ]] || { echo "no $RESULTS_ROOT directory" >&2; exit 1; }
 
 # Parallel arrays: resolved experiment.name and stable run-name suffix.  The
@@ -114,4 +114,4 @@ args=(
 
 python3 -m lmm.experiments.make_tables "${args[@]}"
 echo "### paired cross-treatment outputs complete (seeds: $SEEDS)"
-echo "### artifacts remain under $OUT; promotion into paper/ is explicit/manual"
+echo "### artifacts remain under $OUT; export is explicit/manual"

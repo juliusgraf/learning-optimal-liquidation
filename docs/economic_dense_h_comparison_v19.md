@@ -48,7 +48,7 @@ results and original v19 publication outputs are preserved.
 After committing reviewed changes and cleaning the tree:
 
 ```bash
-cd /Users/juliusgraf/Learning-Market-Making
+# Run from the repository root.
 source .venv/bin/activate
 python -m lmm.experiments.cashflow_comparison --conditioned --jobs 10 --threads-per-job 1
 ```

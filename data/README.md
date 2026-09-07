@@ -17,12 +17,17 @@ future observation. The publication configuration requests Alpaca's `sip`
 feed (consolidated US quotes). The `iex` feed is supported only as an explicitly
 tagged single-venue diagnostic.
 
-Both processed files are version-controlled inputs. Together with the tracked
-raw quote archives under `raw/alpaca/sp500_midquotes_sip_2026-08_v1/`, they make
-the configured historical experiment available in a clean checkout. Normal
-training never contacts Alpaca and needs no credentials. The environment
-validates the processed digest, raw-archive digests, provenance, and split
-contract before use.
+Market data are not included in the current source tree. Historical experiments
+require an authorized local CSV, provenance sidecar and matching raw archives
+under `raw/alpaca/sp500_midquotes_sip_2026-08_v1/`. These paths are ignored by Git.
+Synthetic experiments and the offline tests need no market-data credentials.
+Historical integration tests skip when the private files are absent; existing
+but invalid data still fail validation.
+
+To reproduce the original runs exactly, restore the original verified artifacts
+from your authorized private archive. To conduct a new historical experiment,
+obtain data using the command below and validate the resulting artifact. New
+retrievals are not guaranteed to be byte-identical to the original dataset.
 
 The chronological pools are fixed in both the sidecar and
 `configs/historical_sp500_midquotes.yaml`:
@@ -42,10 +47,9 @@ split ranges, and nonempty split membership whenever a historical environment
 is constructed. Every run copies the verified sidecar to
 `historical_data_manifest.json`.
 
-### Optionally regenerate the quote artifact
+### Obtain a local quote artifact
 
-Regeneration is provenance work, not a prerequisite for training from a clean
-checkout. To fetch a new candidate, set credentials in the environment; do not
+To fetch a new candidate, set credentials in the environment; do not
 put them in YAML or command-line arguments. The account must have access to the
 requested historical feed.
 
@@ -77,7 +81,7 @@ python3 -m lmm.experiments.diagnose_simulator \
   --config configs/base.yaml \
   --config configs/historical_sp500_midquotes.yaml \
   --episodes 20 --assert-ready \
-  --json-out results/revision_v12/_diagnostics/midquote_simulator_gate.json
+  --json-out results/data_checks/midquote_simulator_gate.json
 ```
 
 ## Data interpretation
@@ -97,7 +101,7 @@ python3 -m lmm.experiments.diagnose_simulator \
 - Missing/stale quotes: error; there is no cross-session or future fill.
 
 Order flow, CLOB depth, auction proposals, clearing, and allocation remain
-synthetic, as required by the manuscript.
+synthetic.
 # Quote-size label erratum (September 2026)
 
 The frozen August 2026 SIP sidecar's `*_size_round_lots` names and
@@ -106,6 +110,7 @@ Alpaca changed CTA/UTP quote-size display on November 3, 2025. Do not multiply
 these values by a round-lot size. The original CSV, sidecar and raw archives
 are preserved for provenance; midpoint calculations and all learning results
 are unaffected. See [Alpaca's dated announcement](https://docs.alpaca.markets/us/v1.1/changelog/marketdata-bid-and-ask-size-display-change)
-and [the training-only audit](../docs/verification_v16/quote_calibration_provenance.json).
+and the archived training-only audit, whose recovery path is recorded in
+[the cleanup manifest](../docs/cleanup_manifest.json).
 Future regeneration uses schema 4, neutral provider-unit field names and
 date/feed-specific units; it omits aggregate size medians across mixed units.

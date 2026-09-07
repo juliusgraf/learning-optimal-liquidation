@@ -14,9 +14,7 @@ at most 200 per run. No 800-episode production run or new final-test evaluation
 was launched. These are adaptive development checks, not ten-seed publication
 results. The initially planned production matrix had 520 runs. Before launching it,
 the final protocol was reduced to 440 runs by making the two individual
-preference arms optional; see [the scope decision](final_run_scope_v19.md). Both protected TeX files
-remain untouched; [the exact proposed diff](manuscript_recommendations_v19.patch)
-is consolidated against those original files and passes `git apply --check`.
+preference arms optional; see [the scope decision](final_run_scope_v19.md). The current model is described in [model.md](model.md).
 
 ## 1. Why the previous negative treatments did not answer the credit question
 

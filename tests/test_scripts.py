@@ -24,10 +24,10 @@ SCRIPTS = [
     ("run_synthetic_ddpg.sh", "synthetic_rough_heston", "ddpg", None),
     ("run_synthetic_td3.sh", "synthetic_rough_heston", "td3", None),
     ("run_synthetic_sac.sh", "synthetic_rough_heston", "sac", None),
-    ("run_historical_dqn.sh", "historical_sp500_midquotes", "dqn", "MSFT"),
-    ("run_historical_ddpg.sh", "historical_sp500_midquotes", "ddpg", "MSFT"),
-    ("run_historical_td3.sh", "historical_sp500_midquotes", "td3", "MSFT"),
-    ("run_historical_sac.sh", "historical_sp500_midquotes", "sac", "MSFT"),
+    pytest.param("run_historical_dqn.sh", "historical_sp500_midquotes", "dqn", "MSFT", marks=pytest.mark.market_data),
+    pytest.param("run_historical_ddpg.sh", "historical_sp500_midquotes", "ddpg", "MSFT", marks=pytest.mark.market_data),
+    pytest.param("run_historical_td3.sh", "historical_sp500_midquotes", "td3", "MSFT", marks=pytest.mark.market_data),
+    pytest.param("run_historical_sac.sh", "historical_sp500_midquotes", "sac", "MSFT", marks=pytest.mark.market_data),
 ]
 
 
@@ -65,7 +65,7 @@ def test_run_script_smoke(script, setting, algo, symbol, tmp_path):
 
 
 def test_acceptance_run_then_make_all_outputs(tmp_path):
-    """Acceptance: run_synthetic_dqn.sh --smoke, then make_all_outputs.sh, and
+    """Acceptance: run_synthetic_dqn.sh --smoke, then make_all_outputs.sh --diagnostics, and
     confirm the full artifact set for that run plus the combined outputs."""
     seed = "96"
     results_root = tmp_path / "results"
@@ -76,7 +76,7 @@ def test_acceptance_run_then_make_all_outputs(tmp_path):
     )
     assert res.returncode == 0, res.stderr[-2000:]
     res = subprocess.run(
-        ["bash", "scripts/make_all_outputs.sh"],
+        ["bash", "scripts/make_all_outputs.sh", "--diagnostics"],
         cwd=REPO,
         env=env,
         capture_output=True,

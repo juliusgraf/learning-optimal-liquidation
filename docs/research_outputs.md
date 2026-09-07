@@ -8,7 +8,7 @@ controls. The completed evidence is retained under `results/revision_v19/`.
 
 The main campaign and both economic-training follow-ups are complete. The table
 below records the original 440-run scope; each follow-up adds 40 synthetic runs.
-Use [the completed-study writing plan](research_writeup_plan_v19.md) for the
+Use [the completed-study results](revision_v19_verdict.md) for the
 current interpretation and [the reproduction guide](../REPRODUCING.md) for
 report-only commands and source-identity requirements. No further training is
 needed to use these outputs.
@@ -118,7 +118,7 @@ CLOB forecast. Raw forecast records support more detailed diagnostics; use
 market paths, rather than individual correlated forecast times, as resampling
 units. These auxiliary data do not create extra default publication figures.
 
-## Regeneration and manuscript integration
+## Regeneration
 
 Inspect the entire command plan without training:
 
@@ -140,12 +140,5 @@ scientific training results. The bounded repair ledger remains under
 `verification_v19/`; its superseded one-off generator is recoverable using
 [the development archive instructions](cleanup.md).
 
-Both protected TeX files remain untouched. The exact consolidated proposed
-changes are in [manuscript_recommendations_v19.patch](manuscript_recommendations_v19.patch).
-They document the forecast, learning implementation, calibration and experimental
-protocol; they do not insert conclusions from an unrun campaign. After reading
-the final report, copy only chosen figures/tables into `paper/results/` and
-cite their supplied methods/captions. Prefer economic performance, auction
-mechanism and the mechanism/credit figures for the main argument; use the raw
-learning curves to substantiate stability. Tables can provide appendix numbers
-without duplicating every figure in the main text.
+Reports remain under the selected results root. They can be exported independently
+of the separately maintained manuscript.

@@ -5,9 +5,14 @@ __pycache__/
 .env
 .venv
 .envrc
-# Experiment outputs are local. Keep this root-anchored so manuscript inputs
-# under paper/results/ remain version-controlled and a clean clone can compile.
+# Experiment outputs and separately maintained writing are local.
 /results/
+/paper/
+/docs/manuscript_drafts/
+/docs/manuscript_recommendations*.patch
+/docs/prism_handoff/
+/.claude/
+/.codex/
 *.egg-info/
 .pytest_cache/
 .ruff_cache/
@@ -16,23 +21,12 @@ htmlcov/
 build/
 dist/
 .DS_Store
-# Ad-hoc loader outputs and cache; the canonical frozen dataset is tracked.
+# Third-party market data are retained locally, not distributed.
 data/*.csv
 data/*.meta.json
-!data/historical_sp500_midquotes_1m.csv
-!data/historical_sp500_midquotes_1m.csv.meta.json
+/data/raw/
+/legacy/data.csv
 .cache/
 # Bounded verification keeps numeric evidence, not binary model weights.
 /docs/verification_v19/**/*.pt
 /docs/verification_v19/forecast_*/forecasts.csv
-
-# LaTeX build intermediates; keep the manuscript PDF and figure/table inputs.
-/paper/*.aux
-/paper/*.bbl
-/paper/*.blg
-/paper/*.fdb_latexmk
-/paper/*.fls
-/paper/*.log
-/paper/*.out
-/paper/*.synctex.gz
-/paper/*.toc

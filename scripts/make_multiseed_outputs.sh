@@ -70,7 +70,7 @@ if [[ "$PUBLICATION" -eq 1 ]]; then
   fi
 fi
 
-RESULTS_ROOT="${LMM_RESULTS_ROOT:-results/revision_v18}"
+RESULTS_ROOT="${LMM_RESULTS_ROOT:-results/revision_v19}"
 [[ -d "$RESULTS_ROOT" ]] || { echo "no $RESULTS_ROOT directory" >&2; exit 1; }
 if [[ "$DIAGNOSTICS" -eq 0 ]]; then
   REPORT_ARGS=(--root "$RESULTS_ROOT" --seeds $SEEDS)

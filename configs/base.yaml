@@ -1,6 +1,6 @@
 # Shared v19 numerical specification for both mid-price sources.
 # Author-approved weighted shaped J for training; economic J_bar_lambda for
-# validation/test. Exact unapplied manuscript edits are supplied in docs/.
+# validation/test. See docs/model.md for the simulator contract.
 # Execution-scale preferences and stylized liquidity, not an empirical fit.
 # All 391 CLOB / 1,346 auction actions remain; signed settlement is unchanged.
 

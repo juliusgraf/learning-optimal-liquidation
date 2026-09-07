@@ -1,10 +1,8 @@
 # Learning and evaluation contract (v19)
 
 `configs/base.yaml` and the algorithm/treatment overlays are the executable
-specification. `paper/main.tex` defines the control problem. The protected
-manuscript has not been edited: `docs/manuscript_recommendations_v19.patch` gives
-precise proposed changes, and `docs/pathology_repair_v19.md` records the diagnosis
-and limits of the bounded verification.
+specification. [model.md](model.md) describes the simulator, and
+[pathology_repair_v19.md](pathology_repair_v19.md) records the development diagnosis.
 
 ## Economics and observations
 
@@ -133,7 +131,8 @@ risk_adjusted_pnl = pnl - lambda * final_inventory^2
 ```
 
 Reported PnL never includes shaping or centering a second time. Evaluation
-returns equal risk-adjusted PnL. The training and economic metrics must not
+return aliases follow the resolved centering switch: they equal risk-adjusted
+PnL when centered, and include initial notional in the raw cash-flow arm. The training and economic metrics must not
 be conflated in plots or interpretation.
 
 ## Algorithms and replay

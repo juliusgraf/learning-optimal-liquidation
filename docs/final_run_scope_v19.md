@@ -66,15 +66,13 @@ positive. Freeze this protocol, retain every seed, and use the final results
 to determine which claims the paper supports.
 
 ```bash
-cd /Users/juliusgraf/Learning-Market-Making
+# Run from the repository root.
 source .venv/bin/activate
 unset LMM_RESULTS_ROOT
 scripts/run_multiseed.sh --jobs 10 --threads-per-job 1
 ```
 
-Outputs remain `results/revision_v19/_publication/index.html`. The protected
-TeX files are untouched; `docs/manuscript_recommendations_v19.patch` now gives
-the exact proposed six-cell/five-contrast protocol. Verification records are
+Outputs remain `results/revision_v19/_publication/index.html`. Verification records are
 `docs/verification_v19/reduced_matrix_tests_pass.log`,
 `reduced_production_dry_run.json`, `reduced_report.log` and
 `reduced_matrix_checks.json`.

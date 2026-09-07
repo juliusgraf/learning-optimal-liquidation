@@ -160,6 +160,7 @@ def test_settings_share_economics_but_fit_forecast_reliability_on_own_training_p
             )
 
 
+@pytest.mark.market_data
 def test_historical_dataset_has_verified_disjoint_nonempty_pools():
     cfg = load_historical_cfg()
     params = cfg.midprice.historical
@@ -193,6 +194,7 @@ def test_historical_dataset_has_verified_disjoint_nonempty_pools():
         assert env._midprice._paths.shape == (expected_count, cfg.grid.tau_op + 1)
 
 
+@pytest.mark.market_data
 def test_public_environment_does_not_expose_presampled_future_paths_or_grid():
     env = mdp_module.make_env(
         load_historical_cfg(),
@@ -211,6 +213,7 @@ def test_public_environment_does_not_expose_presampled_future_paths_or_grid():
         _ = env.completed_episode_grid
 
 
+@pytest.mark.market_data
 def test_historical_mid_is_observed_through_open_then_frozen_during_call():
     cfg = load_historical_cfg()
     env = mdp_module.make_env(

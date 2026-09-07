@@ -44,7 +44,7 @@ training metrics and evaluation records:
 | `auction_shaping_clawback` | signed cumulative shaping originally credited to canceled schedules and subtracted from reward |
 | `auction_terminal_shaping` | terminal purchase-side shaping, applied once to aggregate cash |
 | `reward_baseline_adjustment` | optional policy-invariant subtraction of initial inventory value from the training reward |
-| `training_return` / `return_undisc` | undiscounted resolved reward (centered shaped J in headline and shaping-on training; centered economic in shaping-off training and all validation/final evaluation) |
+| `training_return` / `return_undisc` | undiscounted resolved reward (centered shaped J in headline and shaping-on training; economic with the resolved centering switch in shaping-off training and evaluation; the raw cash-flow arm is uncentered) |
 | `replay_return_unscaled` | sum of conditioned one-transition rewards before replay scaling or overlapping n-step accumulation |
 | `potential_adjustment` | sum of Phi(next)-Phi(now); zero over a complete rebased episode |
 | `pnl` | marked-to-market PnL, including cancellation fees |

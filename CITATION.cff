@@ -1,0 +1,12 @@
+cff-version: 1.2.0
+message: "Please cite this software when using its simulator or experimental framework."
+type: software
+title: "Learning Liquidation with Closing Auctions"
+authors:
+  - family-names: Graf
+    given-names: Julius
+  - family-names: Mastrolia
+    given-names: Thibaut
+version: 0.1.0
+license: MIT
+repository-code: "https://github.com/juliusgraf/Learning-Market-Making"

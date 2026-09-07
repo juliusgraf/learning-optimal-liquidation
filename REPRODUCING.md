@@ -20,22 +20,24 @@ pytest -q tests/test_revision_acceptance.py
 pytest -q -m 'not network and not slow'
 ```
 
+When market data are absent, data-dependent integration tests skip explicitly.
+Use `pytest --require-market-data -q -m 'not network and not slow'` on the
+research machine to require all private-data checks.
+
 The offline suite covers environment chronology, action projection, rewards,
 checkpoint selection, data provenance, launchers and reporting. Tests under
 `tests/audit/` also characterize the retained legacy implementation; they do not
 establish the validity of the current economics. No full training is required to
 run the offline suite.
 
-The protected manuscript and parameter table are never rewritten by the workflow.
-The [pending review patch](docs/manuscript_recommendations_v19.patch) predates the
-two follow-ups; use the [writing plan](docs/research_writeup_plan_v19.md) for its
-current integration recommendations.
+The manuscript is maintained separately and is not part of the software release.
 
 ## Data and model contract
 
-The tracked historical CSV, schema-3 sidecar and raw archives are required inputs.
-The environment checks their digests and split contract. The normal workflow
-needs no data account or download; optional regeneration is in [data/README.md](data/README.md).
+The locally retained historical CSV, schema-3 sidecar and raw archives are required
+for reproducing the original historical runs. They are excluded from the current source tree.
+The environment checks their digests and split contract. Synthetic experiments need no data account. Historical setup and authorized
+regeneration are described in [data/README.md](data/README.md).
 Training uses pooled stock-session paths from training dates. Validation and test
 remain ticker-specific. The previously inspected historical test dates are a
 reused holdout, not fresh-date or unseen-stock evidence.
@@ -77,8 +79,7 @@ The main bundle contains five PDF/PNG figure groups, three CSV/LaTeX tables,
 seed-level audit records and an input/output hash manifest. Each follow-up
 contains a comparison figure, table, seed-level differences and manifest.
 [research_outputs.md](docs/research_outputs.md) explains each contrast and the
-statistical interpretation. [The writing plan](docs/research_writeup_plan_v19.md)
-selects the exhibits relevant to the manuscript.
+statistical interpretation. The public [analysis summaries](docs/README.md) provide compact completed-study evidence.
 
 Every completed run retains its resolved configuration, Git SHA, dependency and
 split-seed provenance, feature normalizer, training metrics, selected/initial/final
@@ -89,6 +90,10 @@ are required by that integrity contract. Generated reports are separate from the
 bound run inputs. Neither report generation nor analysis needs to step an environment.
 
 ## Regenerating reports without training
+
+This section requires the locally retained saved runs and their original source
+commits. Full run outputs are not included in a source checkout. Users can run
+new campaigns and report them using their own committed source identity.
 
 The follow-ups validate against each run's saved source identity:
 
@@ -121,8 +126,7 @@ This uses the installed dependency environment with the recorded source checkout
 and regenerates the existing publication directory from saved run inputs. For a
 new campaign at its own clean training commit, the shell equivalent is
 `LMM_RESULTS_ROOT=/absolute/path/to/campaign scripts/make_multiseed_outputs.sh --publication`.
-Specify the root explicitly: the older standalone reporting shell wrappers retain
-legacy default roots. Extra per-run plots remain opt-in with `--diagnostics`.
+Specify the root explicitly when reporting a different campaign. Extra per-run plots remain opt-in with `--diagnostics`.
 
 ## Reproducing training later
 
@@ -165,17 +169,3 @@ Use `--resolved-config` to investigate a saved diagnostic configuration.
 The remaining audit scripts cover forecast credit, physical market units,
 shaping calibration and policy economics. Superseded one-off scripts and trial
 overlays are archived as described in [cleanup.md](docs/cleanup.md).
-
-## Compile the manuscript
-
-All current TeX inputs are tracked. With the required TeX packages installed:
-
-```bash
-latexmk -cd -pdf -interaction=nonstopmode -halt-on-error paper/main.tex
-latexmk -cd -c paper/main.tex
-```
-
-The second command removes build scratch and keeps the PDF. Research figures
-and tables are promoted into the manuscript only through an explicit writing
-change. Obsolete legacy PNGs were unreferenced by the manuscript and have been
-removed; they are recoverable with the other archived development files.

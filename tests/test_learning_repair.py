@@ -163,7 +163,7 @@ def test_market_control_variate_is_policy_independent_and_absent_from_evaluation
 
 
 @pytest.mark.parametrize('setting,symbol', [('synthetic_rough_heston', None),
-                                          ('historical_sp500_midquotes', 'MSFT')])
+                                          pytest.param('historical_sp500_midquotes', 'MSFT', marks=pytest.mark.market_data)])
 def test_calibrated_reference_is_frozen_restorable_and_policy_independent(setting, symbol):
     cfg = load_config('configs/base.yaml', f'configs/{setting}.yaml', 'configs/algo/dqn.yaml',
                       overrides=['rl.normalizer_fit_episodes=4', 'rl.market_return_control_variate=true',

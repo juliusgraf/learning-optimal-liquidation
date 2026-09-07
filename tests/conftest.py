@@ -20,6 +20,31 @@ from lmm.config import save_resolved
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
 
+def pytest_addoption(parser):
+    parser.addoption(
+        "--require-market-data", action="store_true",
+        help="Fail instead of skipping when private market-data inputs are absent.",
+    )
+
+
+def pytest_runtest_setup(item):
+    marker = item.get_closest_marker("market_data")
+    if marker is None:
+        return
+    paths = marker.args or (
+        "data/historical_sp500_midquotes_1m.csv",
+        "data/historical_sp500_midquotes_1m.csv.meta.json",
+        "data/raw/alpaca/sp500_midquotes_sip_2026-08_v1",
+    )
+    root = Path(__file__).resolve().parents[1]
+    missing = [path for path in paths if not (root / path).exists()]
+    if missing:
+        reason = "Private market data absent: " + ", ".join(missing)
+        if item.config.getoption("--require-market-data"):
+            pytest.fail(reason, pytrace=False)
+        pytest.skip(reason)
+
+
 def _upgrade_artifact_fixture(source: Path, target: Path, algo: str) -> Path:
     """Copy legacy-shaped sample numbers into the revised artifact envelope.
 

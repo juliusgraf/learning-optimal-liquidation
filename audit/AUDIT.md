@@ -1,5 +1,9 @@
 # AUDIT.md — Phase 1 audit of the legacy code against the paper
 
+Historical audit of a superseded implementation. Manuscript references below
+refer to the private research archive; the current public model is described
+in [docs/model.md](../docs/model.md).
+
 > Historical record only. This audit predates the 2026-08-31 manuscript
 > revision and intentionally describes superseded action counts, feature maps,
 > rewards, discounting, and legacy pseudo-regret outputs. Current implementation

@@ -6,6 +6,8 @@ build-backend = "setuptools.build_meta"
 name = "lmm"
 version = "0.1.0"
 description = "Learning Optimal Liquidation with Closing Auctions — research code"
+readme = "README.md"
+license = {file = "LICENSE"}
 requires-python = ">=3.10"
 dependencies = [
     "certifi>=2025.1.31",
@@ -35,10 +37,14 @@ lmm-diagnose-simulator = "lmm.experiments.diagnose_simulator:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+"lmm.experiments" = ["*.mplstyle"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = [
     "slow: slow integration tests (deselect with -m 'not slow')",
     "legacy: characterization tests of the legacy main.py/data.py emulators (pre-refactor golden values)",
     "network: tests that hit an external data API (deselect with -m 'not network')",
+    "market_data: integration tests requiring separately obtained market data",
 ]

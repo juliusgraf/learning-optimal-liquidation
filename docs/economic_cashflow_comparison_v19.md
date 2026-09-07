@@ -3,7 +3,7 @@
 This follow-up implements the author's explicit 6 September 2026 definition.
 It is separate from the completed 440-run v19 campaign and adds 40 synthetic
 runs (four algorithms, ten seeds). Existing headline checkpoints are reused.
-It has not been run at production scale.
+All 40 production runs are complete; see [the results](cashflow_results_verdict_v19.md).
 
 ## Reward definition
 
@@ -56,7 +56,7 @@ effect, not evidence that manuscript J preferences themselves are superior.
 After committing the reviewed changes and cleaning the tree:
 
 ```bash
-cd /Users/juliusgraf/Learning-Market-Making
+# Run from the repository root.
 source .venv/bin/activate
 python -m lmm.experiments.cashflow_comparison --jobs 10 --threads-per-job 1
 ```

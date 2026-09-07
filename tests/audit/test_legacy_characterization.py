@@ -284,18 +284,21 @@ def test_synthetic_fixed_policy_with_cancel(legacy_main):
 
 
 @pytest.mark.parametrize("seed", SEEDS)
+@pytest.mark.market_data("legacy/data.csv")
 def test_historical_fixed_policy(legacy_data, cat_mid_path, seed):
     env = make_historical_env(legacy_data, cat_mid_path)
     stats = run_episode(env, seed)
     assert_matches_golden(stats, GOLDEN_HISTORICAL[seed])
 
 
+@pytest.mark.market_data("legacy/data.csv")
 def test_historical_fixed_policy_with_cancel(legacy_data, cat_mid_path):
     env = make_historical_env(legacy_data, cat_mid_path)
     stats = run_episode(env, 101, cancel_at=CANCEL_AT)
     assert_matches_golden(stats, GOLDEN_HISTORICAL_CANCEL[101])
 
 
+@pytest.mark.market_data("legacy/data.csv")
 def test_historical_decision_count_pins_missing_t_n(legacy_data, cat_mid_path):
     """Pins AUDIT N1: 119 CLOB + 30 auction = 149 decisions (no action at t_n=119)."""
     env = make_historical_env(legacy_data, cat_mid_path)
@@ -314,6 +317,7 @@ def test_historical_decision_count_pins_missing_t_n(legacy_data, cat_mid_path):
     assert auction_steps == 30
 
 
+@pytest.mark.market_data("legacy/data.csv")
 def test_historical_mid_frozen_during_auction(legacy_data, cat_mid_path):
     """Pins the frozen-at-tau_op auction mid (paper-consistent; AUDIT A.12)."""
     env = make_historical_env(legacy_data, cat_mid_path)

@@ -60,7 +60,7 @@ def episode_hash(setting: str, seed: int) -> str:
     return out.stdout.strip()
 
 
-@pytest.mark.parametrize("setting", ["synthetic_rough_heston", "historical_sp500_midquotes"])
+@pytest.mark.parametrize("setting", ["synthetic_rough_heston", pytest.param("historical_sp500_midquotes", marks=pytest.mark.market_data)])
 def test_same_seed_identical_across_fresh_processes(setting):
     assert episode_hash(setting, 42) == episode_hash(setting, 42)
 
