@@ -1,0 +1,11 @@
+# Recorded in all 520 v20 run runtime files. Python 3.14.4; macOS arm64.
+# Direct runtime packages only; not a complete transitive lock or hardware guarantee.
+PyYAML==6.0.3
+certifi==2026.5.20
+gymnasium==1.2.3
+matplotlib==3.11.0
+numpy==2.4.6
+pandas==3.0.3
+scipy==1.17.1
+stable-baselines3==2.7.1
+torch==2.12.0

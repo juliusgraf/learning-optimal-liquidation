@@ -271,9 +271,20 @@ def test_worker_applies_mesh_before_fitted_forecast(tmp_path, block):
     assert actual.experiment.episodes == 800 and actual.rl.test_size == 100
 
 
-def test_real_refined_forecast_smoke_round_trip(tmp_path):
+def test_real_refined_forecast_smoke_round_trip(tmp_path, monkeypatch):
     from lmm.experiments import clearing_campaign as C
 
+    original_check_output = subprocess.check_output
+
+    def check_output(command, **kwargs):
+        # The real bounded fit needs a source identity, but this test does not
+        # test Git itself. Source archives have no .git directory; keep the
+        # production gate intact and provide identity only for this fixture.
+        if command == ['git', 'rev-parse', 'HEAD'] and kwargs.get('cwd') == REPO:
+            return 'a' * 40 + '\n'
+        return original_check_output(command, **kwargs)
+
+    monkeypatch.setattr(C.subprocess, 'check_output', check_output)
     put(tmp_path / H.MESH, (REPO / H.MESH_SOURCE).read_text())
     C.prepare_forecast(REPO, tmp_path, "synthetic_rough_heston", smoke=True)
     overlay = C.validate_forecast_fit(

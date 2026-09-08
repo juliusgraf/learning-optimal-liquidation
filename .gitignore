@@ -29,3 +29,19 @@ data/*.meta.json
 # Bounded verification keeps numeric evidence, not binary model weights.
 /docs/verification_v19/**/*.pt
 /docs/verification_v19/forecast_*/forecasts.csv
+# Local release audit details and generated candidate packages are never public.
+/release-private/
+/release-staging/
+.env.*
+!.env.example
+*.pem
+*.key
+# Manuscript build debris; already tracked history still needs owner review.
+/paper/build/
+/paper/*.aux
+/paper/*.blg
+/paper/*.fdb_latexmk
+/paper/*.fls
+/paper/*.log
+/paper/*.out
+/paper/*.synctex.gz

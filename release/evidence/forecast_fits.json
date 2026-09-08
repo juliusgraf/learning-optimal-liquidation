@@ -1,0 +1,4668 @@
+{
+  "origin": "existing forecast fits; path-normalized metadata extraction, not a refit",
+  "fits": {
+    "synthetic_rough_heston": {
+      "original_files": {
+        "summary.csv": "bfcd07d2928f19fa73d35e1c589ac32ead40d7fb18dab538e825b261ba0ff861",
+        "forecasts.csv": "8f58b2be9c87ada8037c2f2a238343521728cb81450baa49b036b93d99095604",
+        "forecast_overlay.yaml": "ecf9cbfcb316471b33d4e2d6b12dcf300d2ad986125b40d7695a15b1f213ff3c",
+        "decision_weighted_summary.csv": "6566e4d8c260630d7730575bced4b01f8bd88e6dae472a24b9bb5a044bba1922",
+        "aggregation.json": "8ab762c3079437ee5ee1341e48123e0945074a38b23654369e8fbef3b49ff940",
+        "protocol.json": "ab41b6731ae40bd2b96439671c3aa64812ac92568f630ab07b0fdf4cb701324b",
+        "error_by_episode.csv": "835a63282287225febe5ab5ce0bff7dab6e5d2f22e3576dba2bf0791fedc62a0",
+        "completion.json": "3c09bc359546591d7ce1996a36567782f4fb0fcf325c7abfa90117de23bc30ef",
+        "config_resolved.yaml": "78acb4f5d5d5505ff1701918f6c3b667a0b509e4d406f35a2e7981bd0ef25b50"
+      },
+      "protocol": {
+        "purpose": "Phase-specific H diagnostics on training/validation paths, never final test.",
+        "episodes_per_split": 256,
+        "clearing_mechanism": "max_volume_v2",
+        "environment_contract": "max-volume-auction-2026-09-07-v16:rh-dyadic-v1-c01e3639846cc64aea0cb3940384df94e966b2a5f15568950199495dd98b49ae",
+        "artifact_schema_version": 16,
+        "setting": "synthetic_rough_heston",
+        "symbol": null,
+        "weights": [
+          0.07484771651781913,
+          0.11218103352562621,
+          0.22456507792654132,
+          0.3403637680863794
+        ],
+        "train_seed": 194713,
+        "validation_seed": 194719,
+        "fit": "no-intercept restricted least squares, four equal CLOB bins, training only",
+        "clob_bin_width": 30.0,
+        "source_sha256": "86fdccb6a887ebc976faeb22f02c59eb63fd7dbee62785537634c2a036d992da"
+      },
+      "completion": {
+        "contract": {
+          "config": {
+            "actions": {
+              "B_inf": 150,
+              "B_max": 10,
+              "K_max": 32,
+              "L_max": 12,
+              "V_max": 30,
+              "auction_anchor": "indicative",
+              "auction_cancel_mode": "enabled",
+              "beta": 0.25
+            },
+            "algo": {
+              "backend": "native",
+              "hyperparams": {
+                "action_embedding_dim": 32,
+                "activation": "relu",
+                "auction_control_exploration_probability": 0.5,
+                "auction_learning_start_episode": 0,
+                "batch_size": 128,
+                "buffer_size": 50000,
+                "checkpoint_interval_episodes": 100,
+                "device": "cpu",
+                "double_q": true,
+                "epsilon_auction_scale": 1.0,
+                "epsilon_decay_episodes": 90.0,
+                "epsilon_end": 0.05,
+                "epsilon_start": 1.0,
+                "epsilon_warmup_episodes": 5,
+                "grad_clip_norm": 10.0,
+                "hidden_layers": [
+                  256,
+                  256
+                ],
+                "layer_norm": true,
+                "loss": "mse",
+                "lr": 0.00015,
+                "min_buffer": 5000,
+                "min_buffer_auction": 512,
+                "min_buffer_clob": 512,
+                "reference_centered_phases": [
+                  "auction"
+                ],
+                "reward_scale": 1.0,
+                "safe_auction_initialization": false,
+                "safe_auction_noop_margin": 0.02,
+                "target_soft_tau": 0.005,
+                "target_update_interval": 1000,
+                "update_every": 1,
+                "updates_per_env_step": 1,
+                "weight_decay": 0.0001
+              },
+              "name": "dqn"
+            },
+            "algo1": {
+              "H0": 100.0,
+              "clob_forecast_mechanism": "nearest_tick_v1",
+              "clob_forecast_price_generator": "legacy",
+              "clob_forecast_weights": [],
+              "eta_H": 0.95
+            },
+            "auction_flow": {
+              "B_inf": 150,
+              "D_mu": 0.1,
+              "U1": 1.0,
+              "U2": 20.0,
+              "clearing_mechanism": "max_volume_v2",
+              "p1": 1.0,
+              "p2": 0.0,
+              "p3": 0.3,
+              "p4": 0.05
+            },
+            "benchmark": {
+              "as_gamma": 0.0,
+              "as_n_samples": 5000,
+              "twap_delta_mode": "min",
+              "z": 10.0
+            },
+            "clob_flow": {
+              "L_max": 200,
+              "V": 30,
+              "V_inf": 2.0,
+              "beta_a": 2.0,
+              "beta_b": 5.0,
+              "gamma_m": 2.5,
+              "lambda0": 0.5,
+              "rho_lob": 0.96,
+              "v_m": 2.0
+            },
+            "experiment": {
+              "ablation_label": "H_on__shaping_on__auction_on",
+              "artifact_schema_version": 16,
+              "auction_enabled": true,
+              "episodes": 800,
+              "master_seed": 42,
+              "name": "synthetic_rough_heston",
+              "results_root": "results/revision_v20",
+              "seeds": [
+                42
+              ],
+              "setting": "synthetic_rough_heston"
+            },
+            "features": {
+              "auction": [
+                "time",
+                "inventory",
+                "h_cl",
+                "s_mid",
+                "decision_index",
+                "depth_ask",
+                "depth_bid",
+                "top_ask",
+                "top_bid",
+                "n_mm",
+                "n_buy",
+                "n_sell",
+                "cancel_admissible",
+                "own_slope",
+                "own_weighted_quote",
+                "exogenous_slope",
+                "auction_imbalance",
+                "exogenous_weighted_quote"
+              ],
+              "clob": [
+                "time",
+                "inventory",
+                "h_cl",
+                "s_mid",
+                "decision_index",
+                "depth_ask",
+                "depth_bid",
+                "top_ask",
+                "top_bid",
+                "n_mm",
+                "n_buy",
+                "n_sell",
+                "cancel_admissible",
+                "own_slope",
+                "own_weighted_quote",
+                "exogenous_slope",
+                "auction_imbalance",
+                "exogenous_weighted_quote"
+              ]
+            },
+            "grid": {
+              "I0": 100,
+              "I_max": 100,
+              "S0": 100.0,
+              "T_physical": 150.0,
+              "alpha": 0.01,
+              "h": 30,
+              "tau_cl": 150,
+              "tau_op": 120,
+              "time_unit": "minutes"
+            },
+            "midprice": {
+              "historical": null,
+              "model": "rough_heston",
+              "rough_heston": {
+                "H": 0.1,
+                "nu": 0.3,
+                "rho_h": -0.7,
+                "rough_heston_max_step_minutes": 0.25,
+                "s_star": 98280.0,
+                "theta": 0.02,
+                "v0": 0.02,
+                "varsigma": 0.3
+              }
+            },
+            "reward": {
+              "auction_shaping_enabled": false,
+              "auction_shaping_weight": 0.0001,
+              "center_initial_inventory_value": true,
+              "clawback_shaping": false,
+              "clob_shaping_enabled": false,
+              "d": 0.001,
+              "k_star": 10000,
+              "lambda_inv": 0.01,
+              "learning_potential": false,
+              "numerical_guard": false,
+              "numerical_guard_bound": 1000000000.0,
+              "q": 0.0,
+              "shaping_enabled": false
+            },
+            "rl": {
+              "auction_exposure_features": true,
+              "auction_inventory_asinh": true,
+              "checkpoint_metric": "risk_adjusted_pnl",
+              "checkpoint_min_auction_updates": 2000,
+              "checkpoint_min_clob_updates": 2000,
+              "checkpoint_require_initial_improvement": false,
+              "chi": 1.0,
+              "discount_mode": "undiscounted",
+              "h_cl_feature_enabled": true,
+              "learning_auction_inventory_potential": true,
+              "learning_clob_inventory_potential": true,
+              "learning_credit_baseline": false,
+              "learning_rate_half_life_episodes": 90.0,
+              "learning_rate_min_fraction": 0.1,
+              "learning_starts_after_warmup": true,
+              "market_control_reference": "calibration",
+              "market_return_control_variate": true,
+              "n_step": 1,
+              "normalizer_fit_episodes": 16,
+              "phase_normalization": true,
+              "relative_price_features": true,
+              "structured_warmup_episodes": 32,
+              "test_seed_namespace": 19001,
+              "test_size": 100,
+              "validation_frequency_episodes": 50,
+              "validation_patience_evals": 4,
+              "validation_size": 128
+            }
+          },
+          "episodes_per_split": 256,
+          "fit_split": "train",
+          "fitter_sha256": "86fdccb6a887ebc976faeb22f02c59eb63fd7dbee62785537634c2a036d992da",
+          "git_sha": "ffb314dd736a750e026861284e437aafa1e935ee",
+          "historical_inputs": {},
+          "mechanism": "max_volume_v2",
+          "packages": {
+            "PyYAML": "6.0.3",
+            "numpy": "2.4.6",
+            "pandas": "3.0.3",
+            "torch": "2.12.0"
+          },
+          "python": "3.14.4 (v3.14.4:23116f998f6, Apr  7 2026, 09:45:22) [Clang 17.0.0 (clang-1700.6.4.2)]",
+          "schema": 1,
+          "setting": "synthetic_rough_heston",
+          "symbol": null,
+          "train_seed": 194713,
+          "validation_role": "diagnostic only; never used to fit or select weights",
+          "validation_seed": 194719
+        },
+        "files": {
+          "aggregation.json": "8ab762c3079437ee5ee1341e48123e0945074a38b23654369e8fbef3b49ff940",
+          "config_resolved.yaml": "78acb4f5d5d5505ff1701918f6c3b667a0b509e4d406f35a2e7981bd0ef25b50",
+          "decision_weighted_summary.csv": "6566e4d8c260630d7730575bced4b01f8bd88e6dae472a24b9bb5a044bba1922",
+          "error_by_episode.csv": "835a63282287225febe5ab5ce0bff7dab6e5d2f22e3576dba2bf0791fedc62a0",
+          "forecast_overlay.yaml": "ecf9cbfcb316471b33d4e2d6b12dcf300d2ad986125b40d7695a15b1f213ff3c",
+          "forecasts.csv": "8f58b2be9c87ada8037c2f2a238343521728cb81450baa49b036b93d99095604",
+          "protocol.json": "ab41b6731ae40bd2b96439671c3aa64812ac92568f630ab07b0fdf4cb701324b",
+          "summary.csv": "bfcd07d2928f19fa73d35e1c589ac32ead40d7fb18dab538e825b261ba0ff861"
+        }
+      },
+      "config": {
+        "experiment": {
+          "name": "synthetic_rough_heston",
+          "setting": "synthetic_rough_heston",
+          "episodes": 800,
+          "master_seed": 42,
+          "results_root": "results/revision_v20",
+          "artifact_schema_version": 16,
+          "seeds": [
+            42
+          ],
+          "ablation_label": "H_on__shaping_on__auction_on",
+          "auction_enabled": true
+        },
+        "grid": {
+          "tau_op": 120,
+          "tau_cl": 150,
+          "h": 30,
+          "time_unit": "minutes",
+          "T_physical": 150.0,
+          "alpha": 0.01,
+          "S0": 100.0,
+          "I0": 100,
+          "I_max": 100
+        },
+        "clob_flow": {
+          "lambda0": 0.5,
+          "v_m": 2.0,
+          "gamma_m": 2.5,
+          "V": 30,
+          "V_inf": 2.0,
+          "beta_a": 2.0,
+          "beta_b": 5.0,
+          "rho_lob": 0.96,
+          "L_max": 200
+        },
+        "auction_flow": {
+          "p1": 1.0,
+          "p2": 0.0,
+          "p3": 0.3,
+          "p4": 0.05,
+          "D_mu": 0.1,
+          "U1": 1.0,
+          "U2": 20.0,
+          "B_inf": 150,
+          "clearing_mechanism": "max_volume_v2"
+        },
+        "midprice": {
+          "model": "rough_heston",
+          "rough_heston": {
+            "H": 0.1,
+            "rho_h": -0.7,
+            "v0": 0.02,
+            "theta": 0.02,
+            "varsigma": 0.3,
+            "nu": 0.3,
+            "s_star": 98280.0,
+            "rough_heston_max_step_minutes": 0.25
+          },
+          "historical": null
+        },
+        "algo1": {
+          "H0": 100.0,
+          "eta_H": 0.95,
+          "clob_forecast_weights": [],
+          "clob_forecast_mechanism": "nearest_tick_v1",
+          "clob_forecast_price_generator": "legacy"
+        },
+        "reward": {
+          "k_star": 10000,
+          "lambda_inv": 0.01,
+          "q": 0.0,
+          "d": 0.001,
+          "shaping_enabled": false,
+          "clawback_shaping": false,
+          "numerical_guard": false,
+          "numerical_guard_bound": 1000000000.0,
+          "clob_shaping_enabled": false,
+          "auction_shaping_enabled": false,
+          "center_initial_inventory_value": true,
+          "learning_potential": false,
+          "auction_shaping_weight": 0.0001
+        },
+        "rl": {
+          "chi": 1.0,
+          "relative_price_features": true,
+          "n_step": 1,
+          "learning_credit_baseline": false,
+          "learning_clob_inventory_potential": true,
+          "learning_auction_inventory_potential": true,
+          "auction_exposure_features": true,
+          "phase_normalization": true,
+          "auction_inventory_asinh": true,
+          "market_return_control_variate": true,
+          "structured_warmup_episodes": 32,
+          "learning_starts_after_warmup": true,
+          "market_control_reference": "calibration",
+          "learning_rate_half_life_episodes": 90.0,
+          "learning_rate_min_fraction": 0.1,
+          "discount_mode": "undiscounted",
+          "checkpoint_metric": "risk_adjusted_pnl",
+          "normalizer_fit_episodes": 16,
+          "validation_size": 128,
+          "validation_frequency_episodes": 50,
+          "validation_patience_evals": 4,
+          "checkpoint_min_clob_updates": 2000,
+          "checkpoint_min_auction_updates": 2000,
+          "checkpoint_require_initial_improvement": false,
+          "test_size": 100,
+          "test_seed_namespace": 19001,
+          "h_cl_feature_enabled": true
+        },
+        "actions": {
+          "V_max": 30,
+          "L_max": 12,
+          "beta": 0.25,
+          "K_max": 32,
+          "B_inf": 150,
+          "B_max": 10,
+          "auction_anchor": "indicative",
+          "auction_cancel_mode": "enabled"
+        },
+        "features": {
+          "clob": [
+            "time",
+            "inventory",
+            "h_cl",
+            "s_mid",
+            "decision_index",
+            "depth_ask",
+            "depth_bid",
+            "top_ask",
+            "top_bid",
+            "n_mm",
+            "n_buy",
+            "n_sell",
+            "cancel_admissible",
+            "own_slope",
+            "own_weighted_quote",
+            "exogenous_slope",
+            "auction_imbalance",
+            "exogenous_weighted_quote"
+          ],
+          "auction": [
+            "time",
+            "inventory",
+            "h_cl",
+            "s_mid",
+            "decision_index",
+            "depth_ask",
+            "depth_bid",
+            "top_ask",
+            "top_bid",
+            "n_mm",
+            "n_buy",
+            "n_sell",
+            "cancel_admissible",
+            "own_slope",
+            "own_weighted_quote",
+            "exogenous_slope",
+            "auction_imbalance",
+            "exogenous_weighted_quote"
+          ]
+        },
+        "benchmark": {
+          "z": 10.0,
+          "as_n_samples": 5000,
+          "as_gamma": 0.0,
+          "twap_delta_mode": "min"
+        },
+        "algo": {
+          "name": "dqn",
+          "hyperparams": {
+            "buffer_size": 50000,
+            "min_buffer": 5000,
+            "min_buffer_clob": 512,
+            "min_buffer_auction": 512,
+            "batch_size": 128,
+            "lr": 0.00015,
+            "loss": "mse",
+            "grad_clip_norm": 10.0,
+            "hidden_layers": [
+              256,
+              256
+            ],
+            "action_embedding_dim": 32,
+            "layer_norm": true,
+            "weight_decay": 0.0001,
+            "auction_control_exploration_probability": 0.5,
+            "reference_centered_phases": [
+              "auction"
+            ],
+            "safe_auction_initialization": false,
+            "target_update_interval": 1000,
+            "target_soft_tau": 0.005,
+            "double_q": true,
+            "updates_per_env_step": 1,
+            "update_every": 1,
+            "reward_scale": 1.0,
+            "activation": "relu",
+            "device": "cpu",
+            "checkpoint_interval_episodes": 100,
+            "epsilon_start": 1.0,
+            "epsilon_end": 0.05,
+            "epsilon_decay_episodes": 90.0,
+            "epsilon_warmup_episodes": 5,
+            "epsilon_auction_scale": 1.0,
+            "safe_auction_noop_margin": 0.02,
+            "auction_learning_start_episode": 0
+          },
+          "backend": "native"
+        }
+      },
+      "overlay": {
+        "algo1": {
+          "clob_forecast_mechanism": "max_volume_v2",
+          "clob_forecast_price_generator": "rh-dyadic-v1-c01e3639846cc64aea0cb3940384df94e966b2a5f15568950199495dd98b49ae",
+          "clob_forecast_weights": [
+            0.07484771651781913,
+            0.11218103352562621,
+            0.22456507792654132,
+            0.3403637680863794
+          ]
+        }
+      },
+      "recorded_episode_seeds": {
+        "train": [
+          327117537,
+          55431535,
+          1442232825,
+          1652995168,
+          1189644057,
+          626261556,
+          1346500412,
+          1457054674,
+          2123621223,
+          122433512,
+          995407632,
+          2051186991,
+          1617760289,
+          11045004,
+          790783992,
+          1381326272,
+          1122431120,
+          1763995550,
+          1901097990,
+          1224614996,
+          639711205,
+          213364143,
+          680618713,
+          1250500816,
+          875673396,
+          1485155238,
+          2116788191,
+          1122434999,
+          26619054,
+          272916402,
+          769576532,
+          932901266,
+          1560771192,
+          1721238787,
+          1768220195,
+          674284676,
+          1979313888,
+          1468734093,
+          662702147,
+          2082485981,
+          1612222898,
+          1312806125,
+          1899112664,
+          1822222350,
+          1802217685,
+          564655921,
+          306086256,
+          950589634,
+          1251295371,
+          2068694944,
+          459116919,
+          503105092,
+          1636052290,
+          620486308,
+          541647100,
+          186489063,
+          2053438255,
+          1818316818,
+          1249753079,
+          275303007,
+          1466464853,
+          652246277,
+          2082610182,
+          1403240505,
+          456451947,
+          1566635004,
+          1429294423,
+          40613066,
+          507114627,
+          837819233,
+          698915928,
+          309581585,
+          1529952489,
+          794791343,
+          1334174991,
+          569800522,
+          1034206579,
+          687939527,
+          328362735,
+          2042313980,
+          1073419247,
+          2038490892,
+          656318179,
+          580616784,
+          317808625,
+          625402506,
+          1341929437,
+          2029023029,
+          1455696267,
+          568328224,
+          363237270,
+          985901996,
+          1291030429,
+          1527052719,
+          906053015,
+          300917339,
+          487128402,
+          1674667319,
+          869662105,
+          221642719,
+          311681681,
+          564638703,
+          1779559227,
+          2049489848,
+          433265262,
+          1820802232,
+          539935269,
+          116718402,
+          1429859153,
+          483927085,
+          869212299,
+          1019176814,
+          1884006649,
+          1986275640,
+          68587801,
+          122318139,
+          357748318,
+          484940347,
+          2079452416,
+          27330308,
+          1766109185,
+          1887412456,
+          546830130,
+          804451834,
+          1831038738,
+          1765132379,
+          376252093,
+          1483304513,
+          1861416998,
+          1470406794,
+          1100663837,
+          1523612317,
+          742486638,
+          1857156657,
+          315422270,
+          1739038140,
+          498145090,
+          636580412,
+          55636470,
+          861494684,
+          604427374,
+          708741108,
+          1691075969,
+          1152762862,
+          1709390430,
+          564985026,
+          153644218,
+          1589467751,
+          780822360,
+          1301204297,
+          1146460500,
+          1882006620,
+          2099038462,
+          1322538356,
+          594562960,
+          1262759585,
+          1532696033,
+          2063075285,
+          640585110,
+          1466152568,
+          1409469014,
+          1898590282,
+          1188831286,
+          1893305097,
+          722493457,
+          969971079,
+          1886181327,
+          1932965182,
+          1741966583,
+          1161855370,
+          2019919288,
+          927394821,
+          934769153,
+          298258758,
+          1886601120,
+          2042604523,
+          474906170,
+          901218559,
+          1656240976,
+          246257098,
+          343114446,
+          1396919685,
+          556370266,
+          963064189,
+          1616506006,
+          927747221,
+          1155834619,
+          1979415338,
+          448617449,
+          885913126,
+          1093530032,
+          1337743143,
+          1534835625,
+          707007607,
+          554291913,
+          1791192242,
+          228357781,
+          524022092,
+          1499305395,
+          364822182,
+          1650223698,
+          514229024,
+          1230537718,
+          842554622,
+          1921255747,
+          331685458,
+          1083639549,
+          2124946133,
+          1648184814,
+          1511954804,
+          1183756738,
+          1175741769,
+          1835192922,
+          1910393863,
+          178241664,
+          351483662,
+          1831888821,
+          2074993138,
+          93603465,
+          948167982,
+          1182067428,
+          363651755,
+          1914614878,
+          288648709,
+          637242012,
+          389467522,
+          2094241169,
+          205343557,
+          1968427685,
+          220050077,
+          636933597,
+          1393973152,
+          1693825034,
+          1089209112,
+          2116796402,
+          1014433665,
+          534427969,
+          1069046789,
+          1969465207,
+          2024198866,
+          1462249146,
+          1415159622,
+          691382196,
+          1578424913,
+          2039424543,
+          1171342004,
+          1951123730,
+          2033875218,
+          290417326,
+          708840787,
+          358201944,
+          406502505,
+          664940751,
+          2130664162,
+          1696485888,
+          1535490371
+        ],
+        "validation": [
+          1269404433,
+          1596028284,
+          473322605,
+          1162428326,
+          1094437191,
+          326648650,
+          740811570,
+          1131204704,
+          297853959,
+          1510254442,
+          1016383215,
+          624696832,
+          1305160105,
+          776975403,
+          865810657,
+          1510061330,
+          2081075528,
+          313310332,
+          974031673,
+          1762142531,
+          242186231,
+          1674432211,
+          1785337808,
+          1410661996,
+          971636238,
+          1485466312,
+          1343740293,
+          1322576234,
+          471567753,
+          183700029,
+          1657920847,
+          1150892866,
+          2005031654,
+          1225850114,
+          351232802,
+          1214457390,
+          1472644315,
+          771318188,
+          823754955,
+          870383104,
+          2096820662,
+          9449841,
+          1801831050,
+          301399482,
+          759785233,
+          1830723062,
+          1469408235,
+          704603389,
+          1952643262,
+          794577846,
+          193342035,
+          146359679,
+          821171330,
+          133928187,
+          13275369,
+          2079353100,
+          907254909,
+          197321080,
+          335558306,
+          1057662846,
+          2104314270,
+          1204269034,
+          138974985,
+          1823177292,
+          248342249,
+          1813477886,
+          1156614519,
+          1005147427,
+          3193193,
+          1978794726,
+          1777761364,
+          620691902,
+          1341105533,
+          1109096363,
+          1717535361,
+          794073591,
+          298251584,
+          984780479,
+          1228756513,
+          685387472,
+          1337558542,
+          415942765,
+          1599227771,
+          1972530612,
+          1849939993,
+          1039706909,
+          537601966,
+          96331007,
+          1895205528,
+          580883424,
+          1332563772,
+          1087754697,
+          1869610962,
+          539185784,
+          1120227807,
+          442367479,
+          426108357,
+          2098659821,
+          529339977,
+          1086992853,
+          1602646699,
+          841667687,
+          209720781,
+          474113885,
+          613875500,
+          1147910077,
+          1678399419,
+          513878524,
+          793207040,
+          777987746,
+          764206458,
+          943701607,
+          722359962,
+          2094826518,
+          808489258,
+          312387318,
+          2103779469,
+          287807613,
+          564011714,
+          1695250885,
+          181987678,
+          58992243,
+          595133519,
+          1195394147,
+          665095129,
+          1797743801,
+          1488415139,
+          1050627162,
+          1051700118,
+          1371791598,
+          1663414841,
+          435037409,
+          991465109,
+          1797537236,
+          2104326418,
+          2075796996,
+          1328970147,
+          1911898339,
+          2111971248,
+          554591796,
+          568239065,
+          1550410805,
+          1177111272,
+          1161504314,
+          1949536903,
+          379959731,
+          13214577,
+          197910225,
+          1774301148,
+          1140142418,
+          1188404923,
+          1984865680,
+          1995738616,
+          754265943,
+          1992143549,
+          1370270956,
+          1259084304,
+          1745865270,
+          2079771064,
+          885933949,
+          385895761,
+          827861659,
+          548236977,
+          1309271079,
+          37478430,
+          441433213,
+          1022737924,
+          1464050829,
+          2121903630,
+          354603929,
+          1605384002,
+          1689596328,
+          536206826,
+          2000415805,
+          1582089763,
+          1196267729,
+          1130148255,
+          1272701588,
+          1981553474,
+          1983728094,
+          1502742717,
+          1304369653,
+          729296149,
+          477690138,
+          531736250,
+          1820187090,
+          682597342,
+          1540032190,
+          1190698902,
+          1124252579,
+          2103113671,
+          279674948,
+          45781928,
+          587941658,
+          1842297624,
+          2228926,
+          1883406335,
+          904954969,
+          1056748058,
+          1520253920,
+          843552221,
+          1440450205,
+          215315208,
+          1895938214,
+          599578712,
+          1306413909,
+          17068663,
+          999246718,
+          1689815425,
+          2090091672,
+          1728211339,
+          478057347,
+          1622350371,
+          463038873,
+          1490466256,
+          151930744,
+          485939299,
+          60172395,
+          495405669,
+          444314474,
+          1011144553,
+          1277497892,
+          1979053181,
+          209186862,
+          523619272,
+          582556051,
+          1362716744,
+          271524066,
+          1400891564,
+          1622755107,
+          157406732,
+          691383726,
+          479989,
+          1431612896,
+          854796158,
+          324342687,
+          699942621,
+          1065008657,
+          1662895023,
+          620122309,
+          1367461309,
+          786230430,
+          1141851658,
+          280409021,
+          1426162069,
+          11527362,
+          1362777692,
+          944411849,
+          2092324426,
+          1569205437,
+          794568317,
+          1219731835,
+          196954469,
+          88960600,
+          980462067,
+          896013492
+        ]
+      },
+      "episode_seed_origin": "extracted from existing forecasts.csv (hash in original_files), not inferred from defaults",
+      "observed_overlap_with_run_environment_seeds": []
+    },
+    "historical_sp500_midquotes": {
+      "original_files": {
+        "summary.csv": "6036d2284fc099184af21e21c11b8fd50c2a31ccd98a8732f84b8e87b04245be",
+        "forecasts.csv": "083a0cedb67ea2db56d6f7a385d264f475e267b859ed224097faaa98d5c8c240",
+        "forecast_overlay.yaml": "33575d51ab13c35a987760e77b3bc8dd5d3669f6f5fce0eb71f33561ecdec8d2",
+        "decision_weighted_summary.csv": "5f2577c37d993d5a4305bf92964aadf7e8766df234348cb05798d118331641ec",
+        "aggregation.json": "8ab762c3079437ee5ee1341e48123e0945074a38b23654369e8fbef3b49ff940",
+        "protocol.json": "1d5d96c021c6994291a3cad4d95fba70f97a9fb38e9c3863cd328bdc47396860",
+        "error_by_episode.csv": "0704c956be7974677031f3c51c654c37da04396af505564b1f3ac46156b953e0",
+        "completion.json": "cc80e43fae7067ffecb3b4452ce3d4cd0cbb34a36cb13d0b2fdb5281bcbd0b2d",
+        "config_resolved.yaml": "4b45c546d8b8ee3653095c53f6ad8f58ab5de02dafbfd4411d244f634ce1087b"
+      },
+      "protocol": {
+        "purpose": "Phase-specific H diagnostics on training/validation paths, never final test.",
+        "episodes_per_split": 256,
+        "clearing_mechanism": "max_volume_v2",
+        "environment_contract": "max-volume-auction-2026-09-07-v16",
+        "artifact_schema_version": 16,
+        "setting": "historical_sp500_midquotes",
+        "symbol": "MSFT",
+        "weights": [
+          0.1924916179076673,
+          0.312255200549861,
+          0.3838030839756138,
+          0.5230075659037197
+        ],
+        "train_seed": 194713,
+        "validation_seed": 194719,
+        "fit": "no-intercept restricted least squares, four equal CLOB bins, training only",
+        "clob_bin_width": 30.0,
+        "source_sha256": "0109af4ed8b58873bacb31ce88b55033dbb2e057c5e0d2533675572968fb8b7d"
+      },
+      "completion": {
+        "contract": {
+          "config": {
+            "actions": {
+              "B_inf": 150,
+              "B_max": 10,
+              "K_max": 32,
+              "L_max": 12,
+              "V_max": 30,
+              "auction_anchor": "indicative",
+              "auction_cancel_mode": "enabled",
+              "beta": 0.25
+            },
+            "algo": {
+              "backend": "native",
+              "hyperparams": {
+                "action_embedding_dim": 32,
+                "activation": "relu",
+                "auction_control_exploration_probability": 0.5,
+                "auction_learning_start_episode": 0,
+                "batch_size": 128,
+                "buffer_size": 50000,
+                "checkpoint_interval_episodes": 100,
+                "device": "cpu",
+                "double_q": true,
+                "epsilon_auction_scale": 1.0,
+                "epsilon_decay_episodes": 90.0,
+                "epsilon_end": 0.05,
+                "epsilon_start": 1.0,
+                "epsilon_warmup_episodes": 5,
+                "grad_clip_norm": 10.0,
+                "hidden_layers": [
+                  256,
+                  256
+                ],
+                "layer_norm": true,
+                "loss": "mse",
+                "lr": 0.00015,
+                "min_buffer": 5000,
+                "min_buffer_auction": 512,
+                "min_buffer_clob": 512,
+                "reference_centered_phases": [
+                  "auction"
+                ],
+                "reward_scale": 1.0,
+                "safe_auction_initialization": false,
+                "safe_auction_noop_margin": 0.02,
+                "target_soft_tau": 0.005,
+                "target_update_interval": 1000,
+                "update_every": 1,
+                "updates_per_env_step": 1,
+                "weight_decay": 0.0001
+              },
+              "name": "dqn"
+            },
+            "algo1": {
+              "H0": 100.0,
+              "clob_forecast_mechanism": "nearest_tick_v1",
+              "clob_forecast_weights": [],
+              "eta_H": 0.95
+            },
+            "auction_flow": {
+              "B_inf": 150,
+              "D_mu": 0.1,
+              "U1": 1.0,
+              "U2": 20.0,
+              "clearing_mechanism": "max_volume_v2",
+              "p1": 1.0,
+              "p2": 0.0,
+              "p3": 0.3,
+              "p4": 0.05
+            },
+            "benchmark": {
+              "as_gamma": 0.0,
+              "as_n_samples": 5000,
+              "twap_delta_mode": "min",
+              "z": 10.0
+            },
+            "clob_flow": {
+              "L_max": 200,
+              "V": 30,
+              "V_inf": 2.0,
+              "beta_a": 2.0,
+              "beta_b": 5.0,
+              "gamma_m": 2.5,
+              "lambda0": 0.5,
+              "rho_lob": 0.96,
+              "v_m": 2.0
+            },
+            "experiment": {
+              "ablation_label": "H_on__shaping_on__auction_on",
+              "artifact_schema_version": 16,
+              "auction_enabled": true,
+              "episodes": 800,
+              "master_seed": 42,
+              "name": "historical_sp500_midquotes",
+              "results_root": "results/revision_v20",
+              "seeds": [
+                42
+              ],
+              "setting": "historical_sp500_midquotes"
+            },
+            "features": {
+              "auction": [
+                "time",
+                "inventory",
+                "h_cl",
+                "s_mid",
+                "decision_index",
+                "depth_ask",
+                "depth_bid",
+                "top_ask",
+                "top_bid",
+                "n_mm",
+                "n_buy",
+                "n_sell",
+                "cancel_admissible",
+                "own_slope",
+                "own_weighted_quote",
+                "exogenous_slope",
+                "auction_imbalance",
+                "exogenous_weighted_quote"
+              ],
+              "clob": [
+                "time",
+                "inventory",
+                "h_cl",
+                "s_mid",
+                "decision_index",
+                "depth_ask",
+                "depth_bid",
+                "top_ask",
+                "top_bid",
+                "n_mm",
+                "n_buy",
+                "n_sell",
+                "cancel_admissible",
+                "own_slope",
+                "own_weighted_quote",
+                "exogenous_slope",
+                "auction_imbalance",
+                "exogenous_weighted_quote"
+              ]
+            },
+            "grid": {
+              "I0": 100,
+              "I_max": 100,
+              "S0": 100.0,
+              "T_physical": 150.0,
+              "alpha": 0.01,
+              "h": 30,
+              "tau_cl": 150,
+              "tau_op": 120,
+              "time_unit": "minutes"
+            },
+            "midprice": {
+              "historical": {
+                "artifact_normalization": "none",
+                "csv_path": "data/historical_sp500_midquotes_1m.csv",
+                "date": "2026-08-03..2026-08-28",
+                "missing_data_treatment": "error",
+                "n_rows": 121,
+                "normalize_first": 100.0,
+                "path_policy": "split_pool",
+                "price_type": "quote_midpoint",
+                "quote_feed": "sip",
+                "source": "alpaca_market_data_api",
+                "split_id": "sp500_midquotes_sip_2026-08_v1",
+                "symbols": [
+                  "MSFT",
+                  "JPM",
+                  "PG",
+                  "GOOGL",
+                  "CAT"
+                ],
+                "test_date_range": [
+                  "2026-08-24",
+                  "2026-08-28"
+                ],
+                "timezone": "America/New_York",
+                "train_date_range": [
+                  "2026-08-03",
+                  "2026-08-14"
+                ],
+                "training_pool": "all_symbols",
+                "validation_date_range": [
+                  "2026-08-17",
+                  "2026-08-21"
+                ]
+              },
+              "model": "historical",
+              "rough_heston": null
+            },
+            "reward": {
+              "auction_shaping_enabled": false,
+              "auction_shaping_weight": 0.0001,
+              "center_initial_inventory_value": true,
+              "clawback_shaping": false,
+              "clob_shaping_enabled": false,
+              "d": 0.001,
+              "k_star": 10000,
+              "lambda_inv": 0.01,
+              "learning_potential": false,
+              "numerical_guard": false,
+              "numerical_guard_bound": 1000000000.0,
+              "q": 0.0,
+              "shaping_enabled": false
+            },
+            "rl": {
+              "auction_exposure_features": true,
+              "auction_inventory_asinh": true,
+              "checkpoint_metric": "risk_adjusted_pnl",
+              "checkpoint_min_auction_updates": 2000,
+              "checkpoint_min_clob_updates": 2000,
+              "checkpoint_require_initial_improvement": false,
+              "chi": 1.0,
+              "discount_mode": "undiscounted",
+              "h_cl_feature_enabled": true,
+              "learning_auction_inventory_potential": true,
+              "learning_clob_inventory_potential": true,
+              "learning_credit_baseline": false,
+              "learning_rate_half_life_episodes": 90.0,
+              "learning_rate_min_fraction": 0.1,
+              "learning_starts_after_warmup": true,
+              "market_control_reference": "calibration",
+              "market_return_control_variate": true,
+              "n_step": 1,
+              "normalizer_fit_episodes": 16,
+              "phase_normalization": true,
+              "relative_price_features": true,
+              "structured_warmup_episodes": 32,
+              "test_seed_namespace": 19001,
+              "test_size": 100,
+              "validation_frequency_episodes": 50,
+              "validation_patience_evals": 4,
+              "validation_size": 128
+            }
+          },
+          "episodes_per_split": 256,
+          "fit_split": "train",
+          "fitter_sha256": "0109af4ed8b58873bacb31ce88b55033dbb2e057c5e0d2533675572968fb8b7d",
+          "git_sha": "354656645a7e035be718e03cbf100664d1a87262",
+          "historical_inputs": {
+            "data/historical_sp500_midquotes_1m.csv": "1cc2d3c050f1ec88effb9b43081d00158fd835586efc51c0ab26b7836ba861ac",
+            "data/historical_sp500_midquotes_1m.csv.meta.json": "67ff4981deeb2ea8b216ec9600dc5a1e08cea46a531f4f5def00fec0d8a43baa"
+          },
+          "mechanism": "max_volume_v2",
+          "packages": {
+            "PyYAML": "6.0.3",
+            "numpy": "2.4.6",
+            "pandas": "3.0.3",
+            "torch": "2.12.0"
+          },
+          "python": "3.14.4 (v3.14.4:23116f998f6, Apr  7 2026, 09:45:22) [Clang 17.0.0 (clang-1700.6.4.2)]",
+          "schema": 1,
+          "setting": "historical_sp500_midquotes",
+          "symbol": "MSFT",
+          "train_seed": 194713,
+          "validation_role": "diagnostic only; never used to fit or select weights",
+          "validation_seed": 194719
+        },
+        "files": {
+          "aggregation.json": "8ab762c3079437ee5ee1341e48123e0945074a38b23654369e8fbef3b49ff940",
+          "config_resolved.yaml": "4b45c546d8b8ee3653095c53f6ad8f58ab5de02dafbfd4411d244f634ce1087b",
+          "decision_weighted_summary.csv": "5f2577c37d993d5a4305bf92964aadf7e8766df234348cb05798d118331641ec",
+          "error_by_episode.csv": "0704c956be7974677031f3c51c654c37da04396af505564b1f3ac46156b953e0",
+          "forecast_overlay.yaml": "33575d51ab13c35a987760e77b3bc8dd5d3669f6f5fce0eb71f33561ecdec8d2",
+          "forecasts.csv": "083a0cedb67ea2db56d6f7a385d264f475e267b859ed224097faaa98d5c8c240",
+          "protocol.json": "1d5d96c021c6994291a3cad4d95fba70f97a9fb38e9c3863cd328bdc47396860",
+          "summary.csv": "6036d2284fc099184af21e21c11b8fd50c2a31ccd98a8732f84b8e87b04245be"
+        }
+      },
+      "config": {
+        "experiment": {
+          "name": "historical_sp500_midquotes",
+          "setting": "historical_sp500_midquotes",
+          "episodes": 800,
+          "master_seed": 42,
+          "results_root": "results/revision_v20",
+          "artifact_schema_version": 16,
+          "seeds": [
+            42
+          ],
+          "ablation_label": "H_on__shaping_on__auction_on",
+          "auction_enabled": true
+        },
+        "grid": {
+          "tau_op": 120,
+          "tau_cl": 150,
+          "h": 30,
+          "time_unit": "minutes",
+          "T_physical": 150.0,
+          "alpha": 0.01,
+          "S0": 100.0,
+          "I0": 100,
+          "I_max": 100
+        },
+        "clob_flow": {
+          "lambda0": 0.5,
+          "v_m": 2.0,
+          "gamma_m": 2.5,
+          "V": 30,
+          "V_inf": 2.0,
+          "beta_a": 2.0,
+          "beta_b": 5.0,
+          "rho_lob": 0.96,
+          "L_max": 200
+        },
+        "auction_flow": {
+          "p1": 1.0,
+          "p2": 0.0,
+          "p3": 0.3,
+          "p4": 0.05,
+          "D_mu": 0.1,
+          "U1": 1.0,
+          "U2": 20.0,
+          "B_inf": 150,
+          "clearing_mechanism": "max_volume_v2"
+        },
+        "midprice": {
+          "model": "historical",
+          "rough_heston": null,
+          "historical": {
+            "csv_path": "data/historical_sp500_midquotes_1m.csv",
+            "symbols": [
+              "MSFT",
+              "JPM",
+              "PG",
+              "GOOGL",
+              "CAT"
+            ],
+            "normalize_first": 100.0,
+            "n_rows": 121,
+            "date": "2026-08-03..2026-08-28",
+            "path_policy": "split_pool",
+            "timezone": "America/New_York",
+            "missing_data_treatment": "error",
+            "split_id": "sp500_midquotes_sip_2026-08_v1",
+            "train_date_range": [
+              "2026-08-03",
+              "2026-08-14"
+            ],
+            "validation_date_range": [
+              "2026-08-17",
+              "2026-08-21"
+            ],
+            "test_date_range": [
+              "2026-08-24",
+              "2026-08-28"
+            ],
+            "source": "alpaca_market_data_api",
+            "price_type": "quote_midpoint",
+            "quote_feed": "sip",
+            "artifact_normalization": "none",
+            "training_pool": "all_symbols"
+          }
+        },
+        "algo1": {
+          "H0": 100.0,
+          "eta_H": 0.95,
+          "clob_forecast_weights": [],
+          "clob_forecast_mechanism": "nearest_tick_v1"
+        },
+        "reward": {
+          "k_star": 10000,
+          "lambda_inv": 0.01,
+          "q": 0.0,
+          "d": 0.001,
+          "shaping_enabled": false,
+          "clawback_shaping": false,
+          "numerical_guard": false,
+          "numerical_guard_bound": 1000000000.0,
+          "clob_shaping_enabled": false,
+          "auction_shaping_enabled": false,
+          "center_initial_inventory_value": true,
+          "learning_potential": false,
+          "auction_shaping_weight": 0.0001
+        },
+        "rl": {
+          "chi": 1.0,
+          "relative_price_features": true,
+          "n_step": 1,
+          "learning_credit_baseline": false,
+          "learning_clob_inventory_potential": true,
+          "learning_auction_inventory_potential": true,
+          "auction_exposure_features": true,
+          "phase_normalization": true,
+          "auction_inventory_asinh": true,
+          "market_return_control_variate": true,
+          "structured_warmup_episodes": 32,
+          "learning_starts_after_warmup": true,
+          "market_control_reference": "calibration",
+          "learning_rate_half_life_episodes": 90.0,
+          "learning_rate_min_fraction": 0.1,
+          "discount_mode": "undiscounted",
+          "checkpoint_metric": "risk_adjusted_pnl",
+          "normalizer_fit_episodes": 16,
+          "validation_size": 128,
+          "validation_frequency_episodes": 50,
+          "validation_patience_evals": 4,
+          "checkpoint_min_clob_updates": 2000,
+          "checkpoint_min_auction_updates": 2000,
+          "checkpoint_require_initial_improvement": false,
+          "test_size": 100,
+          "test_seed_namespace": 19001,
+          "h_cl_feature_enabled": true
+        },
+        "actions": {
+          "V_max": 30,
+          "L_max": 12,
+          "beta": 0.25,
+          "K_max": 32,
+          "B_inf": 150,
+          "B_max": 10,
+          "auction_anchor": "indicative",
+          "auction_cancel_mode": "enabled"
+        },
+        "features": {
+          "clob": [
+            "time",
+            "inventory",
+            "h_cl",
+            "s_mid",
+            "decision_index",
+            "depth_ask",
+            "depth_bid",
+            "top_ask",
+            "top_bid",
+            "n_mm",
+            "n_buy",
+            "n_sell",
+            "cancel_admissible",
+            "own_slope",
+            "own_weighted_quote",
+            "exogenous_slope",
+            "auction_imbalance",
+            "exogenous_weighted_quote"
+          ],
+          "auction": [
+            "time",
+            "inventory",
+            "h_cl",
+            "s_mid",
+            "decision_index",
+            "depth_ask",
+            "depth_bid",
+            "top_ask",
+            "top_bid",
+            "n_mm",
+            "n_buy",
+            "n_sell",
+            "cancel_admissible",
+            "own_slope",
+            "own_weighted_quote",
+            "exogenous_slope",
+            "auction_imbalance",
+            "exogenous_weighted_quote"
+          ]
+        },
+        "benchmark": {
+          "z": 10.0,
+          "as_n_samples": 5000,
+          "as_gamma": 0.0,
+          "twap_delta_mode": "min"
+        },
+        "algo": {
+          "name": "dqn",
+          "hyperparams": {
+            "buffer_size": 50000,
+            "min_buffer": 5000,
+            "min_buffer_clob": 512,
+            "min_buffer_auction": 512,
+            "batch_size": 128,
+            "lr": 0.00015,
+            "loss": "mse",
+            "grad_clip_norm": 10.0,
+            "hidden_layers": [
+              256,
+              256
+            ],
+            "action_embedding_dim": 32,
+            "layer_norm": true,
+            "weight_decay": 0.0001,
+            "auction_control_exploration_probability": 0.5,
+            "reference_centered_phases": [
+              "auction"
+            ],
+            "safe_auction_initialization": false,
+            "target_update_interval": 1000,
+            "target_soft_tau": 0.005,
+            "double_q": true,
+            "updates_per_env_step": 1,
+            "update_every": 1,
+            "reward_scale": 1.0,
+            "activation": "relu",
+            "device": "cpu",
+            "checkpoint_interval_episodes": 100,
+            "epsilon_start": 1.0,
+            "epsilon_end": 0.05,
+            "epsilon_decay_episodes": 90.0,
+            "epsilon_warmup_episodes": 5,
+            "epsilon_auction_scale": 1.0,
+            "safe_auction_noop_margin": 0.02,
+            "auction_learning_start_episode": 0
+          },
+          "backend": "native"
+        }
+      },
+      "overlay": {
+        "algo1": {
+          "clob_forecast_mechanism": "max_volume_v2",
+          "clob_forecast_weights": [
+            0.1924916179076673,
+            0.312255200549861,
+            0.3838030839756138,
+            0.5230075659037197
+          ]
+        }
+      },
+      "recorded_episode_seeds": {
+        "train": [
+          327117537,
+          55431535,
+          1442232825,
+          1652995168,
+          1189644057,
+          626261556,
+          1346500412,
+          1457054674,
+          2123621223,
+          122433512,
+          995407632,
+          2051186991,
+          1617760289,
+          11045004,
+          790783992,
+          1381326272,
+          1122431120,
+          1763995550,
+          1901097990,
+          1224614996,
+          639711205,
+          213364143,
+          680618713,
+          1250500816,
+          875673396,
+          1485155238,
+          2116788191,
+          1122434999,
+          26619054,
+          272916402,
+          769576532,
+          932901266,
+          1560771192,
+          1721238787,
+          1768220195,
+          674284676,
+          1979313888,
+          1468734093,
+          662702147,
+          2082485981,
+          1612222898,
+          1312806125,
+          1899112664,
+          1822222350,
+          1802217685,
+          564655921,
+          306086256,
+          950589634,
+          1251295371,
+          2068694944,
+          459116919,
+          503105092,
+          1636052290,
+          620486308,
+          541647100,
+          186489063,
+          2053438255,
+          1818316818,
+          1249753079,
+          275303007,
+          1466464853,
+          652246277,
+          2082610182,
+          1403240505,
+          456451947,
+          1566635004,
+          1429294423,
+          40613066,
+          507114627,
+          837819233,
+          698915928,
+          309581585,
+          1529952489,
+          794791343,
+          1334174991,
+          569800522,
+          1034206579,
+          687939527,
+          328362735,
+          2042313980,
+          1073419247,
+          2038490892,
+          656318179,
+          580616784,
+          317808625,
+          625402506,
+          1341929437,
+          2029023029,
+          1455696267,
+          568328224,
+          363237270,
+          985901996,
+          1291030429,
+          1527052719,
+          906053015,
+          300917339,
+          487128402,
+          1674667319,
+          869662105,
+          221642719,
+          311681681,
+          564638703,
+          1779559227,
+          2049489848,
+          433265262,
+          1820802232,
+          539935269,
+          116718402,
+          1429859153,
+          483927085,
+          869212299,
+          1019176814,
+          1884006649,
+          1986275640,
+          68587801,
+          122318139,
+          357748318,
+          484940347,
+          2079452416,
+          27330308,
+          1766109185,
+          1887412456,
+          546830130,
+          804451834,
+          1831038738,
+          1765132379,
+          376252093,
+          1483304513,
+          1861416998,
+          1470406794,
+          1100663837,
+          1523612317,
+          742486638,
+          1857156657,
+          315422270,
+          1739038140,
+          498145090,
+          636580412,
+          55636470,
+          861494684,
+          604427374,
+          708741108,
+          1691075969,
+          1152762862,
+          1709390430,
+          564985026,
+          153644218,
+          1589467751,
+          780822360,
+          1301204297,
+          1146460500,
+          1882006620,
+          2099038462,
+          1322538356,
+          594562960,
+          1262759585,
+          1532696033,
+          2063075285,
+          640585110,
+          1466152568,
+          1409469014,
+          1898590282,
+          1188831286,
+          1893305097,
+          722493457,
+          969971079,
+          1886181327,
+          1932965182,
+          1741966583,
+          1161855370,
+          2019919288,
+          927394821,
+          934769153,
+          298258758,
+          1886601120,
+          2042604523,
+          474906170,
+          901218559,
+          1656240976,
+          246257098,
+          343114446,
+          1396919685,
+          556370266,
+          963064189,
+          1616506006,
+          927747221,
+          1155834619,
+          1979415338,
+          448617449,
+          885913126,
+          1093530032,
+          1337743143,
+          1534835625,
+          707007607,
+          554291913,
+          1791192242,
+          228357781,
+          524022092,
+          1499305395,
+          364822182,
+          1650223698,
+          514229024,
+          1230537718,
+          842554622,
+          1921255747,
+          331685458,
+          1083639549,
+          2124946133,
+          1648184814,
+          1511954804,
+          1183756738,
+          1175741769,
+          1835192922,
+          1910393863,
+          178241664,
+          351483662,
+          1831888821,
+          2074993138,
+          93603465,
+          948167982,
+          1182067428,
+          363651755,
+          1914614878,
+          288648709,
+          637242012,
+          389467522,
+          2094241169,
+          205343557,
+          1968427685,
+          220050077,
+          636933597,
+          1393973152,
+          1693825034,
+          1089209112,
+          2116796402,
+          1014433665,
+          534427969,
+          1069046789,
+          1969465207,
+          2024198866,
+          1462249146,
+          1415159622,
+          691382196,
+          1578424913,
+          2039424543,
+          1171342004,
+          1951123730,
+          2033875218,
+          290417326,
+          708840787,
+          358201944,
+          406502505,
+          664940751,
+          2130664162,
+          1696485888,
+          1535490371
+        ],
+        "validation": [
+          1269404433,
+          1596028284,
+          473322605,
+          1162428326,
+          1094437191,
+          326648650,
+          740811570,
+          1131204704,
+          297853959,
+          1510254442,
+          1016383215,
+          624696832,
+          1305160105,
+          776975403,
+          865810657,
+          1510061330,
+          2081075528,
+          313310332,
+          974031673,
+          1762142531,
+          242186231,
+          1674432211,
+          1785337808,
+          1410661996,
+          971636238,
+          1485466312,
+          1343740293,
+          1322576234,
+          471567753,
+          183700029,
+          1657920847,
+          1150892866,
+          2005031654,
+          1225850114,
+          351232802,
+          1214457390,
+          1472644315,
+          771318188,
+          823754955,
+          870383104,
+          2096820662,
+          9449841,
+          1801831050,
+          301399482,
+          759785233,
+          1830723062,
+          1469408235,
+          704603389,
+          1952643262,
+          794577846,
+          193342035,
+          146359679,
+          821171330,
+          133928187,
+          13275369,
+          2079353100,
+          907254909,
+          197321080,
+          335558306,
+          1057662846,
+          2104314270,
+          1204269034,
+          138974985,
+          1823177292,
+          248342249,
+          1813477886,
+          1156614519,
+          1005147427,
+          3193193,
+          1978794726,
+          1777761364,
+          620691902,
+          1341105533,
+          1109096363,
+          1717535361,
+          794073591,
+          298251584,
+          984780479,
+          1228756513,
+          685387472,
+          1337558542,
+          415942765,
+          1599227771,
+          1972530612,
+          1849939993,
+          1039706909,
+          537601966,
+          96331007,
+          1895205528,
+          580883424,
+          1332563772,
+          1087754697,
+          1869610962,
+          539185784,
+          1120227807,
+          442367479,
+          426108357,
+          2098659821,
+          529339977,
+          1086992853,
+          1602646699,
+          841667687,
+          209720781,
+          474113885,
+          613875500,
+          1147910077,
+          1678399419,
+          513878524,
+          793207040,
+          777987746,
+          764206458,
+          943701607,
+          722359962,
+          2094826518,
+          808489258,
+          312387318,
+          2103779469,
+          287807613,
+          564011714,
+          1695250885,
+          181987678,
+          58992243,
+          595133519,
+          1195394147,
+          665095129,
+          1797743801,
+          1488415139,
+          1050627162,
+          1051700118,
+          1371791598,
+          1663414841,
+          435037409,
+          991465109,
+          1797537236,
+          2104326418,
+          2075796996,
+          1328970147,
+          1911898339,
+          2111971248,
+          554591796,
+          568239065,
+          1550410805,
+          1177111272,
+          1161504314,
+          1949536903,
+          379959731,
+          13214577,
+          197910225,
+          1774301148,
+          1140142418,
+          1188404923,
+          1984865680,
+          1995738616,
+          754265943,
+          1992143549,
+          1370270956,
+          1259084304,
+          1745865270,
+          2079771064,
+          885933949,
+          385895761,
+          827861659,
+          548236977,
+          1309271079,
+          37478430,
+          441433213,
+          1022737924,
+          1464050829,
+          2121903630,
+          354603929,
+          1605384002,
+          1689596328,
+          536206826,
+          2000415805,
+          1582089763,
+          1196267729,
+          1130148255,
+          1272701588,
+          1981553474,
+          1983728094,
+          1502742717,
+          1304369653,
+          729296149,
+          477690138,
+          531736250,
+          1820187090,
+          682597342,
+          1540032190,
+          1190698902,
+          1124252579,
+          2103113671,
+          279674948,
+          45781928,
+          587941658,
+          1842297624,
+          2228926,
+          1883406335,
+          904954969,
+          1056748058,
+          1520253920,
+          843552221,
+          1440450205,
+          215315208,
+          1895938214,
+          599578712,
+          1306413909,
+          17068663,
+          999246718,
+          1689815425,
+          2090091672,
+          1728211339,
+          478057347,
+          1622350371,
+          463038873,
+          1490466256,
+          151930744,
+          485939299,
+          60172395,
+          495405669,
+          444314474,
+          1011144553,
+          1277497892,
+          1979053181,
+          209186862,
+          523619272,
+          582556051,
+          1362716744,
+          271524066,
+          1400891564,
+          1622755107,
+          157406732,
+          691383726,
+          479989,
+          1431612896,
+          854796158,
+          324342687,
+          699942621,
+          1065008657,
+          1662895023,
+          620122309,
+          1367461309,
+          786230430,
+          1141851658,
+          280409021,
+          1426162069,
+          11527362,
+          1362777692,
+          944411849,
+          2092324426,
+          1569205437,
+          794568317,
+          1219731835,
+          196954469,
+          88960600,
+          980462067,
+          896013492
+        ]
+      },
+      "episode_seed_origin": "extracted from existing forecasts.csv (hash in original_files), not inferred from defaults",
+      "observed_overlap_with_run_environment_seeds": [],
+      "recovered_episode_dates": {
+        "train": [
+          [
+            327117537,
+            "CAT",
+            "2026-08-06"
+          ],
+          [
+            55431535,
+            "PG",
+            "2026-08-14"
+          ],
+          [
+            1442232825,
+            "PG",
+            "2026-08-13"
+          ],
+          [
+            1652995168,
+            "GOOGL",
+            "2026-08-03"
+          ],
+          [
+            1189644057,
+            "GOOGL",
+            "2026-08-13"
+          ],
+          [
+            626261556,
+            "MSFT",
+            "2026-08-05"
+          ],
+          [
+            1346500412,
+            "JPM",
+            "2026-08-14"
+          ],
+          [
+            1457054674,
+            "PG",
+            "2026-08-10"
+          ],
+          [
+            2123621223,
+            "MSFT",
+            "2026-08-10"
+          ],
+          [
+            122433512,
+            "CAT",
+            "2026-08-10"
+          ],
+          [
+            995407632,
+            "JPM",
+            "2026-08-10"
+          ],
+          [
+            2051186991,
+            "GOOGL",
+            "2026-08-07"
+          ],
+          [
+            1617760289,
+            "GOOGL",
+            "2026-08-05"
+          ],
+          [
+            11045004,
+            "CAT",
+            "2026-08-04"
+          ],
+          [
+            790783992,
+            "GOOGL",
+            "2026-08-07"
+          ],
+          [
+            1381326272,
+            "GOOGL",
+            "2026-08-14"
+          ],
+          [
+            1122431120,
+            "JPM",
+            "2026-08-03"
+          ],
+          [
+            1763995550,
+            "GOOGL",
+            "2026-08-06"
+          ],
+          [
+            1901097990,
+            "GOOGL",
+            "2026-08-05"
+          ],
+          [
+            1224614996,
+            "JPM",
+            "2026-08-04"
+          ],
+          [
+            639711205,
+            "PG",
+            "2026-08-11"
+          ],
+          [
+            213364143,
+            "JPM",
+            "2026-08-14"
+          ],
+          [
+            680618713,
+            "MSFT",
+            "2026-08-04"
+          ],
+          [
+            1250500816,
+            "GOOGL",
+            "2026-08-03"
+          ],
+          [
+            875673396,
+            "MSFT",
+            "2026-08-06"
+          ],
+          [
+            1485155238,
+            "PG",
+            "2026-08-04"
+          ],
+          [
+            2116788191,
+            "CAT",
+            "2026-08-11"
+          ],
+          [
+            1122434999,
+            "MSFT",
+            "2026-08-05"
+          ],
+          [
+            26619054,
+            "MSFT",
+            "2026-08-12"
+          ],
+          [
+            272916402,
+            "PG",
+            "2026-08-07"
+          ],
+          [
+            769576532,
+            "CAT",
+            "2026-08-11"
+          ],
+          [
+            932901266,
+            "GOOGL",
+            "2026-08-04"
+          ],
+          [
+            1560771192,
+            "GOOGL",
+            "2026-08-12"
+          ],
+          [
+            1721238787,
+            "MSFT",
+            "2026-08-14"
+          ],
+          [
+            1768220195,
+            "JPM",
+            "2026-08-14"
+          ],
+          [
+            674284676,
+            "CAT",
+            "2026-08-05"
+          ],
+          [
+            1979313888,
+            "MSFT",
+            "2026-08-04"
+          ],
+          [
+            1468734093,
+            "JPM",
+            "2026-08-03"
+          ],
+          [
+            662702147,
+            "MSFT",
+            "2026-08-06"
+          ],
+          [
+            2082485981,
+            "JPM",
+            "2026-08-04"
+          ],
+          [
+            1612222898,
+            "GOOGL",
+            "2026-08-13"
+          ],
+          [
+            1312806125,
+            "PG",
+            "2026-08-12"
+          ],
+          [
+            1899112664,
+            "GOOGL",
+            "2026-08-13"
+          ],
+          [
+            1822222350,
+            "GOOGL",
+            "2026-08-10"
+          ],
+          [
+            1802217685,
+            "GOOGL",
+            "2026-08-06"
+          ],
+          [
+            564655921,
+            "GOOGL",
+            "2026-08-11"
+          ],
+          [
+            306086256,
+            "MSFT",
+            "2026-08-06"
+          ],
+          [
+            950589634,
+            "PG",
+            "2026-08-06"
+          ],
+          [
+            1251295371,
+            "MSFT",
+            "2026-08-12"
+          ],
+          [
+            2068694944,
+            "GOOGL",
+            "2026-08-04"
+          ],
+          [
+            459116919,
+            "PG",
+            "2026-08-07"
+          ],
+          [
+            503105092,
+            "PG",
+            "2026-08-05"
+          ],
+          [
+            1636052290,
+            "CAT",
+            "2026-08-13"
+          ],
+          [
+            620486308,
+            "MSFT",
+            "2026-08-06"
+          ],
+          [
+            541647100,
+            "GOOGL",
+            "2026-08-03"
+          ],
+          [
+            186489063,
+            "GOOGL",
+            "2026-08-03"
+          ],
+          [
+            2053438255,
+            "PG",
+            "2026-08-14"
+          ],
+          [
+            1818316818,
+            "JPM",
+            "2026-08-10"
+          ],
+          [
+            1249753079,
+            "CAT",
+            "2026-08-07"
+          ],
+          [
+            275303007,
+            "CAT",
+            "2026-08-06"
+          ],
+          [
+            1466464853,
+            "JPM",
+            "2026-08-12"
+          ],
+          [
+            652246277,
+            "JPM",
+            "2026-08-07"
+          ],
+          [
+            2082610182,
+            "PG",
+            "2026-08-07"
+          ],
+          [
+            1403240505,
+            "PG",
+            "2026-08-10"
+          ],
+          [
+            456451947,
+            "CAT",
+            "2026-08-10"
+          ],
+          [
+            1566635004,
+            "MSFT",
+            "2026-08-11"
+          ],
+          [
+            1429294423,
+            "GOOGL",
+            "2026-08-04"
+          ],
+          [
+            40613066,
+            "GOOGL",
+            "2026-08-03"
+          ],
+          [
+            507114627,
+            "GOOGL",
+            "2026-08-12"
+          ],
+          [
+            837819233,
+            "CAT",
+            "2026-08-12"
+          ],
+          [
+            698915928,
+            "MSFT",
+            "2026-08-03"
+          ],
+          [
+            309581585,
+            "JPM",
+            "2026-08-07"
+          ],
+          [
+            1529952489,
+            "PG",
+            "2026-08-06"
+          ],
+          [
+            794791343,
+            "MSFT",
+            "2026-08-03"
+          ],
+          [
+            1334174991,
+            "PG",
+            "2026-08-13"
+          ],
+          [
+            569800522,
+            "PG",
+            "2026-08-04"
+          ],
+          [
+            1034206579,
+            "GOOGL",
+            "2026-08-03"
+          ],
+          [
+            687939527,
+            "PG",
+            "2026-08-14"
+          ],
+          [
+            328362735,
+            "GOOGL",
+            "2026-08-07"
+          ],
+          [
+            2042313980,
+            "JPM",
+            "2026-08-04"
+          ],
+          [
+            1073419247,
+            "GOOGL",
+            "2026-08-12"
+          ],
+          [
+            2038490892,
+            "MSFT",
+            "2026-08-05"
+          ],
+          [
+            656318179,
+            "CAT",
+            "2026-08-14"
+          ],
+          [
+            580616784,
+            "MSFT",
+            "2026-08-03"
+          ],
+          [
+            317808625,
+            "CAT",
+            "2026-08-14"
+          ],
+          [
+            625402506,
+            "PG",
+            "2026-08-05"
+          ],
+          [
+            1341929437,
+            "PG",
+            "2026-08-04"
+          ],
+          [
+            2029023029,
+            "GOOGL",
+            "2026-08-04"
+          ],
+          [
+            1455696267,
+            "MSFT",
+            "2026-08-06"
+          ],
+          [
+            568328224,
+            "MSFT",
+            "2026-08-14"
+          ],
+          [
+            363237270,
+            "GOOGL",
+            "2026-08-14"
+          ],
+          [
+            985901996,
+            "CAT",
+            "2026-08-14"
+          ],
+          [
+            1291030429,
+            "MSFT",
+            "2026-08-07"
+          ],
+          [
+            1527052719,
+            "PG",
+            "2026-08-10"
+          ],
+          [
+            906053015,
+            "PG",
+            "2026-08-06"
+          ],
+          [
+            300917339,
+            "MSFT",
+            "2026-08-11"
+          ],
+          [
+            487128402,
+            "MSFT",
+            "2026-08-07"
+          ],
+          [
+            1674667319,
+            "PG",
+            "2026-08-11"
+          ],
+          [
+            869662105,
+            "JPM",
+            "2026-08-06"
+          ],
+          [
+            221642719,
+            "PG",
+            "2026-08-10"
+          ],
+          [
+            311681681,
+            "PG",
+            "2026-08-14"
+          ],
+          [
+            564638703,
+            "CAT",
+            "2026-08-13"
+          ],
+          [
+            1779559227,
+            "GOOGL",
+            "2026-08-06"
+          ],
+          [
+            2049489848,
+            "MSFT",
+            "2026-08-03"
+          ],
+          [
+            433265262,
+            "CAT",
+            "2026-08-03"
+          ],
+          [
+            1820802232,
+            "JPM",
+            "2026-08-03"
+          ],
+          [
+            539935269,
+            "JPM",
+            "2026-08-07"
+          ],
+          [
+            116718402,
+            "JPM",
+            "2026-08-04"
+          ],
+          [
+            1429859153,
+            "PG",
+            "2026-08-12"
+          ],
+          [
+            483927085,
+            "PG",
+            "2026-08-07"
+          ],
+          [
+            869212299,
+            "PG",
+            "2026-08-05"
+          ],
+          [
+            1019176814,
+            "MSFT",
+            "2026-08-06"
+          ],
+          [
+            1884006649,
+            "PG",
+            "2026-08-13"
+          ],
+          [
+            1986275640,
+            "JPM",
+            "2026-08-11"
+          ],
+          [
+            68587801,
+            "PG",
+            "2026-08-05"
+          ],
+          [
+            122318139,
+            "GOOGL",
+            "2026-08-14"
+          ],
+          [
+            357748318,
+            "CAT",
+            "2026-08-10"
+          ],
+          [
+            484940347,
+            "GOOGL",
+            "2026-08-10"
+          ],
+          [
+            2079452416,
+            "JPM",
+            "2026-08-07"
+          ],
+          [
+            27330308,
+            "PG",
+            "2026-08-11"
+          ],
+          [
+            1766109185,
+            "CAT",
+            "2026-08-14"
+          ],
+          [
+            1887412456,
+            "JPM",
+            "2026-08-12"
+          ],
+          [
+            546830130,
+            "MSFT",
+            "2026-08-06"
+          ],
+          [
+            804451834,
+            "MSFT",
+            "2026-08-13"
+          ],
+          [
+            1831038738,
+            "PG",
+            "2026-08-03"
+          ],
+          [
+            1765132379,
+            "CAT",
+            "2026-08-05"
+          ],
+          [
+            376252093,
+            "MSFT",
+            "2026-08-07"
+          ],
+          [
+            1483304513,
+            "JPM",
+            "2026-08-03"
+          ],
+          [
+            1861416998,
+            "JPM",
+            "2026-08-11"
+          ],
+          [
+            1470406794,
+            "GOOGL",
+            "2026-08-06"
+          ],
+          [
+            1100663837,
+            "CAT",
+            "2026-08-06"
+          ],
+          [
+            1523612317,
+            "MSFT",
+            "2026-08-06"
+          ],
+          [
+            742486638,
+            "CAT",
+            "2026-08-14"
+          ],
+          [
+            1857156657,
+            "MSFT",
+            "2026-08-14"
+          ],
+          [
+            315422270,
+            "JPM",
+            "2026-08-06"
+          ],
+          [
+            1739038140,
+            "GOOGL",
+            "2026-08-06"
+          ],
+          [
+            498145090,
+            "CAT",
+            "2026-08-13"
+          ],
+          [
+            636580412,
+            "CAT",
+            "2026-08-03"
+          ],
+          [
+            55636470,
+            "PG",
+            "2026-08-11"
+          ],
+          [
+            861494684,
+            "GOOGL",
+            "2026-08-04"
+          ],
+          [
+            604427374,
+            "MSFT",
+            "2026-08-07"
+          ],
+          [
+            708741108,
+            "JPM",
+            "2026-08-10"
+          ],
+          [
+            1691075969,
+            "PG",
+            "2026-08-10"
+          ],
+          [
+            1152762862,
+            "MSFT",
+            "2026-08-14"
+          ],
+          [
+            1709390430,
+            "JPM",
+            "2026-08-13"
+          ],
+          [
+            564985026,
+            "JPM",
+            "2026-08-03"
+          ],
+          [
+            153644218,
+            "GOOGL",
+            "2026-08-06"
+          ],
+          [
+            1589467751,
+            "CAT",
+            "2026-08-11"
+          ],
+          [
+            780822360,
+            "JPM",
+            "2026-08-14"
+          ],
+          [
+            1301204297,
+            "MSFT",
+            "2026-08-14"
+          ],
+          [
+            1146460500,
+            "MSFT",
+            "2026-08-07"
+          ],
+          [
+            1882006620,
+            "PG",
+            "2026-08-10"
+          ],
+          [
+            2099038462,
+            "GOOGL",
+            "2026-08-12"
+          ],
+          [
+            1322538356,
+            "JPM",
+            "2026-08-04"
+          ],
+          [
+            594562960,
+            "GOOGL",
+            "2026-08-13"
+          ],
+          [
+            1262759585,
+            "JPM",
+            "2026-08-11"
+          ],
+          [
+            1532696033,
+            "GOOGL",
+            "2026-08-14"
+          ],
+          [
+            2063075285,
+            "PG",
+            "2026-08-14"
+          ],
+          [
+            640585110,
+            "JPM",
+            "2026-08-12"
+          ],
+          [
+            1466152568,
+            "GOOGL",
+            "2026-08-05"
+          ],
+          [
+            1409469014,
+            "JPM",
+            "2026-08-11"
+          ],
+          [
+            1898590282,
+            "GOOGL",
+            "2026-08-13"
+          ],
+          [
+            1188831286,
+            "GOOGL",
+            "2026-08-10"
+          ],
+          [
+            1893305097,
+            "CAT",
+            "2026-08-10"
+          ],
+          [
+            722493457,
+            "JPM",
+            "2026-08-10"
+          ],
+          [
+            969971079,
+            "JPM",
+            "2026-08-04"
+          ],
+          [
+            1886181327,
+            "JPM",
+            "2026-08-13"
+          ],
+          [
+            1932965182,
+            "MSFT",
+            "2026-08-06"
+          ],
+          [
+            1741966583,
+            "PG",
+            "2026-08-14"
+          ],
+          [
+            1161855370,
+            "MSFT",
+            "2026-08-05"
+          ],
+          [
+            2019919288,
+            "GOOGL",
+            "2026-08-07"
+          ],
+          [
+            927394821,
+            "GOOGL",
+            "2026-08-12"
+          ],
+          [
+            934769153,
+            "PG",
+            "2026-08-06"
+          ],
+          [
+            298258758,
+            "PG",
+            "2026-08-04"
+          ],
+          [
+            1886601120,
+            "PG",
+            "2026-08-14"
+          ],
+          [
+            2042604523,
+            "JPM",
+            "2026-08-03"
+          ],
+          [
+            474906170,
+            "CAT",
+            "2026-08-10"
+          ],
+          [
+            901218559,
+            "CAT",
+            "2026-08-13"
+          ],
+          [
+            1656240976,
+            "PG",
+            "2026-08-12"
+          ],
+          [
+            246257098,
+            "MSFT",
+            "2026-08-14"
+          ],
+          [
+            343114446,
+            "PG",
+            "2026-08-13"
+          ],
+          [
+            1396919685,
+            "JPM",
+            "2026-08-11"
+          ],
+          [
+            556370266,
+            "JPM",
+            "2026-08-06"
+          ],
+          [
+            963064189,
+            "JPM",
+            "2026-08-04"
+          ],
+          [
+            1616506006,
+            "MSFT",
+            "2026-08-05"
+          ],
+          [
+            927747221,
+            "CAT",
+            "2026-08-12"
+          ],
+          [
+            1155834619,
+            "JPM",
+            "2026-08-05"
+          ],
+          [
+            1979415338,
+            "CAT",
+            "2026-08-05"
+          ],
+          [
+            448617449,
+            "GOOGL",
+            "2026-08-13"
+          ],
+          [
+            885913126,
+            "JPM",
+            "2026-08-07"
+          ],
+          [
+            1093530032,
+            "MSFT",
+            "2026-08-06"
+          ],
+          [
+            1337743143,
+            "GOOGL",
+            "2026-08-12"
+          ],
+          [
+            1534835625,
+            "MSFT",
+            "2026-08-03"
+          ],
+          [
+            707007607,
+            "GOOGL",
+            "2026-08-03"
+          ],
+          [
+            554291913,
+            "CAT",
+            "2026-08-11"
+          ],
+          [
+            1791192242,
+            "MSFT",
+            "2026-08-14"
+          ],
+          [
+            228357781,
+            "JPM",
+            "2026-08-03"
+          ],
+          [
+            524022092,
+            "JPM",
+            "2026-08-11"
+          ],
+          [
+            1499305395,
+            "MSFT",
+            "2026-08-03"
+          ],
+          [
+            364822182,
+            "PG",
+            "2026-08-11"
+          ],
+          [
+            1650223698,
+            "MSFT",
+            "2026-08-10"
+          ],
+          [
+            514229024,
+            "GOOGL",
+            "2026-08-07"
+          ],
+          [
+            1230537718,
+            "MSFT",
+            "2026-08-13"
+          ],
+          [
+            842554622,
+            "PG",
+            "2026-08-13"
+          ],
+          [
+            1921255747,
+            "CAT",
+            "2026-08-06"
+          ],
+          [
+            331685458,
+            "PG",
+            "2026-08-05"
+          ],
+          [
+            1083639549,
+            "CAT",
+            "2026-08-07"
+          ],
+          [
+            2124946133,
+            "CAT",
+            "2026-08-04"
+          ],
+          [
+            1648184814,
+            "PG",
+            "2026-08-14"
+          ],
+          [
+            1511954804,
+            "GOOGL",
+            "2026-08-04"
+          ],
+          [
+            1183756738,
+            "CAT",
+            "2026-08-07"
+          ],
+          [
+            1175741769,
+            "CAT",
+            "2026-08-05"
+          ],
+          [
+            1835192922,
+            "GOOGL",
+            "2026-08-04"
+          ],
+          [
+            1910393863,
+            "CAT",
+            "2026-08-11"
+          ],
+          [
+            178241664,
+            "JPM",
+            "2026-08-07"
+          ],
+          [
+            351483662,
+            "GOOGL",
+            "2026-08-07"
+          ],
+          [
+            1831888821,
+            "MSFT",
+            "2026-08-13"
+          ],
+          [
+            2074993138,
+            "MSFT",
+            "2026-08-03"
+          ],
+          [
+            93603465,
+            "MSFT",
+            "2026-08-03"
+          ],
+          [
+            948167982,
+            "GOOGL",
+            "2026-08-05"
+          ],
+          [
+            1182067428,
+            "GOOGL",
+            "2026-08-07"
+          ],
+          [
+            363651755,
+            "MSFT",
+            "2026-08-10"
+          ],
+          [
+            1914614878,
+            "CAT",
+            "2026-08-11"
+          ],
+          [
+            288648709,
+            "GOOGL",
+            "2026-08-06"
+          ],
+          [
+            637242012,
+            "GOOGL",
+            "2026-08-05"
+          ],
+          [
+            389467522,
+            "PG",
+            "2026-08-10"
+          ],
+          [
+            2094241169,
+            "PG",
+            "2026-08-05"
+          ],
+          [
+            205343557,
+            "MSFT",
+            "2026-08-14"
+          ],
+          [
+            1968427685,
+            "PG",
+            "2026-08-12"
+          ],
+          [
+            220050077,
+            "JPM",
+            "2026-08-13"
+          ],
+          [
+            636933597,
+            "GOOGL",
+            "2026-08-10"
+          ],
+          [
+            1393973152,
+            "MSFT",
+            "2026-08-11"
+          ],
+          [
+            1693825034,
+            "GOOGL",
+            "2026-08-10"
+          ],
+          [
+            1089209112,
+            "GOOGL",
+            "2026-08-14"
+          ],
+          [
+            2116796402,
+            "MSFT",
+            "2026-08-04"
+          ],
+          [
+            1014433665,
+            "MSFT",
+            "2026-08-07"
+          ],
+          [
+            534427969,
+            "GOOGL",
+            "2026-08-11"
+          ],
+          [
+            1069046789,
+            "CAT",
+            "2026-08-10"
+          ],
+          [
+            1969465207,
+            "GOOGL",
+            "2026-08-03"
+          ],
+          [
+            2024198866,
+            "JPM",
+            "2026-08-05"
+          ],
+          [
+            1462249146,
+            "JPM",
+            "2026-08-04"
+          ],
+          [
+            1415159622,
+            "MSFT",
+            "2026-08-07"
+          ],
+          [
+            691382196,
+            "GOOGL",
+            "2026-08-13"
+          ],
+          [
+            1578424913,
+            "CAT",
+            "2026-08-12"
+          ],
+          [
+            2039424543,
+            "PG",
+            "2026-08-13"
+          ],
+          [
+            1171342004,
+            "CAT",
+            "2026-08-12"
+          ],
+          [
+            1951123730,
+            "MSFT",
+            "2026-08-04"
+          ],
+          [
+            2033875218,
+            "JPM",
+            "2026-08-14"
+          ],
+          [
+            290417326,
+            "PG",
+            "2026-08-03"
+          ],
+          [
+            708840787,
+            "JPM",
+            "2026-08-05"
+          ],
+          [
+            358201944,
+            "CAT",
+            "2026-08-07"
+          ],
+          [
+            406502505,
+            "JPM",
+            "2026-08-04"
+          ],
+          [
+            664940751,
+            "MSFT",
+            "2026-08-14"
+          ],
+          [
+            2130664162,
+            "GOOGL",
+            "2026-08-03"
+          ],
+          [
+            1696485888,
+            "GOOGL",
+            "2026-08-10"
+          ],
+          [
+            1535490371,
+            "GOOGL",
+            "2026-08-07"
+          ]
+        ],
+        "validation": [
+          [
+            1269404433,
+            "MSFT",
+            "2026-08-17"
+          ],
+          [
+            1596028284,
+            "MSFT",
+            "2026-08-18"
+          ],
+          [
+            473322605,
+            "MSFT",
+            "2026-08-20"
+          ],
+          [
+            1162428326,
+            "MSFT",
+            "2026-08-21"
+          ],
+          [
+            1094437191,
+            "MSFT",
+            "2026-08-17"
+          ],
+          [
+            326648650,
+            "MSFT",
+            "2026-08-21"
+          ],
+          [
+            740811570,
+            "MSFT",
+            "2026-08-20"
+          ],
+          [
+            1131204704,
+            "MSFT",
+            "2026-08-20"
+          ],
+          [
+            297853959,
+            "MSFT",
+            "2026-08-18"
+          ],
+          [
+            1510254442,
+            "MSFT",
+            "2026-08-17"
+          ],
+          [
+            1016383215,
+            "MSFT",
+            "2026-08-17"
+          ],
+          [
+            624696832,
+            "MSFT",
+            "2026-08-18"
+          ],
+          [
+            1305160105,
+            "MSFT",
+            "2026-08-19"
+          ],
+          [
+            776975403,
+            "MSFT",
+            "2026-08-20"
+          ],
+          [
+            865810657,
+            "MSFT",
+            "2026-08-17"
+          ],
+          [
+            1510061330,
+            "MSFT",
+            "2026-08-17"
+          ],
+          [
+            2081075528,
+            "MSFT",
+            "2026-08-20"
+          ],
+          [
+            313310332,
+            "MSFT",
+            "2026-08-18"
+          ],
+          [
+            974031673,
+            "MSFT",
+            "2026-08-21"
+          ],
+          [
+            1762142531,
+            "MSFT",
+            "2026-08-18"
+          ],
+          [
+            242186231,
+            "MSFT",
+            "2026-08-17"
+          ],
+          [
+            1674432211,
+            "MSFT",
+            "2026-08-19"
+          ],
+          [
+            1785337808,
+            "MSFT",
+            "2026-08-18"
+          ],
+          [
+            1410661996,
+            "MSFT",
+            "2026-08-17"
+          ],
+          [
+            971636238,
+            "MSFT",
+            "2026-08-18"
+          ],
+          [
+            1485466312,
+            "MSFT",
+            "2026-08-17"
+          ],
+          [
+            1343740293,
+            "MSFT",
+            "2026-08-17"
+          ],
+          [
+            1322576234,
+            "MSFT",
+            "2026-08-17"
+          ],
+          [
+            471567753,
+            "MSFT",
+            "2026-08-20"
+          ],
+          [
+            183700029,
+            "MSFT",
+            "2026-08-21"
+          ],
+          [
+            1657920847,
+            "MSFT",
+            "2026-08-19"
+          ],
+          [
+            1150892866,
+            "MSFT",
+            "2026-08-17"
+          ],
+          [
+            2005031654,
+            "MSFT",
+            "2026-08-19"
+          ],
+          [
+            1225850114,
+            "MSFT",
+            "2026-08-19"
+          ],
+          [
+            351232802,
+            "MSFT",
+            "2026-08-19"
+          ],
+          [
+            1214457390,
+            "MSFT",
+            "2026-08-18"
+          ],
+          [
+            1472644315,
+            "MSFT",
+            "2026-08-21"
+          ],
+          [
+            771318188,
+            "MSFT",
+            "2026-08-21"
+          ],
+          [
+            823754955,
+            "MSFT",
+            "2026-08-19"
+          ],
+          [
+            870383104,
+            "MSFT",
+            "2026-08-20"
+          ],
+          [
+            2096820662,
+            "MSFT",
+            "2026-08-17"
+          ],
+          [
+            9449841,
+            "MSFT",
+            "2026-08-17"
+          ],
+          [
+            1801831050,
+            "MSFT",
+            "2026-08-19"
+          ],
+          [
+            301399482,
+            "MSFT",
+            "2026-08-19"
+          ],
+          [
+            759785233,
+            "MSFT",
+            "2026-08-18"
+          ],
+          [
+            1830723062,
+            "MSFT",
+            "2026-08-17"
+          ],
+          [
+            1469408235,
+            "MSFT",
+            "2026-08-17"
+          ],
+          [
+            704603389,
+            "MSFT",
+            "2026-08-17"
+          ],
+          [
+            1952643262,
+            "MSFT",
+            "2026-08-18"
+          ],
+          [
+            794577846,
+            "MSFT",
+            "2026-08-17"
+          ],
+          [
+            193342035,
+            "MSFT",
+            "2026-08-21"
+          ],
+          [
+            146359679,
+            "MSFT",
+            "2026-08-19"
+          ],
+          [
+            821171330,
+            "MSFT",
+            "2026-08-20"
+          ],
+          [
+            133928187,
+            "MSFT",
+            "2026-08-17"
+          ],
+          [
+            13275369,
+            "MSFT",
+            "2026-08-21"
+          ],
+          [
+            2079353100,
+            "MSFT",
+            "2026-08-18"
+          ],
+          [
+            907254909,
+            "MSFT",
+            "2026-08-17"
+          ],
+          [
+            197321080,
+            "MSFT",
+            "2026-08-20"
+          ],
+          [
+            335558306,
+            "MSFT",
+            "2026-08-20"
+          ],
+          [
+            1057662846,
+            "MSFT",
+            "2026-08-19"
+          ],
+          [
+            2104314270,
+            "MSFT",
+            "2026-08-19"
+          ],
+          [
+            1204269034,
+            "MSFT",
+            "2026-08-21"
+          ],
+          [
+            138974985,
+            "MSFT",
+            "2026-08-20"
+          ],
+          [
+            1823177292,
+            "MSFT",
+            "2026-08-19"
+          ],
+          [
+            248342249,
+            "MSFT",
+            "2026-08-18"
+          ],
+          [
+            1813477886,
+            "MSFT",
+            "2026-08-18"
+          ],
+          [
+            1156614519,
+            "MSFT",
+            "2026-08-19"
+          ],
+          [
+            1005147427,
+            "MSFT",
+            "2026-08-21"
+          ],
+          [
+            3193193,
+            "MSFT",
+            "2026-08-19"
+          ],
+          [
+            1978794726,
+            "MSFT",
+            "2026-08-17"
+          ],
+          [
+            1777761364,
+            "MSFT",
+            "2026-08-19"
+          ],
+          [
+            620691902,
+            "MSFT",
+            "2026-08-18"
+          ],
+          [
+            1341105533,
+            "MSFT",
+            "2026-08-17"
+          ],
+          [
+            1109096363,
+            "MSFT",
+            "2026-08-18"
+          ],
+          [
+            1717535361,
+            "MSFT",
+            "2026-08-21"
+          ],
+          [
+            794073591,
+            "MSFT",
+            "2026-08-21"
+          ],
+          [
+            298251584,
+            "MSFT",
+            "2026-08-20"
+          ],
+          [
+            984780479,
+            "MSFT",
+            "2026-08-18"
+          ],
+          [
+            1228756513,
+            "MSFT",
+            "2026-08-20"
+          ],
+          [
+            685387472,
+            "MSFT",
+            "2026-08-19"
+          ],
+          [
+            1337558542,
+            "MSFT",
+            "2026-08-18"
+          ],
+          [
+            415942765,
+            "MSFT",
+            "2026-08-19"
+          ],
+          [
+            1599227771,
+            "MSFT",
+            "2026-08-18"
+          ],
+          [
+            1972530612,
+            "MSFT",
+            "2026-08-19"
+          ],
+          [
+            1849939993,
+            "MSFT",
+            "2026-08-19"
+          ],
+          [
+            1039706909,
+            "MSFT",
+            "2026-08-18"
+          ],
+          [
+            537601966,
+            "MSFT",
+            "2026-08-19"
+          ],
+          [
+            96331007,
+            "MSFT",
+            "2026-08-19"
+          ],
+          [
+            1895205528,
+            "MSFT",
+            "2026-08-17"
+          ],
+          [
+            580883424,
+            "MSFT",
+            "2026-08-21"
+          ],
+          [
+            1332563772,
+            "MSFT",
+            "2026-08-17"
+          ],
+          [
+            1087754697,
+            "MSFT",
+            "2026-08-18"
+          ],
+          [
+            1869610962,
+            "MSFT",
+            "2026-08-19"
+          ],
+          [
+            539185784,
+            "MSFT",
+            "2026-08-21"
+          ],
+          [
+            1120227807,
+            "MSFT",
+            "2026-08-20"
+          ],
+          [
+            442367479,
+            "MSFT",
+            "2026-08-20"
+          ],
+          [
+            426108357,
+            "MSFT",
+            "2026-08-17"
+          ],
+          [
+            2098659821,
+            "MSFT",
+            "2026-08-21"
+          ],
+          [
+            529339977,
+            "MSFT",
+            "2026-08-20"
+          ],
+          [
+            1086992853,
+            "MSFT",
+            "2026-08-21"
+          ],
+          [
+            1602646699,
+            "MSFT",
+            "2026-08-17"
+          ],
+          [
+            841667687,
+            "MSFT",
+            "2026-08-18"
+          ],
+          [
+            209720781,
+            "MSFT",
+            "2026-08-18"
+          ],
+          [
+            474113885,
+            "MSFT",
+            "2026-08-19"
+          ],
+          [
+            613875500,
+            "MSFT",
+            "2026-08-17"
+          ],
+          [
+            1147910077,
+            "MSFT",
+            "2026-08-21"
+          ],
+          [
+            1678399419,
+            "MSFT",
+            "2026-08-19"
+          ],
+          [
+            513878524,
+            "MSFT",
+            "2026-08-21"
+          ],
+          [
+            793207040,
+            "MSFT",
+            "2026-08-20"
+          ],
+          [
+            777987746,
+            "MSFT",
+            "2026-08-20"
+          ],
+          [
+            764206458,
+            "MSFT",
+            "2026-08-17"
+          ],
+          [
+            943701607,
+            "MSFT",
+            "2026-08-17"
+          ],
+          [
+            722359962,
+            "MSFT",
+            "2026-08-18"
+          ],
+          [
+            2094826518,
+            "MSFT",
+            "2026-08-21"
+          ],
+          [
+            808489258,
+            "MSFT",
+            "2026-08-18"
+          ],
+          [
+            312387318,
+            "MSFT",
+            "2026-08-21"
+          ],
+          [
+            2103779469,
+            "MSFT",
+            "2026-08-19"
+          ],
+          [
+            287807613,
+            "MSFT",
+            "2026-08-17"
+          ],
+          [
+            564011714,
+            "MSFT",
+            "2026-08-21"
+          ],
+          [
+            1695250885,
+            "MSFT",
+            "2026-08-21"
+          ],
+          [
+            181987678,
+            "MSFT",
+            "2026-08-20"
+          ],
+          [
+            58992243,
+            "MSFT",
+            "2026-08-20"
+          ],
+          [
+            595133519,
+            "MSFT",
+            "2026-08-19"
+          ],
+          [
+            1195394147,
+            "MSFT",
+            "2026-08-19"
+          ],
+          [
+            665095129,
+            "MSFT",
+            "2026-08-20"
+          ],
+          [
+            1797743801,
+            "MSFT",
+            "2026-08-17"
+          ],
+          [
+            1488415139,
+            "MSFT",
+            "2026-08-21"
+          ],
+          [
+            1050627162,
+            "MSFT",
+            "2026-08-19"
+          ],
+          [
+            1051700118,
+            "MSFT",
+            "2026-08-17"
+          ],
+          [
+            1371791598,
+            "MSFT",
+            "2026-08-19"
+          ],
+          [
+            1663414841,
+            "MSFT",
+            "2026-08-18"
+          ],
+          [
+            435037409,
+            "MSFT",
+            "2026-08-19"
+          ],
+          [
+            991465109,
+            "MSFT",
+            "2026-08-18"
+          ],
+          [
+            1797537236,
+            "MSFT",
+            "2026-08-21"
+          ],
+          [
+            2104326418,
+            "MSFT",
+            "2026-08-19"
+          ],
+          [
+            2075796996,
+            "MSFT",
+            "2026-08-18"
+          ],
+          [
+            1328970147,
+            "MSFT",
+            "2026-08-20"
+          ],
+          [
+            1911898339,
+            "MSFT",
+            "2026-08-19"
+          ],
+          [
+            2111971248,
+            "MSFT",
+            "2026-08-19"
+          ],
+          [
+            554591796,
+            "MSFT",
+            "2026-08-17"
+          ],
+          [
+            568239065,
+            "MSFT",
+            "2026-08-18"
+          ],
+          [
+            1550410805,
+            "MSFT",
+            "2026-08-20"
+          ],
+          [
+            1177111272,
+            "MSFT",
+            "2026-08-17"
+          ],
+          [
+            1161504314,
+            "MSFT",
+            "2026-08-17"
+          ],
+          [
+            1949536903,
+            "MSFT",
+            "2026-08-20"
+          ],
+          [
+            379959731,
+            "MSFT",
+            "2026-08-17"
+          ],
+          [
+            13214577,
+            "MSFT",
+            "2026-08-17"
+          ],
+          [
+            197910225,
+            "MSFT",
+            "2026-08-20"
+          ],
+          [
+            1774301148,
+            "MSFT",
+            "2026-08-17"
+          ],
+          [
+            1140142418,
+            "MSFT",
+            "2026-08-18"
+          ],
+          [
+            1188404923,
+            "MSFT",
+            "2026-08-21"
+          ],
+          [
+            1984865680,
+            "MSFT",
+            "2026-08-21"
+          ],
+          [
+            1995738616,
+            "MSFT",
+            "2026-08-19"
+          ],
+          [
+            754265943,
+            "MSFT",
+            "2026-08-20"
+          ],
+          [
+            1992143549,
+            "MSFT",
+            "2026-08-21"
+          ],
+          [
+            1370270956,
+            "MSFT",
+            "2026-08-20"
+          ],
+          [
+            1259084304,
+            "MSFT",
+            "2026-08-18"
+          ],
+          [
+            1745865270,
+            "MSFT",
+            "2026-08-18"
+          ],
+          [
+            2079771064,
+            "MSFT",
+            "2026-08-20"
+          ],
+          [
+            885933949,
+            "MSFT",
+            "2026-08-17"
+          ],
+          [
+            385895761,
+            "MSFT",
+            "2026-08-19"
+          ],
+          [
+            827861659,
+            "MSFT",
+            "2026-08-19"
+          ],
+          [
+            548236977,
+            "MSFT",
+            "2026-08-19"
+          ],
+          [
+            1309271079,
+            "MSFT",
+            "2026-08-19"
+          ],
+          [
+            37478430,
+            "MSFT",
+            "2026-08-20"
+          ],
+          [
+            441433213,
+            "MSFT",
+            "2026-08-18"
+          ],
+          [
+            1022737924,
+            "MSFT",
+            "2026-08-20"
+          ],
+          [
+            1464050829,
+            "MSFT",
+            "2026-08-21"
+          ],
+          [
+            2121903630,
+            "MSFT",
+            "2026-08-21"
+          ],
+          [
+            354603929,
+            "MSFT",
+            "2026-08-21"
+          ],
+          [
+            1605384002,
+            "MSFT",
+            "2026-08-18"
+          ],
+          [
+            1689596328,
+            "MSFT",
+            "2026-08-21"
+          ],
+          [
+            536206826,
+            "MSFT",
+            "2026-08-20"
+          ],
+          [
+            2000415805,
+            "MSFT",
+            "2026-08-21"
+          ],
+          [
+            1582089763,
+            "MSFT",
+            "2026-08-17"
+          ],
+          [
+            1196267729,
+            "MSFT",
+            "2026-08-21"
+          ],
+          [
+            1130148255,
+            "MSFT",
+            "2026-08-20"
+          ],
+          [
+            1272701588,
+            "MSFT",
+            "2026-08-21"
+          ],
+          [
+            1981553474,
+            "MSFT",
+            "2026-08-21"
+          ],
+          [
+            1983728094,
+            "MSFT",
+            "2026-08-21"
+          ],
+          [
+            1502742717,
+            "MSFT",
+            "2026-08-19"
+          ],
+          [
+            1304369653,
+            "MSFT",
+            "2026-08-19"
+          ],
+          [
+            729296149,
+            "MSFT",
+            "2026-08-20"
+          ],
+          [
+            477690138,
+            "MSFT",
+            "2026-08-17"
+          ],
+          [
+            531736250,
+            "MSFT",
+            "2026-08-20"
+          ],
+          [
+            1820187090,
+            "MSFT",
+            "2026-08-20"
+          ],
+          [
+            682597342,
+            "MSFT",
+            "2026-08-19"
+          ],
+          [
+            1540032190,
+            "MSFT",
+            "2026-08-19"
+          ],
+          [
+            1190698902,
+            "MSFT",
+            "2026-08-19"
+          ],
+          [
+            1124252579,
+            "MSFT",
+            "2026-08-20"
+          ],
+          [
+            2103113671,
+            "MSFT",
+            "2026-08-20"
+          ],
+          [
+            279674948,
+            "MSFT",
+            "2026-08-20"
+          ],
+          [
+            45781928,
+            "MSFT",
+            "2026-08-18"
+          ],
+          [
+            587941658,
+            "MSFT",
+            "2026-08-17"
+          ],
+          [
+            1842297624,
+            "MSFT",
+            "2026-08-19"
+          ],
+          [
+            2228926,
+            "MSFT",
+            "2026-08-20"
+          ],
+          [
+            1883406335,
+            "MSFT",
+            "2026-08-20"
+          ],
+          [
+            904954969,
+            "MSFT",
+            "2026-08-18"
+          ],
+          [
+            1056748058,
+            "MSFT",
+            "2026-08-19"
+          ],
+          [
+            1520253920,
+            "MSFT",
+            "2026-08-20"
+          ],
+          [
+            843552221,
+            "MSFT",
+            "2026-08-19"
+          ],
+          [
+            1440450205,
+            "MSFT",
+            "2026-08-19"
+          ],
+          [
+            215315208,
+            "MSFT",
+            "2026-08-20"
+          ],
+          [
+            1895938214,
+            "MSFT",
+            "2026-08-17"
+          ],
+          [
+            599578712,
+            "MSFT",
+            "2026-08-19"
+          ],
+          [
+            1306413909,
+            "MSFT",
+            "2026-08-17"
+          ],
+          [
+            17068663,
+            "MSFT",
+            "2026-08-20"
+          ],
+          [
+            999246718,
+            "MSFT",
+            "2026-08-17"
+          ],
+          [
+            1689815425,
+            "MSFT",
+            "2026-08-21"
+          ],
+          [
+            2090091672,
+            "MSFT",
+            "2026-08-17"
+          ],
+          [
+            1728211339,
+            "MSFT",
+            "2026-08-18"
+          ],
+          [
+            478057347,
+            "MSFT",
+            "2026-08-21"
+          ],
+          [
+            1622350371,
+            "MSFT",
+            "2026-08-17"
+          ],
+          [
+            463038873,
+            "MSFT",
+            "2026-08-21"
+          ],
+          [
+            1490466256,
+            "MSFT",
+            "2026-08-20"
+          ],
+          [
+            151930744,
+            "MSFT",
+            "2026-08-19"
+          ],
+          [
+            485939299,
+            "MSFT",
+            "2026-08-20"
+          ],
+          [
+            60172395,
+            "MSFT",
+            "2026-08-21"
+          ],
+          [
+            495405669,
+            "MSFT",
+            "2026-08-17"
+          ],
+          [
+            444314474,
+            "MSFT",
+            "2026-08-20"
+          ],
+          [
+            1011144553,
+            "MSFT",
+            "2026-08-17"
+          ],
+          [
+            1277497892,
+            "MSFT",
+            "2026-08-21"
+          ],
+          [
+            1979053181,
+            "MSFT",
+            "2026-08-20"
+          ],
+          [
+            209186862,
+            "MSFT",
+            "2026-08-20"
+          ],
+          [
+            523619272,
+            "MSFT",
+            "2026-08-19"
+          ],
+          [
+            582556051,
+            "MSFT",
+            "2026-08-17"
+          ],
+          [
+            1362716744,
+            "MSFT",
+            "2026-08-18"
+          ],
+          [
+            271524066,
+            "MSFT",
+            "2026-08-19"
+          ],
+          [
+            1400891564,
+            "MSFT",
+            "2026-08-17"
+          ],
+          [
+            1622755107,
+            "MSFT",
+            "2026-08-18"
+          ],
+          [
+            157406732,
+            "MSFT",
+            "2026-08-20"
+          ],
+          [
+            691383726,
+            "MSFT",
+            "2026-08-17"
+          ],
+          [
+            479989,
+            "MSFT",
+            "2026-08-21"
+          ],
+          [
+            1431612896,
+            "MSFT",
+            "2026-08-17"
+          ],
+          [
+            854796158,
+            "MSFT",
+            "2026-08-19"
+          ],
+          [
+            324342687,
+            "MSFT",
+            "2026-08-19"
+          ],
+          [
+            699942621,
+            "MSFT",
+            "2026-08-19"
+          ],
+          [
+            1065008657,
+            "MSFT",
+            "2026-08-17"
+          ],
+          [
+            1662895023,
+            "MSFT",
+            "2026-08-18"
+          ],
+          [
+            620122309,
+            "MSFT",
+            "2026-08-18"
+          ],
+          [
+            1367461309,
+            "MSFT",
+            "2026-08-19"
+          ],
+          [
+            786230430,
+            "MSFT",
+            "2026-08-21"
+          ],
+          [
+            1141851658,
+            "MSFT",
+            "2026-08-19"
+          ],
+          [
+            280409021,
+            "MSFT",
+            "2026-08-17"
+          ],
+          [
+            1426162069,
+            "MSFT",
+            "2026-08-19"
+          ],
+          [
+            11527362,
+            "MSFT",
+            "2026-08-20"
+          ],
+          [
+            1362777692,
+            "MSFT",
+            "2026-08-18"
+          ],
+          [
+            944411849,
+            "MSFT",
+            "2026-08-21"
+          ],
+          [
+            2092324426,
+            "MSFT",
+            "2026-08-17"
+          ],
+          [
+            1569205437,
+            "MSFT",
+            "2026-08-18"
+          ],
+          [
+            794568317,
+            "MSFT",
+            "2026-08-20"
+          ],
+          [
+            1219731835,
+            "MSFT",
+            "2026-08-19"
+          ],
+          [
+            196954469,
+            "MSFT",
+            "2026-08-21"
+          ],
+          [
+            88960600,
+            "MSFT",
+            "2026-08-17"
+          ],
+          [
+            980462067,
+            "MSFT",
+            "2026-08-19"
+          ],
+          [
+            896013492,
+            "MSFT",
+            "2026-08-18"
+          ]
+        ]
+      },
+      "date_origin": "recovered during preparation using verified original reset/pool draw order; not contemporaneous logs; no price cross-check performed for these forecast-fit paths"
+    }
+  }
+}

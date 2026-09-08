@@ -37,6 +37,9 @@ lmm-diagnose-simulator = "lmm.experiments.diagnose_simulator:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools]
+license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md"]
+
 [tool.setuptools.package-data]
 "lmm.experiments" = ["*.mplstyle"]
 

@@ -1,0 +1,337 @@
+{
+  "origin": "preparation-time subset of existing sidecar; no raw or processed prices",
+  "source_sha256": "67ff4981deeb2ea8b216ec9600dc5a1e08cea46a531f4f5def00fec0d8a43baa",
+  "metadata": {
+    "artifact_schema_version": 3,
+    "dataset_id": "sp500_midquotes_sip_2026-08_v1",
+    "tickers": [
+      "CAT",
+      "PG",
+      "GOOGL",
+      "JPM",
+      "MSFT"
+    ],
+    "start_date": "2026-08-03",
+    "end_date": "2026-08-28",
+    "candidate_weekday_dates": [
+      "2026-08-03",
+      "2026-08-04",
+      "2026-08-05",
+      "2026-08-06",
+      "2026-08-07",
+      "2026-08-10",
+      "2026-08-11",
+      "2026-08-12",
+      "2026-08-13",
+      "2026-08-14",
+      "2026-08-17",
+      "2026-08-18",
+      "2026-08-19",
+      "2026-08-20",
+      "2026-08-21",
+      "2026-08-24",
+      "2026-08-25",
+      "2026-08-26",
+      "2026-08-27",
+      "2026-08-28"
+    ],
+    "included_session_dates": [
+      "2026-08-03",
+      "2026-08-04",
+      "2026-08-05",
+      "2026-08-06",
+      "2026-08-07",
+      "2026-08-10",
+      "2026-08-11",
+      "2026-08-12",
+      "2026-08-13",
+      "2026-08-14",
+      "2026-08-17",
+      "2026-08-18",
+      "2026-08-19",
+      "2026-08-20",
+      "2026-08-21",
+      "2026-08-24",
+      "2026-08-25",
+      "2026-08-26",
+      "2026-08-27",
+      "2026-08-28"
+    ],
+    "skipped_sessions": [],
+    "n_sessions": 20,
+    "n_rows": 3020,
+    "n_rows_per_session": 151,
+    "split_ranges": {
+      "train": [
+        "2026-08-03",
+        "2026-08-14"
+      ],
+      "validation": [
+        "2026-08-17",
+        "2026-08-21"
+      ],
+      "test": [
+        "2026-08-24",
+        "2026-08-28"
+      ]
+    },
+    "split_session_dates": {
+      "train": [
+        "2026-08-03",
+        "2026-08-04",
+        "2026-08-05",
+        "2026-08-06",
+        "2026-08-07",
+        "2026-08-10",
+        "2026-08-11",
+        "2026-08-12",
+        "2026-08-13",
+        "2026-08-14"
+      ],
+      "validation": [
+        "2026-08-17",
+        "2026-08-18",
+        "2026-08-19",
+        "2026-08-20",
+        "2026-08-21"
+      ],
+      "test": [
+        "2026-08-24",
+        "2026-08-25",
+        "2026-08-26",
+        "2026-08-27",
+        "2026-08-28"
+      ]
+    },
+    "interval": "1m",
+    "time_unit": "minutes",
+    "session_start": "13:30",
+    "session_end": "16:00",
+    "timezone": "America/New_York",
+    "clob_minutes": 120,
+    "auction_minutes": 30,
+    "tau_op": 120,
+    "tau_cl": 150,
+    "source": "alpaca_market_data_api",
+    "source_endpoint": "https://data.alpaca.markets/v2/stocks/quotes",
+    "source_documentation": "https://docs.alpaca.markets/us/reference/stockquotes-1",
+    "price_type": "quote_midpoint",
+    "price_field": "(bid_price + ask_price) / 2",
+    "quote_feed": "sip",
+    "quote_consolidation": "consolidated NBBO",
+    "quote_size_unit": "round lots (provider bs/as fields)",
+    "normalize": "none",
+    "model_coordinate_transform": "each selected session is rebased to grid.S0 by the environment loader",
+    "fill": "error",
+    "aggregation": "latest valid quote at or before each decision timestamp",
+    "lookback_minutes": 5,
+    "max_quote_age_seconds": 60.0,
+    "row_to_decision_time": "within each session, row r is the latest valid quote midpoint known at decision time t=r; row tau_op is frozen during the call",
+    "downloaded_at_utc": "2026-09-01T04:41:44.126163+00:00",
+    "csv_sha256": "1cc2d3c050f1ec88effb9b43081d00158fd835586efc51c0ab26b7836ba861ac"
+  },
+  "raw_archives": [
+    {
+      "session": "2026-08-03",
+      "field": "raw_quote_path",
+      "value": "data/raw/alpaca/sp500_midquotes_sip_2026-08_v1/2026-08-03_sip_quotes.jsonl.gz"
+    },
+    {
+      "session": "2026-08-03",
+      "field": "raw_quote_sha256",
+      "value": "f43ec3038ee78b67d422ec6126520f0c9a95e6c68fff63da5cc56ec79e105205"
+    },
+    {
+      "session": "2026-08-04",
+      "field": "raw_quote_path",
+      "value": "data/raw/alpaca/sp500_midquotes_sip_2026-08_v1/2026-08-04_sip_quotes.jsonl.gz"
+    },
+    {
+      "session": "2026-08-04",
+      "field": "raw_quote_sha256",
+      "value": "1054f41a010d801175a9b8343ac9230d3c3082514cdf88ffcbe390345cd4c321"
+    },
+    {
+      "session": "2026-08-05",
+      "field": "raw_quote_path",
+      "value": "data/raw/alpaca/sp500_midquotes_sip_2026-08_v1/2026-08-05_sip_quotes.jsonl.gz"
+    },
+    {
+      "session": "2026-08-05",
+      "field": "raw_quote_sha256",
+      "value": "50e50a69b602eb2264f8328fd6b8d7cb1d2e24ba314e878b74f58e839da08114"
+    },
+    {
+      "session": "2026-08-06",
+      "field": "raw_quote_path",
+      "value": "data/raw/alpaca/sp500_midquotes_sip_2026-08_v1/2026-08-06_sip_quotes.jsonl.gz"
+    },
+    {
+      "session": "2026-08-06",
+      "field": "raw_quote_sha256",
+      "value": "175fa955b6186837e9b0443021dd9b4dc9f0b6d24a18991a73918829cff309e9"
+    },
+    {
+      "session": "2026-08-07",
+      "field": "raw_quote_path",
+      "value": "data/raw/alpaca/sp500_midquotes_sip_2026-08_v1/2026-08-07_sip_quotes.jsonl.gz"
+    },
+    {
+      "session": "2026-08-07",
+      "field": "raw_quote_sha256",
+      "value": "b71abfef6aad2bc8a903d5c59c8a89ccf6137965126a42c5291bc5b9f72afb74"
+    },
+    {
+      "session": "2026-08-10",
+      "field": "raw_quote_path",
+      "value": "data/raw/alpaca/sp500_midquotes_sip_2026-08_v1/2026-08-10_sip_quotes.jsonl.gz"
+    },
+    {
+      "session": "2026-08-10",
+      "field": "raw_quote_sha256",
+      "value": "f4d132a9bde6317918ea105d86d091455cfc12cef05adc1f7935e61f90a090fe"
+    },
+    {
+      "session": "2026-08-11",
+      "field": "raw_quote_path",
+      "value": "data/raw/alpaca/sp500_midquotes_sip_2026-08_v1/2026-08-11_sip_quotes.jsonl.gz"
+    },
+    {
+      "session": "2026-08-11",
+      "field": "raw_quote_sha256",
+      "value": "06fe4b4a8a3c270ec11a0204ef9904609547113648a6fefe3f121d5f43ee53cb"
+    },
+    {
+      "session": "2026-08-12",
+      "field": "raw_quote_path",
+      "value": "data/raw/alpaca/sp500_midquotes_sip_2026-08_v1/2026-08-12_sip_quotes.jsonl.gz"
+    },
+    {
+      "session": "2026-08-12",
+      "field": "raw_quote_sha256",
+      "value": "5969a2c059ff0b57dd02569c1ba3ab974056f472f089e18479d4b62378c015d3"
+    },
+    {
+      "session": "2026-08-13",
+      "field": "raw_quote_path",
+      "value": "data/raw/alpaca/sp500_midquotes_sip_2026-08_v1/2026-08-13_sip_quotes.jsonl.gz"
+    },
+    {
+      "session": "2026-08-13",
+      "field": "raw_quote_sha256",
+      "value": "146e2717240d75c08e0b5323592833b6d81aec4d7b287f8a19dae524fbe71d0d"
+    },
+    {
+      "session": "2026-08-14",
+      "field": "raw_quote_path",
+      "value": "data/raw/alpaca/sp500_midquotes_sip_2026-08_v1/2026-08-14_sip_quotes.jsonl.gz"
+    },
+    {
+      "session": "2026-08-14",
+      "field": "raw_quote_sha256",
+      "value": "717ec445823dcf5614a8012c5d14c9c9fa468491637d898df44d2dc73d71383f"
+    },
+    {
+      "session": "2026-08-17",
+      "field": "raw_quote_path",
+      "value": "data/raw/alpaca/sp500_midquotes_sip_2026-08_v1/2026-08-17_sip_quotes.jsonl.gz"
+    },
+    {
+      "session": "2026-08-17",
+      "field": "raw_quote_sha256",
+      "value": "34c974a57240be0b9bdf97a5e05241533fbc8e32061744e45fcf561fec1bd0e3"
+    },
+    {
+      "session": "2026-08-18",
+      "field": "raw_quote_path",
+      "value": "data/raw/alpaca/sp500_midquotes_sip_2026-08_v1/2026-08-18_sip_quotes.jsonl.gz"
+    },
+    {
+      "session": "2026-08-18",
+      "field": "raw_quote_sha256",
+      "value": "6a3aab1b615d187f6501589e2339f368db314478fe0d183699c1baf8fc3bc018"
+    },
+    {
+      "session": "2026-08-19",
+      "field": "raw_quote_path",
+      "value": "data/raw/alpaca/sp500_midquotes_sip_2026-08_v1/2026-08-19_sip_quotes.jsonl.gz"
+    },
+    {
+      "session": "2026-08-19",
+      "field": "raw_quote_sha256",
+      "value": "63c18ea33372dd48e8e14efc03163db762fa72ea03200704438517189ef35c05"
+    },
+    {
+      "session": "2026-08-20",
+      "field": "raw_quote_path",
+      "value": "data/raw/alpaca/sp500_midquotes_sip_2026-08_v1/2026-08-20_sip_quotes.jsonl.gz"
+    },
+    {
+      "session": "2026-08-20",
+      "field": "raw_quote_sha256",
+      "value": "a59bc3fe962e109dc1c14699f7772899a67a9af548c8b6c116e0cc415ac9bc0d"
+    },
+    {
+      "session": "2026-08-21",
+      "field": "raw_quote_path",
+      "value": "data/raw/alpaca/sp500_midquotes_sip_2026-08_v1/2026-08-21_sip_quotes.jsonl.gz"
+    },
+    {
+      "session": "2026-08-21",
+      "field": "raw_quote_sha256",
+      "value": "10f3304f3dff26dbef2d7c3bc74e7d94fd05f7b57f27a2ec5121b61474748c2d"
+    },
+    {
+      "session": "2026-08-24",
+      "field": "raw_quote_path",
+      "value": "data/raw/alpaca/sp500_midquotes_sip_2026-08_v1/2026-08-24_sip_quotes.jsonl.gz"
+    },
+    {
+      "session": "2026-08-24",
+      "field": "raw_quote_sha256",
+      "value": "e09dfb50f5742c33ffa6431182850c058d99fad184d98581b787f9cf5c721273"
+    },
+    {
+      "session": "2026-08-25",
+      "field": "raw_quote_path",
+      "value": "data/raw/alpaca/sp500_midquotes_sip_2026-08_v1/2026-08-25_sip_quotes.jsonl.gz"
+    },
+    {
+      "session": "2026-08-25",
+      "field": "raw_quote_sha256",
+      "value": "7ee2214b16707d816e8bb12eb2c654bc1f1fa6ba5afc99b6b0ba7ddef5d967d0"
+    },
+    {
+      "session": "2026-08-26",
+      "field": "raw_quote_path",
+      "value": "data/raw/alpaca/sp500_midquotes_sip_2026-08_v1/2026-08-26_sip_quotes.jsonl.gz"
+    },
+    {
+      "session": "2026-08-26",
+      "field": "raw_quote_sha256",
+      "value": "6077828115381f6ad1ac913faac9672a639363245882cf16ae3db093d53e7776"
+    },
+    {
+      "session": "2026-08-27",
+      "field": "raw_quote_path",
+      "value": "data/raw/alpaca/sp500_midquotes_sip_2026-08_v1/2026-08-27_sip_quotes.jsonl.gz"
+    },
+    {
+      "session": "2026-08-27",
+      "field": "raw_quote_sha256",
+      "value": "bd14ad07ecc39e29f8d8c5f54da08ce451bb92dc97c3b64d0b66ed35a7dad19f"
+    },
+    {
+      "session": "2026-08-28",
+      "field": "raw_quote_path",
+      "value": "data/raw/alpaca/sp500_midquotes_sip_2026-08_v1/2026-08-28_sip_quotes.jsonl.gz"
+    },
+    {
+      "session": "2026-08-28",
+      "field": "raw_quote_sha256",
+      "value": "3cd0224a7ceffacf0c2f1a74b2c5711bb56539091b779fa3febe687a32d4c60a"
+    }
+  ],
+  "availability": "restricted local input; no public archive or redistribution permission established",
+  "preprocessing_source_status": "schema-3 producer identity not recorded in sidecar; current code emits schema 4, see data/README.md erratum"
+}

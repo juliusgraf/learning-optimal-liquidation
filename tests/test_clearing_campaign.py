@@ -22,6 +22,17 @@ def _fake_fitter(monkeypatch, root):
     """Only generate test artifacts; coefficient estimation is tested separately."""
     calls = []
     original_run = subprocess.run
+    original_check_output = subprocess.check_output
+
+    def check_output(command, **kwargs):
+        # The fitter is synthetic; give its source a synthetic identity too.
+        # This keeps the contract-mutation checks usable in source archives
+        # without weakening the production requirement for a real Git revision.
+        if command == ['git', 'rev-parse', 'HEAD'] and kwargs.get('cwd') == REPO:
+            return 'a' * 40 + '\n'
+        return original_check_output(command, **kwargs)
+
+    monkeypatch.setattr(C.subprocess, 'check_output', check_output)
     def run(command, **kwargs):
         if '--setting' not in command:
             return original_run(command, **kwargs)
