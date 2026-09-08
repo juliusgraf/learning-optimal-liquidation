@@ -496,27 +496,25 @@
     },
     {
       "id": "linux-portability",
-      "status": "open",
+      "status": "resolved",
       "scope": "technical release",
-      "reason": "Old fixed JSON-float hash failed on hosted Linux/Python 3.11. The regression now compares exactly against hash-verified pre-refinement source in the same runtime and checks final RNG state; a one-ULP mutation is rejected. Current/reference equality verified locally in two runtimes with different output hashes. Full Linux-hash cause remains unisolated; revised hosted test result pending. No simulator or numerical tolerance changed."
+      "reason": "Hosted Ubuntu 24.04.4 / Python 3.11.16 validation and wheel build passed at the recorded baseline. The revised regression requires exact current/frozen-source trajectory and final RNG-state equality within the same runtime. Cross-runtime serialized-hash differences do not require further investigation as a release gate. No simulator or numerical tolerance changed.",
+      "prior_assessment_superseded": "Old fixed JSON-float hash failed on hosted Linux/Python 3.11. The regression now compares exactly against hash-verified pre-refinement source in the same runtime and checks final RNG state; a one-ULP mutation is rejected. Current/reference equality verified locally in two runtimes with different output hashes. Full Linux-hash cause remains unisolated; revised hosted test result pending. No simulator or numerical tolerance changed.",
+      "resolution_commit": "02a8f00524b63b288e7e6ae813b55b9d195fb368",
+      "resolution_run_url": "https://github.com/juliusgraf/learning-market-making/actions/runs/34193586813"
     },
     {
       "id": "artifact-availability",
       "status": "open",
       "scope": "full replication claim",
-      "reason": "Original code identities available only through history still under review; full run files/checkpoints have no stable public locator. Restricted data qualification and promised bundle scope need final owner review."
-    },
-    {
-      "id": "as-sample-accounting",
-      "status": "open",
-      "scope": "P-004 evidence",
-      "reason": "Saved A/k present for all 520 evaluations, but accepted/excluded calibration counts and sample records not saved. K_hat is algebraically derived, not a saved independent fit record."
+      "reason": "Original code identities available only through history still under review; full run files/checkpoints have no stable public locator. Restricted data qualification and promised bundle scope need final owner review. Private retention and availability upon request do not themselves define or verify a full run/checkpoint package."
     },
     {
       "id": "owner-candidate-review",
       "status": "open",
-      "scope": "finalization",
-      "reason": "Uncommitted preparation requires owner review before committing. Resolve this approval gate with the reviewed scope before the owner commit; exact clean SHA and tag are checked by the validator. Actual publication is a separate external verification, never a prerequisite for preparing its candidate."
+      "scope": "future public-release finalization",
+      "reason": "The owner approved the current readiness-documentation update and private retention. Approval of the scope and inclusion list of any future public-release candidate remains a separate owner step. Exact clean candidate SHA and owner-created tag are checked by the validator. The final paper release identifier remains unassigned; actual publication is a separate external verification.",
+      "classification": "OWNER ACTION"
     }
   ],
   "coverage": {
@@ -538,12 +536,37 @@
     "recorded_seed_set_separation_checks": 520,
     "historical_opening_marks_crosschecked": 131300,
     "hosted": {
-      "repository_metadata": "authenticated connector; private",
-      "releases": "empty list",
-      "actions_runs": "9 listed, all 9 first artifact pages empty",
-      "logs": "latest HEAD job inspected; older logs not exhaustively scanned",
-      "current_head_ci": "failure: test_legacy_golden_episode",
-      "public_unauthenticated_access": "not established"
+      "repository_metadata": "Authenticated connector; private in original audit and reconfirmed by baseline workflow-run metadata on 2026-09-08",
+      "releases": "Empty list in original audit; not re-enumerated in this documentation review",
+      "actions_runs": "Original audit: 9 listed, all 9 first artifact pages empty; documentation review additionally inspected Tests run #14 for the exact baseline",
+      "logs": "Original audit inspected its then-current HEAD job; documentation review inspected run #14 job 101956457673. Older logs not exhaustively scanned.",
+      "current_head_ci": {
+        "commit": "02a8f00524b63b288e7e6ae813b55b9d195fb368",
+        "status": "completed",
+        "conclusion": "success",
+        "workflow": "Tests",
+        "run_id": 34193586813,
+        "run_number": 14,
+        "run_attempt": 1,
+        "job_id": 101956457673,
+        "job_completed_at_utc": "2026-09-08T06:19:26Z",
+        "url": "https://github.com/juliusgraf/learning-market-making/actions/runs/34193586813",
+        "runtime": "Ubuntu 24.04.4 / CPython 3.11.16",
+        "passed": 748,
+        "skipped": 5,
+        "deselected": 34,
+        "synthetic_smoke": "PASS",
+        "paired_intervals": 48,
+        "ordinary_shortfall_levels": 30,
+        "saved_result_check": "PASS",
+        "recorded_seed_date_assignments": 160100,
+        "seed_date_check": "PASS",
+        "wheel_build": "PASS",
+        "verification_source": "Authenticated read-only GitHub run/job metadata and decoded job log inspected on 2026-09-08",
+        "scope": "Exact tested baseline only; not verification of later HEADs, public availability or full experiments. Detailed commands and historical checks are in release/verification.json."
+      },
+      "public_unauthenticated_access": "not established",
+      "historical_ci_superseded": "failure: test_legacy_golden_episode"
     },
     "limits": [
       "Unreachable Git objects, remote-only history and GitHub settings not fully enumerated",
@@ -551,10 +574,38 @@
       "Ignored full experiment trees/caches and binary/image visual content not comprehensively scanned",
       "PDF metadata checked for current manuscript; historical PDF content not fully extracted",
       "Original preprocessing commit and AS fit sample counts not recorded",
-      "No full experiment rerun; no clean dependency install from public index",
+      "No full experiment rerun. Original local preparation reused installed dependencies; the later hosted baseline installed constrained CPU dependencies successfully on its stated runtime, not the original experimental runtime",
       "Signed-out repository/release/artifact access not verified; no publication"
     ],
     "recorded_seed_date_assignments_recovered": 160100,
-    "forecast_fit_recorded_seeds_per_setting": 512
+    "forecast_fit_recorded_seeds_per_setting": 512,
+    "historical_scope": "Counts and security/artifact inspection results are retained from the original preparation audit, not a new exhaustive scan of the later baseline. The hosted current_head_ci record below is a separately verified update tied to its exact commit."
+  },
+  "preparation_committed_baseline": "02a8f00524b63b288e7e6ae813b55b9d195fb368",
+  "readiness_review_scope": "Documentation review of the clean committed baseline; subsequent documentation changes require author review and a new commit. This baseline is not the unassigned final paper-release identity.",
+  "limitations": [
+    {
+      "id": "as-sample-accounting",
+      "status": "documented limitation",
+      "scope": "P-004 evidence",
+      "reason": "Saved A/k present for all 520 evaluations, but accepted/excluded calibration counts and sample records not saved. K_hat is algebraically derived, not a saved independent fit record.",
+      "previous_classification": "Open blocker during initial preparation; reclassified after disclosure, without recovering the missing evidence.",
+      "disclosure": "README.md and REPRODUCING.md disclose the missing counts/samples. The author reports that the latest manuscript also discloses them; the retained paper/main.tex still lacks that update and is deliberately untouched in this documentation review."
+    },
+    {
+      "id": "cross-runtime-bitwise-equality",
+      "status": "documented limitation",
+      "scope": "numerical reproducibility",
+      "reason": "Passing same-runtime current/frozen-source checks does not establish bitwise equality across Python versions, numerical-library versions, platforms or hardware, or complete independent experiment reproduction."
+    }
+  ],
+  "owner_decision": {
+    "authority": "Explicit owner approval in this session",
+    "approved_scope": "Current readiness-documentation update and private retention of the repository",
+    "repository_visibility_intent": "private",
+    "reason": "History-distribution and artifact-availability remain unresolved",
+    "intended_provision": "Source code, experiment configurations and saved numerical summaries upon request; historical Alpaca inputs obtained separately",
+    "public_release_authorized": false,
+    "scope_limit": "Does not establish public availability, verify a full run/checkpoint package, or approve a future public-release candidate"
   }
 }

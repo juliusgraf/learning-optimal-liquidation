@@ -5,8 +5,10 @@ book and a closing call auction. DQN, DDPG, TD3 and SAC share a simulator and
 executable action grid. Historical inputs supply midquotes; order flow, auction
 clearing and allocation remain simulated.
 
-This checkout is a **draft public-release candidate**, with a compact replication
-evidence bundle. It has not been published. Repository preparation, support for
+This repository will remain **private**, with a compact replication evidence
+bundle. The owner approved the readiness-documentation update and private
+retention because history-distribution and artifact-availability issues remain
+open. No public release has been published. Repository preparation, support for
 the paper's replication claim, and verified public availability are separate
 outcomes; see [the readiness report](release/READINESS.md).
 
@@ -38,10 +40,16 @@ pytest -q -m 'not network and not slow and not market_data'
 The smoke check runs two identical synthetic CPU episodes, without training,
 market data, credentials, model weights, tracking or uploads. It is not a paper
 result. The tests use explicit synthetic fixtures in `tests/fixtures/`; they
-never replace missing paper inputs. The legacy episode regression compares the
-current simulator exactly with frozen original source under the same runtime;
-cross-platform bitwise reproducibility is not assumed. The revised Linux check
-still needs a hosted run; see the readiness report.
+never replace missing paper inputs. The revised cross-platform regression check
+has passed on hosted Ubuntu 24.04 / Python 3.11.16 at commit
+`02a8f00524b63b288e7e6ae813b55b9d195fb368`
+([Tests run #14](https://github.com/juliusgraf/learning-market-making/actions/runs/34193586813)).
+It establishes exact current-versus-frozen-source agreement under that runtime.
+It does not imply bitwise equality of serialized trajectories across different
+Python versions, numerical-library versions, platforms or hardware. The run also
+passed 748 tests (5 skipped, 34 deselected), synthetic smoke, 48 paired intervals,
+30 ordinary-shortfall levels, 160,100 recorded seed/date assignments and the wheel
+build. This result verifies that commit; later changes require their own checks.
 
 Regenerate and verify the paired benchmark supporting table from bundled,
 unrounded seed means:
@@ -100,5 +108,8 @@ Permission to distribute non-code research assets does not assign them an MIT li
 Academic citation is requested separately in [CITATION.cff](CITATION.cff).
 
 The [owner publication runbook](release/RUNBOOK.md) supplies final commit/tag,
-checksumming and unauthenticated-access checks. Do not fill a manuscript release
-identifier or release commit from this uncommitted preparation.
+checksumming and unauthenticated-access checks. The preparation is committed in
+the baseline identified above. A final paper release tag/identifier remains
+unassigned; the tested baseline is not automatically the eventual immutable
+paper-release identity. See the runbook for the later author-approved manuscript
+update and its separate validation.

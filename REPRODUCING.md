@@ -13,7 +13,8 @@ seeds), and 80 synthetic follow-up runs. No seed is excluded.
 | All 320 replacement synthetic runs | `ffb314dd736a750e026861284e437aafa1e935ee` | 0.25-minute internal mesh; new forecast fit, normalization, training and selection |
 | All 200 retained historical runs | `354656645a7e035be718e03cbf100664d1a87262` | Original historical bytes retained, not relabeled as refined-source runs |
 | Preparation starting checkout | `64df3bc6421fe0e7d267386831b699482beb2706` | Manuscript changes since the synthetic run revision; executable/configuration sources matched that revision before preparation |
-| Completed release commit/tag | Not assigned | These changes are uncommitted; HEAD does not identify them |
+| Committed preparation baseline (HEAD at this status review) | `02a8f00524b63b288e7e6ae813b55b9d195fb368` | Includes release preparation and the revised regression test; hosted Linux validation passed for this exact commit |
+| Final paper release commit/tag/identifier | Not assigned | The committed preparation baseline is not automatically the eventual immutable paper release; subsequent documentation/manuscript changes need their own commit and checks |
 
 All 520 current run records have clean original SHA identifiers. The earlier
 pre-replacement main campaign included 138 dirty identifiers and an author
@@ -71,10 +72,14 @@ Tests are CPU bounded and offline. Historical integration tests are opt-in:
 `pytest --require-market-data -q -m 'market_data and not network and not slow'`.
 Never replace missing or invalid data with a fixture to make a paper run pass.
 
-Local validation used the modified/staged source and existing dependency
-installation. The clean staging copy contained no ignored data/results or model
-weights. Fresh dependency resolution on an empty machine was not verified because
-package-index access was unavailable. The former `test_legacy_golden_episode`
+The original local preparation checks used modified/staged source and the existing
+dependency installation. That clean staging copy contained no ignored data/results
+or model weights; package-index access was unavailable for a fresh local install.
+Hosted CI subsequently installed the constrained CPU dependencies successfully on
+Ubuntu 24.04 / Python 3.11.16 and passed validation and wheel construction at
+`02a8f00524b63b288e7e6ae813b55b9d195fb368`; see the commit-specific
+[verification record](release/verification.json).
+The former `test_legacy_golden_episode`
 compared serialized floating-point values with one runtime's fixed hash, which
 failed on Linux/Python 3.11. The test now compares the current simulator exactly
 against the pre-refinement source frozen in
@@ -84,9 +89,13 @@ rewards, times and H values must match without rounding or numerical tolerance;
 the final RNG state must also match. Source hashes are checked before execution.
 Local checks reproduced the original capture and showed exact current/reference
 agreement in two runtimes whose output hashes differ. Python's floating-point
-`sum` change explains some variation; the full Linux-hash cause remains unisolated
-and the revised check still needs a hosted Linux run. No simulator or RNG code
-was changed to repair the test.
+`sum` change explains some variation. The revised check has now passed on hosted
+Linux at the baseline above, establishing exact current-versus-frozen-source
+agreement within that runtime. The earlier serialized-hash failure is superseded
+as a release gate: cross-runtime hash identity and a complete explanation of the
+old hash difference are not required by this regression criterion. No simulator
+or RNG code was changed to repair the test. This CI result does not verify later
+commits or establish full-experiment reproduction.
 Torch enables deterministic algorithms with `warn_only=True`; bitwise equality
 across hardware, Python/BLAS versions or accelerator kernels is not guaranteed.
 Wall-clock timings are not reproducibility targets.
@@ -201,6 +210,6 @@ Single-run primitives are `python -m lmm.experiments.train --config CONFIG
 --run-dir RUN --n-episodes 100`, and paired-analysis/reporting entry points.
 Use exact extracted configurations and original source identities, rather than
 default overlays that still preserve legacy generator/forecast settings.
-Uncommitted extracted metadata and unavailable original artifacts do not justify
-labeling a new run an exact replication. Full independent experiment replication
-(level D) remains unperformed.
+Committing the extracted metadata does not recover unavailable original artifacts
+or justify labeling a new run an exact replication. Full independent experiment
+replication (level D) remains unperformed.

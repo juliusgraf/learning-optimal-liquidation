@@ -5,8 +5,11 @@ MATERIAL. Replication-bundle support: PARTIALLY SUPPORTED. Actual publication:
 NOT PERFORMED.** These are separate assessments.
 
 The original working tree was clean at
-`64df3bc6421fe0e7d267386831b699482beb2706`. The preparation is uncommitted. No
-manuscript, simulator, reward, selection, RNG or evaluation semantics were edited;
+`64df3bc6421fe0e7d267386831b699482beb2706`. The preparation and subsequent CI
+repair are committed in `02a8f00524b63b288e7e6ae813b55b9d195fb368`, the clean HEAD
+at the start of this documentation review. The successful baseline CI does not
+cover later documentation changes or future commits. No manuscript, simulator,
+reward, selection, RNG or evaluation semantics were edited;
 no result was replaced. The current source matches the synthetic experiment's
 executable/configuration sources before adding release-only tooling.
 
@@ -14,6 +17,23 @@ The author explicitly confirmed the two named holders and 2026 MIT authority
 for first-party software/documentation, and distribution permission for manuscript,
 figures, derived historical-market summaries and checkpoints. Raw vendor-price
 redistribution was not confirmed. No separate non-code license was selected.
+
+## Current release gates
+
+| Item | Status | Basis |
+|---|---|---|
+| `linux-portability` | RESOLVED | Hosted Ubuntu 24.04 / Python 3.11.16 validation passed at `02a8f00524b63b288e7e6ae813b55b9d195fb368`; exact current/frozen-source agreement within that runtime, not universal bitwise equality. |
+| `history-distribution` | OPEN | Restricted vendor data remain in reachable history; no sanitized history or verified safe publication strategy is recorded. |
+| `artifact-availability` | OPEN | Full run directories/checkpoints lack a stable public locator; any package supplied upon request also needs an explicit inventory and verification. The compact bundle does not establish exact full-experiment reproduction. |
+| `as-sample-accounting` | DOCUMENTED LIMITATION | Actual A/k coefficients are preserved; accepted/excluded counts and original fit samples remain missing. Reclassified from a blocker after disclosure, not resolved by recovery. |
+| `owner-candidate-review` | OWNER ACTION | The owner approved the current documentation update and private retention. Approval of any future public-release candidate remains a separate step; no final paper release tag/identifier is assigned. |
+
+The owner explicitly approved the readiness-documentation update and confirmed
+that the repository will remain private because `history-distribution` and
+`artifact-availability` remain unresolved. The intended provision of source,
+configurations and saved numerical summaries upon request is unchanged. This
+approval does not resolve the gates for a future public release or demonstrate
+availability of a full run/checkpoint package.
 
 ## What the evidence establishes
 
@@ -55,7 +75,10 @@ not universally retained; documented entry points must not be read as fabricated
 historical command logs. Recorded configurations are the stronger executable
 specification. No level D verification was performed.
 
-## Checks performed and their limits
+## Historical preparation checks and their limits
+
+The records in this section predate the successful hosted baseline run below.
+They retain their original tested scope and outcomes, including superseded failures.
 
 Commands were inspected before execution. Original weights were hashed only.
 Private inspection/extraction scripts and command logs are outside this release;
@@ -107,11 +130,13 @@ Clean staging/package verification is recorded in `verification.json`. It reuses
 the local dependency installation with staged source/wheel imports. A fresh
 network installation was attempted only for a small citation validator dependency;
 package-index access was unavailable. No global dependency was installed or upgraded.
-The final committed candidate must be tested again.
+The eventual final paper-release candidate must be tested at its own clean commit.
+The later hosted baseline run below verifies installation on its stated target;
+it does not replace the original experimental environment records.
 
-### Subsequent CI regression repair
+### Subsequent CI regression repair — historical, hosted follow-up now complete
 
-The author-supplied Linux/Python 3.11.16 log reports 745 passed, five skipped,
+The earlier author-supplied Linux/Python 3.11.16 log reported 745 passed, five skipped,
 34 deselected and one failure in the old fixed-hash legacy episode test.
 The test now compares the current simulator exactly with the frozen synthetic
 simulator dependency closure from `881f6aa9ffcd7ce3928a5c68ad5b71e9129ec231`,
@@ -124,9 +149,12 @@ The original source reproduces the old capture hash on Python 3.14.4 / NumPy
 2.4.6 / macOS arm64. Current and frozen source also agree exactly on Python
 3.10.6 / NumPy 1.26.4 / macOS arm64, with a different hash. That second environment
 is a diagnostic outside the project's declared NumPy dependency range. Python's
-floating-point sum change explains some variation, but the entire Linux-hash
-cause remains unisolated. The revised test still needs a hosted Linux run;
-the portability blocker remains open. No scientific implementation changed.
+floating-point sum change explains some variation, but the entire old Linux-hash
+cause was not isolated. At that repair stage, hosted verification was pending;
+the successful baseline run below supersedes that pending status and closes the
+portability blocker. The regression criterion compares current and frozen source
+within one runtime; differing hashes across runtimes do not require further
+investigation as a release gate. No scientific implementation changed.
 See [fixture provenance](../tests/fixtures/pre_refinement/README.md).
 
 For this repair, `python scripts/release_validate.py --run-checks` passed locally:
@@ -134,10 +162,55 @@ For this repair, `python scripts/release_validate.py --run-checks` passed locall
 followed by the synthetic smoke, saved-result and date-assignment checks. The
 focused refinement/acceptance selection passed all 51 tests. The three legacy
 reference checks also passed in a clean staging copy without Git history or
-ignored local artifacts. Details are appended to `verification.json`; these
-checks do not replace a run on hosted Linux.
+ignored local artifacts. These historical local results remain in
+`verification.json`, separately from the subsequent hosted verification.
+
+## Successful hosted baseline validation
+
+[Tests run #14, attempt 1](https://github.com/juliusgraf/learning-market-making/actions/runs/34193586813)
+completed successfully for `02a8f00524b63b288e7e6ae813b55b9d195fb368` on
+2026-09-08. Authenticated read-only GitHub run/job metadata and the job log were
+checked during this review. Job `101956457673` completed at 06:19:26 UTC on
+hosted Ubuntu **24.04.4**, Python **3.11.16**. Constrained CPU dependency installation
+passed, followed by:
+
+- `python scripts/release_validate.py --run-checks`: **748 passed, 5 skipped,
+  34 deselected**, 14 fixture/legacy warnings; synthetic smoke PASS; **48 paired
+  intervals and 30 ordinary-shortfall levels** PASS; **160,100 recorded seed/date
+  assignments** PASS.
+- `python -m pip wheel . --no-deps --wheel-dir dist`: PASS.
+
+This supersedes the earlier failed Linux checks (the initial inspected result was
+730 passed, 16 skipped, 23 deselected, one failure; the subsequent supplied log
+was 745 passed, five skipped, 34 deselected, one failure). Hosted Linux validation
+is complete and passing for the identified commit. The regression establishes
+exact current-versus-frozen-source agreement in the same runtime, including final
+RNG state. It does **not** establish bitwise serialized-trajectory equality across
+Python/library versions, platforms or hardware, or level D experiment reproduction.
+Later documentation/manuscript commits require separate local and hosted checks.
+
+## Retained manuscript versus author-reported corrections
+
+`paper/main.tex` remains unchanged at its existing hash. Its AS calibration
+paragraph (line 1028 in the baseline) describes 5,000 attempted samples and the
+discard rules, but omits the disclosure that the actual coefficients are preserved
+while accepted/excluded counts and original fit samples are missing. It also lacks
+the author-reported Code and Data Availability statement covering source code,
+experiment configurations and saved numerical summaries upon request, with
+historical Alpaca inputs obtained separately. It still refers to the replication
+bundle in the experimental protocol (baseline line 766).
+
+The latest author-approved manuscript text is not present in the inspected
+manuscript sources. The owner will import it later using the procedure in
+[RUNBOOK.md](RUNBOOK.md#later-author-approved-manuscript-update). This known
+mismatch is not a prerequisite for completing this documentation-only update;
+the retained manuscript is not represented as synchronized.
 
 ## Coverage ledger and unresolved exposure
+
+Unless explicitly updated by the hosted baseline verification above, the counts
+and scan results below describe the original preparation audit, not a new
+exhaustive history/security scan of the later HEAD.
 
 | Surface | Coverage | Limit / action |
 |---|---|---|
@@ -147,9 +220,9 @@ checks do not replace a run on hosted Linux.
 | Credential findings | Credential-like matches reviewed as synthetic tests; no live secret identified in bounded inspected scope | Heuristics are not an unconditional absence claim; no credentials tested or rotated |
 | Local paths / logs | Machine paths in old reports, manuscript build files and metadata identified; new bundle copies normalize root prefixes | Original evidence retained; tracked build debris and old metadata require reviewed archival/removal before final exposure |
 | PDF / binaries | Current manuscript PDF metadata inspected; original model files integrity-hashed | Historical compressed PDF/image content and model internals not semantically audited; no untrusted deserialization |
-| Hosted repository | Authenticated metadata says private; releases list empty; nine Actions runs enumerated, their artifact lists empty | No public availability established; nine artifact lists were first pages, older logs not exhaustively scanned |
-| Hosted CI | Initial inspected job: 1 failed, 730 passed, 16 skipped, 23 deselected; subsequent author-supplied log: 1 failed, 745 passed, five skipped, 34 deselected | Fixed JSON-float hash replaced by an exact comparison with frozen original source under the same runtime; revised hosted run pending. See subsequent CI repair above. |
-| Publication | None performed | Commit, final tag, release assets, visibility and signed-out access require owner action |
+| Hosted repository | Original audit: private, releases list empty, nine Actions runs enumerated with empty first artifact pages. Baseline run metadata reconfirms private status | No public availability established; original artifact/log coverage is not an exhaustive current hosted-surface audit |
+| Hosted CI | Tests run #14 at `02a8f00524b63b288e7e6ae813b55b9d195fb368`: 748 passed, 5 skipped, 34 deselected; smoke, saved-result/date checks and wheel PASS | Earlier failures superseded; exact same-runtime reference criterion, no cross-runtime bitwise guarantee; later commits need new checks |
+| Publication | None performed; preparation committed in the baseline | Final candidate approval, tag, release assets, visibility and signed-out access require owner action |
 
 **Do not change repository visibility yet.** Vendor raw/processed historical data
 exist in reachable Git history. The author's permission for derived summaries
@@ -158,8 +231,8 @@ A source archive allowlist, `.gitignore` or MIT license cannot solve this.
 No private scan values or specific sensitive historical locations are reproduced
 here; owner-only details are retained outside the intended public package.
 
-Resolve distribution/history scope and Linux portability first. Then resolve the
-promised artifact availability and AS evidence limit, review the exact inclusion
-list, commit the reviewed candidate, validate that clean SHA/tag, publish only
+For any future public release, resolve distribution/history scope and promised
+artifact availability, retain the disclosed AS evidence limitation, review the exact
+inclusion list, commit the reviewed final candidate, validate that clean SHA/tag, publish only
 with separate authorization, and verify signed-out access. The unfinished
 manuscript template and draft release notes are in [RUNBOOK.md](RUNBOOK.md).

@@ -1,6 +1,6 @@
 {
   "schema": "lmm-release-verification-v1",
-  "tested_state": "uncommitted preparation; committed candidate must be checked again",
+  "tested_state": "Preparation and CI repair committed in baseline 02a8f00524b63b288e7e6ae813b55b9d195fb368; hosted validation below verifies that exact commit. Earlier local/staging records retain their historical tested scope. Later documentation/manuscript changes and the eventual final candidate require their own checks.",
   "baseline_tests": {
     "revision_acceptance": 26,
     "offline_passed": 736,
@@ -95,7 +95,7 @@
     "security": "explicit staging byte scan: no credential findings beyond synthetic test values; zero machine-root prefixes in newly extracted evidence. Four older provenance documents retain machine paths and remain flagged for owner review."
   },
   "ci_regression_repair": {
-    "tested_state": "uncommitted CI test repair; production simulator/configurations unchanged",
+    "tested_state": "Historical local checks of the then-uncommitted CI test repair, subsequently committed in baseline 02a8f00524b63b288e7e6ae813b55b9d195fb368; production simulator/configurations unchanged",
     "reference_revision": "881f6aa9ffcd7ce3928a5c68ad5b71e9129ec231",
     "reference_manifest": "tests/fixtures/pre_refinement/provenance.json",
     "comparison": "exact serialized trajectory equality for all 71 decisions plus exact final RNG state; no rounding or numerical tolerance",
@@ -132,10 +132,69 @@
       "rows_sha256": "76869afd7d54e1300a107adb54e23e9d6ef27e9a58ab1fe0068fdc475f33e881",
       "original_capture_reproduced_in_paper_runtime": "c82cfa86060ee70cd3b917c8dece682271f7abac6844694a6cd21b3441feb03d"
     },
-    "limits": [
+    "historical_limits_superseded_by_hosted_validation": [
       "revised hosted Linux run pending",
       "full Linux-hash numerical cause not isolated",
       "fresh Python 3.11 installation unavailable because runtime download DNS lookup failed; Docker daemon unavailable"
+    ],
+    "scope_note": "Pending hosted validation and local installation limits above are historical and superseded by the successful hosted record below. The full old Linux-hash cause was not isolated, but cross-runtime hash identity is not the same-runtime regression criterion or an unresolved release gate."
+  },
+  "historical_local_checks_scope": "baseline_tests, release_tests, support_table, historical_dates, staging_and_packaging and ci_regression_repair record earlier preparation-time checks. They are not new measurements of this documentation update; their originally uncommitted preparation was subsequently committed in the baseline.",
+  "hosted_validation": {
+    "commit": "02a8f00524b63b288e7e6ae813b55b9d195fb368",
+    "workflow": "Tests",
+    "run_id": 34193586813,
+    "run_number": 14,
+    "run_attempt": 1,
+    "job_id": 101956457673,
+    "url": "https://github.com/juliusgraf/learning-market-making/actions/runs/34193586813",
+    "status": "completed",
+    "conclusion": "success",
+    "job_started_at_utc": "2026-09-08T06:11:22Z",
+    "job_completed_at_utc": "2026-09-08T06:19:26Z",
+    "verified_on_utc_date": "2026-09-08",
+    "verification_source": "Authenticated read-only GitHub run/job metadata and decoded job log; structured facts recorded without copying raw logs",
+    "environment": {
+      "os": "Ubuntu 24.04.4",
+      "runner_image": "ubuntu-24.04",
+      "python": "3.11.16",
+      "numpy": "2.4.6",
+      "torch": "2.12.0+cpu",
+      "pytest": "9.1.1",
+      "scope": "Observed hosted verification environment, not relabeled as the original experimental environment"
+    },
+    "installation": [
+      {
+        "command": "python -m pip install -c release/paper-environment.txt torch --index-url https://download.pytorch.org/whl/cpu",
+        "outcome": "PASS"
+      },
+      {
+        "command": "python -m pip install -c release/paper-environment.txt -e '.[dev]'",
+        "outcome": "PASS"
+      }
+    ],
+    "offline_validation": {
+      "command": "python scripts/release_validate.py --run-checks",
+      "outcome": "PASS",
+      "passed": 748,
+      "skipped": 5,
+      "deselected": 34,
+      "warnings": 14,
+      "pytest_seconds": 415.51,
+      "synthetic_smoke": "PASS: two finite, identical synthetic CPU episodes reach terminal settlement",
+      "saved_results": "PASS: 48 paired intervals and 30 ordinary-shortfall levels match saved unrounded results (level B)",
+      "historical_dates": "PASS: 160100 recorded seed/date assignments; no market data or policy execution"
+    },
+    "wheel_build": {
+      "command": "python -m pip wheel . --no-deps --wheel-dir dist",
+      "outcome": "PASS"
+    },
+    "regression_scope": "Exact serialized trajectory and final RNG-state equality between current and hash-verified frozen source in the same runtime; no rounding or tolerance",
+    "limits": [
+      "Previous failed Linux runs are superseded, not deleted from the audit history",
+      "No universal bitwise equality across Python/library versions, platforms or hardware",
+      "No full experiment independently rerun, and no public availability established",
+      "This success is tied to the stated commit and does not verify subsequent documentation/manuscript commits"
     ]
   }
 }
