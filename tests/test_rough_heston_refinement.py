@@ -1,14 +1,21 @@
 """Numerical refinement must never become a market event or learning step."""
 
 from dataclasses import replace
-import hashlib
 import json
 import math
+from pathlib import Path
+import shutil
 
 import numpy as np
 import pytest
 
 from helpers import load_synthetic_cfg, new_env, NOOP_CLOB, NOOP_AUCTION
+from legacy_episode_reference import (
+    REFERENCE,
+    capture_episode,
+    reference_episode,
+    validate_reference,
+)
 from lmm.config import ConfigError, environment_contract, artifact_asdict
 from lmm.market.midprice import (
     RoughHestonMidPrice,
@@ -136,22 +143,39 @@ def test_full_history_reference_with_negative_variance(method):
 
 
 def test_legacy_golden_episode():
-    # Captured from the unmodified implementation before adding refinement.
-    env = new_env(load_synthetic_cfg())
-    env.reset(seed=4201)
-    rows = []
-    while True:
-        obs, reward, done, _, info = env.step(
-            NOOP_CLOB if env.phase == "clob" else NOOP_AUCTION
-        )
-        rows.append([obs.tolist(), reward, info["t"], info["H_used"], info["H_next"]])
-        if done:
-            break
-    assert len(rows) == 71
-    assert (
-        hashlib.sha256(json.dumps(rows, sort_keys=True).encode()).hexdigest()
-        == "c82cfa86060ee70cd3b917c8dece682271f7abac6844694a6cd21b3441feb03d"
-    )
+    # Original source is frozen, so both sides use this runtime's floating-point
+    # operations without depending on one platform's JSON-float fingerprint.
+    actual = capture_episode(Path(__file__).resolve().parents[1])
+    expected = reference_episode()
+    assert len(actual["rows"]) == len(expected["rows"]) == 71
+    assert actual["rng_state"] == expected["rng_state"]
+    assert json.dumps(actual["rows"], sort_keys=True, allow_nan=False) == json.dumps(
+        expected["rows"], sort_keys=True, allow_nan=False
+    ), "legacy episode differs from frozen pre-refinement source on the same runtime"
+
+
+def test_legacy_reference_detects_one_ulp_change(monkeypatch):
+    from lmm.env.mdp import MarketMakingEnv
+
+    original_step = MarketMakingEnv.step
+
+    def changed_step(self, action):
+        obs, reward, done, truncated, info = original_step(self, action)
+        info = dict(info, H_next=math.nextafter(info["H_next"], math.inf))
+        return obs, reward, done, truncated, info
+
+    monkeypatch.setattr(MarketMakingEnv, "step", changed_step)
+    with pytest.raises(AssertionError, match="legacy episode differs"):
+        test_legacy_golden_episode()
+
+
+def test_legacy_reference_rejects_modified_source(tmp_path):
+    reference = tmp_path / "reference"
+    shutil.copytree(REFERENCE, reference, ignore=shutil.ignore_patterns("__pycache__"))
+    source = reference / "src/lmm/env/mdp.py"
+    source.write_bytes(source.read_bytes() + b"\n# changed fixture\n")
+    with pytest.raises(ValueError, match="frozen reference source changed"):
+        validate_reference(reference)
 
 
 def test_market_interface_streams_rounding_and_freezing():

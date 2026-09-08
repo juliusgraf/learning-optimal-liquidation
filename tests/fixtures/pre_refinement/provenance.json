@@ -1,0 +1,86 @@
+{
+  "source_revision": "881f6aa9ffcd7ce3928a5c68ad5b71e9129ec231",
+  "origin": "Verbatim first-party synthetic simulator dependency closure from the parent of ffb314dd736a750e026861284e437aafa1e935ee; captured during CI repair, not a paper result.",
+  "original_golden": {
+    "seed": 4201,
+    "decisions": 71,
+    "rows_sha256": "c82cfa86060ee70cd3b917c8dece682271f7abac6844694a6cd21b3441feb03d"
+  },
+  "files": [
+    {
+      "path": "src/lmm/__init__.py",
+      "sha256": "0ed49b177b9db60fc392ba11a6378c5393072e50c8b2115e33d934d8296e06c5",
+      "bytes": 351
+    },
+    {
+      "path": "src/lmm/config.py",
+      "sha256": "02a385c7a72e7948a751f104fefb05bdcd9b9c0ab8beb28073b47241a0437bc3",
+      "bytes": 50215
+    },
+    {
+      "path": "src/lmm/env/__init__.py",
+      "sha256": "69aab95c73fa9d39d13569f1e722b472775859d6c833e4576a58c7764f253e29",
+      "bytes": 76
+    },
+    {
+      "path": "src/lmm/env/action_spaces.py",
+      "sha256": "56671a535e311fb4d9dd3b2ab9cbee8d0208510e721d154a0c52a26f4ab2a6d7",
+      "bytes": 20376
+    },
+    {
+      "path": "src/lmm/env/features.py",
+      "sha256": "aedf701c5df8dc534eaf87397c520c30d9b3302ff65ba66b0397b442e17de4eb",
+      "bytes": 17949
+    },
+    {
+      "path": "src/lmm/env/mdp.py",
+      "sha256": "5f9746bad95ad29fa9813a420bd7385bbb8966156f0aff83640f1ea663fa12a1",
+      "bytes": 38845
+    },
+    {
+      "path": "src/lmm/env/rewards.py",
+      "sha256": "01ed5f5602d90fc0498575a0edef2192883e401a8a1cf2aff6376fee503b5d09",
+      "bytes": 4133
+    },
+    {
+      "path": "src/lmm/market/__init__.py",
+      "sha256": "66a9f1a19c2d19b491fd291e96f6dc7ccaca167c821a1968c9d0a2f5f886e9ab",
+      "bytes": 76
+    },
+    {
+      "path": "src/lmm/market/auction.py",
+      "sha256": "775edfb45c0707a93e51ed7917f128455f935aa341e38cea17c52a093bfc4d78",
+      "bytes": 20194
+    },
+    {
+      "path": "src/lmm/market/clearing.py",
+      "sha256": "09ee8665e434a86340fcb5ca94d58c328c4a46ba79b6c9721e7c91fc649dd45a",
+      "bytes": 30338
+    },
+    {
+      "path": "src/lmm/market/clob.py",
+      "sha256": "4682dd3740d002645f4a2d1f735794004e2aa2a6a2ee36dfd18f0f6742399bd2",
+      "bytes": 10080
+    },
+    {
+      "path": "src/lmm/market/generator.py",
+      "sha256": "704567b1c500e5b8fd9da02e1eb41b47ebedf62c6e25208e80093105d84ff01a",
+      "bytes": 15149
+    },
+    {
+      "path": "src/lmm/market/midprice.py",
+      "sha256": "1b583347baee0869388edabccd423b0b36b5dd9e2ea5f2d22a2f2486f54efa6e",
+      "bytes": 19069
+    },
+    {
+      "path": "configs/base.yaml",
+      "sha256": "4dbfa23a1bff14a728919ef36d3d976553f79aa3a8c1fc0d48cf11864034a4d3",
+      "bytes": 3122
+    },
+    {
+      "path": "configs/synthetic_rough_heston.yaml",
+      "sha256": "7e957eb4267029832434cc846d8e886d2074d3beb1e04ebbb9ac2a7c74f1e3a3",
+      "bytes": 978
+    }
+  ]
+}

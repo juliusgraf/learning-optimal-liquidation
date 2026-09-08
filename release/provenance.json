@@ -498,7 +498,7 @@
       "id": "linux-portability",
       "status": "open",
       "scope": "technical release",
-      "reason": "Starting HEAD hosted Linux CI failed exact legacy episode hash; numerical cause not isolated. Local macOS passed; test not weakened. Pinned CPU install and modified CI not run remotely."
+      "reason": "Old fixed JSON-float hash failed on hosted Linux/Python 3.11. The regression now compares exactly against hash-verified pre-refinement source in the same runtime and checks final RNG state; a one-ULP mutation is rejected. Current/reference equality verified locally in two runtimes with different output hashes. Full Linux-hash cause remains unisolated; revised hosted test result pending. No simulator or numerical tolerance changed."
     },
     {
       "id": "artifact-availability",

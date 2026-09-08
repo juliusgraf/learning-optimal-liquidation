@@ -55,13 +55,13 @@
     },
     {
       "path": "README.md",
-      "bytes": 5405,
-      "sha256": "7f46d112791ef277cccb9347ff3e8421b8b64ec98a45ab7fc14ef86d87ada1fe"
+      "bytes": 5502,
+      "sha256": "5e8603c2532f7549dd1f7a1e41fcd47e3bfe845a7805a8a475dc8337c3a90f11"
     },
     {
       "path": "REPRODUCING.md",
-      "bytes": 12528,
-      "sha256": "c2138e86207d75aa5e9737e24713cf6b0b8714ff618fc263284170a83fbc292b"
+      "bytes": 13252,
+      "sha256": "2f85de737db434347fdae377b1c3f0b7067153121c7103b5b3b98d40ac7449f5"
     },
     {
       "path": "THIRD_PARTY_NOTICES.md",
@@ -750,8 +750,8 @@
     },
     {
       "path": "release/READINESS.md",
-      "bytes": 11579,
-      "sha256": "b83a31f378502fb9c2c144c7a33418c41522a42950657dd19e07ea6c11a2de71"
+      "bytes": 13463,
+      "sha256": "e2d4ea7821d8146ef1ab633752e2350744513d564d3d94e701ec31e1d457b593"
     },
     {
       "path": "release/RUNBOOK.md",
@@ -885,13 +885,13 @@
     },
     {
       "path": "release/provenance.json",
-      "bytes": 31257,
-      "sha256": "63aacc4053aa58a7db0c62384ccd407d07411a74019f6c8efbc3bd8d5c28fbb5"
+      "bytes": 31506,
+      "sha256": "a819cb454cc37d993422d06185afce2c6681dad6e73ffc37f6c99a1efc2ccdc1"
     },
     {
       "path": "release/verification.json",
-      "bytes": 3652,
-      "sha256": "fc52ee781fddb401fa60b17ce53a748269612b47d86e10ff96de238bf061b0bd"
+      "bytes": 5957,
+      "sha256": "5dffdff17efd56daeb5b1c36d1285440795d9b170231d7d6e200bb68913d1784"
     },
     {
       "path": "requirements.txt",
@@ -1369,6 +1369,91 @@
       "sha256": "dc7ed9229ea3a67059e0db03eb6498220a88e000c8928e963ee9cbf21af44cb3"
     },
     {
+      "path": "tests/fixtures/pre_refinement/README.md",
+      "bytes": 2270,
+      "sha256": "3f3275e7dbf15630968f6ff4acd249fac546a02ecb2d7932ac5377fb1e14c0fe"
+    },
+    {
+      "path": "tests/fixtures/pre_refinement/configs/base.yaml",
+      "bytes": 3122,
+      "sha256": "4dbfa23a1bff14a728919ef36d3d976553f79aa3a8c1fc0d48cf11864034a4d3"
+    },
+    {
+      "path": "tests/fixtures/pre_refinement/configs/synthetic_rough_heston.yaml",
+      "bytes": 978,
+      "sha256": "7e957eb4267029832434cc846d8e886d2074d3beb1e04ebbb9ac2a7c74f1e3a3"
+    },
+    {
+      "path": "tests/fixtures/pre_refinement/provenance.json",
+      "bytes": 2803,
+      "sha256": "6edbf7f0a3750401d6a0583f33948928a98f7a5894b506f214565fc5436696ed"
+    },
+    {
+      "path": "tests/fixtures/pre_refinement/src/lmm/__init__.py",
+      "bytes": 351,
+      "sha256": "0ed49b177b9db60fc392ba11a6378c5393072e50c8b2115e33d934d8296e06c5"
+    },
+    {
+      "path": "tests/fixtures/pre_refinement/src/lmm/config.py",
+      "bytes": 50215,
+      "sha256": "02a385c7a72e7948a751f104fefb05bdcd9b9c0ab8beb28073b47241a0437bc3"
+    },
+    {
+      "path": "tests/fixtures/pre_refinement/src/lmm/env/__init__.py",
+      "bytes": 76,
+      "sha256": "69aab95c73fa9d39d13569f1e722b472775859d6c833e4576a58c7764f253e29"
+    },
+    {
+      "path": "tests/fixtures/pre_refinement/src/lmm/env/action_spaces.py",
+      "bytes": 20376,
+      "sha256": "56671a535e311fb4d9dd3b2ab9cbee8d0208510e721d154a0c52a26f4ab2a6d7"
+    },
+    {
+      "path": "tests/fixtures/pre_refinement/src/lmm/env/features.py",
+      "bytes": 17949,
+      "sha256": "aedf701c5df8dc534eaf87397c520c30d9b3302ff65ba66b0397b442e17de4eb"
+    },
+    {
+      "path": "tests/fixtures/pre_refinement/src/lmm/env/mdp.py",
+      "bytes": 38845,
+      "sha256": "5f9746bad95ad29fa9813a420bd7385bbb8966156f0aff83640f1ea663fa12a1"
+    },
+    {
+      "path": "tests/fixtures/pre_refinement/src/lmm/env/rewards.py",
+      "bytes": 4133,
+      "sha256": "01ed5f5602d90fc0498575a0edef2192883e401a8a1cf2aff6376fee503b5d09"
+    },
+    {
+      "path": "tests/fixtures/pre_refinement/src/lmm/market/__init__.py",
+      "bytes": 76,
+      "sha256": "66a9f1a19c2d19b491fd291e96f6dc7ccaca167c821a1968c9d0a2f5f886e9ab"
+    },
+    {
+      "path": "tests/fixtures/pre_refinement/src/lmm/market/auction.py",
+      "bytes": 20194,
+      "sha256": "775edfb45c0707a93e51ed7917f128455f935aa341e38cea17c52a093bfc4d78"
+    },
+    {
+      "path": "tests/fixtures/pre_refinement/src/lmm/market/clearing.py",
+      "bytes": 30338,
+      "sha256": "09ee8665e434a86340fcb5ca94d58c328c4a46ba79b6c9721e7c91fc649dd45a"
+    },
+    {
+      "path": "tests/fixtures/pre_refinement/src/lmm/market/clob.py",
+      "bytes": 10080,
+      "sha256": "4682dd3740d002645f4a2d1f735794004e2aa2a6a2ee36dfd18f0f6742399bd2"
+    },
+    {
+      "path": "tests/fixtures/pre_refinement/src/lmm/market/generator.py",
+      "bytes": 15149,
+      "sha256": "704567b1c500e5b8fd9da02e1eb41b47ebedf62c6e25208e80093105d84ff01a"
+    },
+    {
+      "path": "tests/fixtures/pre_refinement/src/lmm/market/midprice.py",
+      "bytes": 19069,
+      "sha256": "1b583347baee0869388edabccd423b0b36b5dd9e2ea5f2d22a2f2486f54efa6e"
+    },
+    {
       "path": "tests/fixtures/run_dir/config_resolved.yaml",
       "bytes": 1941,
       "sha256": "1ec106b58fd098e42b8368fbacbcf1aeda7cf0476f1caa073fdc4cceaed55d7b"
@@ -1447,6 +1532,11 @@
       "path": "tests/helpers.py",
       "bytes": 3318,
       "sha256": "0f546e9798e8b66ffc13f2d4c55a0b932d140d0d649363c6f078bd7f23afca6f"
+    },
+    {
+      "path": "tests/legacy_episode_reference.py",
+      "bytes": 2603,
+      "sha256": "c278cfd84eacf3ebb10c410452d8cc87fd0b1e1486e5d356de86ca44284f4e11"
     },
     {
       "path": "tests/test_accounting.py",
@@ -1600,8 +1690,8 @@
     },
     {
       "path": "tests/test_rough_heston_refinement.py",
-      "bytes": 12124,
-      "sha256": "e1e9e138660d73159ede390e6ce90e8f519943824188c38aca9f418bdaf514f3"
+      "bytes": 13245,
+      "sha256": "166fc3b229afeb5dd7c6b4962a12959e91095f14d97261277d0d7c0b63bc68bf"
     },
     {
       "path": "tests/test_run_matrix.py",

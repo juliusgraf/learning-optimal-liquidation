@@ -38,9 +38,10 @@ pytest -q -m 'not network and not slow and not market_data'
 The smoke check runs two identical synthetic CPU episodes, without training,
 market data, credentials, model weights, tracking or uploads. It is not a paper
 result. The tests use explicit synthetic fixtures in `tests/fixtures/`; they
-never replace missing paper inputs. Current Linux CI has an unresolved exact
-legacy-trajectory hash mismatch; see the readiness report before assuming
-cross-platform bitwise reproducibility.
+never replace missing paper inputs. The legacy episode regression compares the
+current simulator exactly with frozen original source under the same runtime;
+cross-platform bitwise reproducibility is not assumed. The revised Linux check
+still needs a hosted run; see the readiness report.
 
 Regenerate and verify the paired benchmark supporting table from bundled,
 unrounded seed means:

@@ -109,6 +109,34 @@ network installation was attempted only for a small citation validator dependenc
 package-index access was unavailable. No global dependency was installed or upgraded.
 The final committed candidate must be tested again.
 
+### Subsequent CI regression repair
+
+The author-supplied Linux/Python 3.11.16 log reports 745 passed, five skipped,
+34 deselected and one failure in the old fixed-hash legacy episode test.
+The test now compares the current simulator exactly with the frozen synthetic
+simulator dependency closure from `881f6aa9ffcd7ce3928a5c68ad5b71e9129ec231`,
+under the same interpreter and installed dependencies. The fixture's source and
+configuration hashes are checked before execution; no Git/network access is
+required. All original trajectory fields and the final RNG state are compared
+without rounding or tolerance. A one-ULP mutation is rejected.
+
+The original source reproduces the old capture hash on Python 3.14.4 / NumPy
+2.4.6 / macOS arm64. Current and frozen source also agree exactly on Python
+3.10.6 / NumPy 1.26.4 / macOS arm64, with a different hash. That second environment
+is a diagnostic outside the project's declared NumPy dependency range. Python's
+floating-point sum change explains some variation, but the entire Linux-hash
+cause remains unisolated. The revised test still needs a hosted Linux run;
+the portability blocker remains open. No scientific implementation changed.
+See [fixture provenance](../tests/fixtures/pre_refinement/README.md).
+
+For this repair, `python scripts/release_validate.py --run-checks` passed locally:
+**753 passed, 34 deselected**, 14 existing fixture/legacy warnings, 213.41 seconds,
+followed by the synthetic smoke, saved-result and date-assignment checks. The
+focused refinement/acceptance selection passed all 51 tests. The three legacy
+reference checks also passed in a clean staging copy without Git history or
+ignored local artifacts. Details are appended to `verification.json`; these
+checks do not replace a run on hosted Linux.
+
 ## Coverage ledger and unresolved exposure
 
 | Surface | Coverage | Limit / action |
@@ -120,7 +148,7 @@ The final committed candidate must be tested again.
 | Local paths / logs | Machine paths in old reports, manuscript build files and metadata identified; new bundle copies normalize root prefixes | Original evidence retained; tracked build debris and old metadata require reviewed archival/removal before final exposure |
 | PDF / binaries | Current manuscript PDF metadata inspected; original model files integrity-hashed | Historical compressed PDF/image content and model internals not semantically audited; no untrusted deserialization |
 | Hosted repository | Authenticated metadata says private; releases list empty; nine Actions runs enumerated, their artifact lists empty | No public availability established; nine artifact lists were first pages, older logs not exhaustively scanned |
-| Hosted HEAD CI | Latest job log inspected: 1 failed, 730 passed, 16 skipped, 23 deselected | `test_legacy_golden_episode` exact JSON-float hash differs on Linux/Python 3.11. Cause unresolved; local macOS passes. No test weakened. |
+| Hosted CI | Initial inspected job: 1 failed, 730 passed, 16 skipped, 23 deselected; subsequent author-supplied log: 1 failed, 745 passed, five skipped, 34 deselected | Fixed JSON-float hash replaced by an exact comparison with frozen original source under the same runtime; revised hosted run pending. See subsequent CI repair above. |
 | Publication | None performed | Commit, final tag, release assets, visibility and signed-out access require owner action |
 
 **Do not change repository visibility yet.** Vendor raw/processed historical data

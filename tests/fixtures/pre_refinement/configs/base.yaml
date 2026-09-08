@@ -1,0 +1,130 @@
+# Shared v19 numerical specification for both mid-price sources.
+# Author-approved weighted shaped J for training; economic J_bar_lambda for
+# validation/test. See docs/model.md for the simulator contract.
+# Execution-scale preferences and stylized liquidity, not an empirical fit.
+# All 391 CLOB / 1,346 auction actions remain; signed settlement is unchanged.
+
+experiment:
+  name: ''
+  setting: ''
+  episodes: 800
+  master_seed: 42
+  seeds:
+  - 42
+  ablation_label: H_on__shaping_on__auction_on
+  auction_enabled: true
+  results_root: results/revision_v19
+  artifact_schema_version: 15
+grid:
+  tau_op: 120
+  tau_cl: 150
+  h: 30
+  time_unit: minutes
+  T_physical: 150.0
+  alpha: 0.01
+  S0: 100.0
+  I0: 100
+  I_max: 100
+clob_flow:
+  # Expected contra-side flow is about twice the 100-unit parent over 120 min.
+  # This is a stylized capacity scenario, not a fitted large-cap tape intensity.
+  lambda0: 0.5
+  v_m: 2.0
+  gamma_m: 2.5
+  V: 30
+  V_inf: 2.0
+  beta_a: 2.0
+  beta_b: 5.0
+  rho_lob: 0.96
+  L_max: 200
+auction_flow:
+  # Retained v19 campaign and forecast fits: explicitly legacy clearing.
+  # New experiments overlay configs/clearing/max_volume_v2.yaml after setting.
+  clearing_mechanism: nearest_tick_v1
+  p1: 1.0
+  p2: 0.0
+  p3: 0.3
+  p4: 0.05
+  D_mu: 0.1
+  U1: 1.0
+  U2: 20.0
+  B_inf: 150
+midprice:
+  model: ''
+algo1:
+  H0: 100.0
+  eta_H: 0.95
+reward:
+  k_star: 10000
+  lambda_inv: 0.01
+  q: 0.0
+  d: 0.001
+  auction_shaping_weight: 0.0001
+  shaping_enabled: true
+  learning_potential: true
+  clawback_shaping: true
+  center_initial_inventory_value: true
+  numerical_guard: false
+rl:
+  chi: 1.0
+  discount_mode: undiscounted
+  checkpoint_metric: risk_adjusted_pnl
+  relative_price_features: true
+  auction_exposure_features: true
+  phase_normalization: false
+  auction_inventory_asinh: false
+  market_return_control_variate: true
+  market_control_reference: calibration
+  structured_warmup_episodes: 32
+  learning_starts_after_warmup: true
+  learning_clob_inventory_potential: true
+  learning_auction_inventory_potential: true
+  learning_rate_half_life_episodes: 90.0
+  learning_rate_min_fraction: 0.1
+  normalizer_fit_episodes: 16
+  validation_size: 128
+  validation_frequency_episodes: 50
+  validation_patience_evals: 4
+  checkpoint_min_clob_updates: 2000
+  checkpoint_min_auction_updates: 2000
+  checkpoint_require_initial_improvement: false
+  test_size: 100
+  # Fresh simulation streams after v18 development; historical dates remain
+  # the same archived held-out week and are disclosed as a reused holdout.
+  test_seed_namespace: 19001
+  h_cl_feature_enabled: true
+actions:
+  V_max: 30
+  L_max: 12
+  beta: 0.25
+  K_max: 32
+  B_inf: 150
+  B_max: 10
+  auction_anchor: indicative
+  auction_cancel_mode: enabled
+features:
+  clob: &id001
+  - time
+  - inventory
+  - h_cl
+  - s_mid
+  - decision_index
+  - depth_ask
+  - depth_bid
+  - top_ask
+  - top_bid
+  - n_mm
+  - n_buy
+  - n_sell
+  - cancel_admissible
+  - own_slope
+  - own_weighted_quote
+  - exogenous_slope
+  - auction_imbalance
+  - exogenous_weighted_quote
+  auction: *id001
+benchmark:
+  z: 10.0
+  as_n_samples: 5000
+  as_gamma: 0.0
+  twap_delta_mode: min

@@ -74,9 +74,19 @@ Never replace missing or invalid data with a fixture to make a paper run pass.
 Local validation used the modified/staged source and existing dependency
 installation. The clean staging copy contained no ignored data/results or model
 weights. Fresh dependency resolution on an empty machine was not verified because
-package-index access was unavailable. A Linux hosted run at the starting HEAD
-failed `test_legacy_golden_episode` on an exact serialized floating-point hash.
-The numerical cause remains unisolated; no tolerance or test was weakened.
+package-index access was unavailable. The former `test_legacy_golden_episode`
+compared serialized floating-point values with one runtime's fixed hash, which
+failed on Linux/Python 3.11. The test now compares the current simulator exactly
+against the pre-refinement source frozen in
+[tests/fixtures/pre_refinement](tests/fixtures/pre_refinement/README.md), using
+the same interpreter/dependencies in an isolated subprocess. All 71 observations,
+rewards, times and H values must match without rounding or numerical tolerance;
+the final RNG state must also match. Source hashes are checked before execution.
+Local checks reproduced the original capture and showed exact current/reference
+agreement in two runtimes whose output hashes differ. Python's floating-point
+`sum` change explains some variation; the full Linux-hash cause remains unisolated
+and the revised check still needs a hosted Linux run. No simulator or RNG code
+was changed to repair the test.
 Torch enables deterministic algorithms with `warn_only=True`; bitwise equality
 across hardware, Python/BLAS versions or accelerator kernels is not guaranteed.
 Wall-clock timings are not reproducibility targets.
