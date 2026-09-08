@@ -43,10 +43,19 @@ def forecast_directory(root: Path, setting: str) -> Path:
     return root / '_forecasts' / setting
 
 
+def refinement_configs(root: Path, setting: str) -> list[Path]:
+    """An explicit campaign overlay precedes its independently fitted weights."""
+    path = root / '_provenance/synthetic_refinement.yaml'
+    if setting != SETTINGS[0] or not path.exists():
+        return []
+    return [path]
+
+
 def fit_config(repo: Path, root: Path, setting: str):
     return economic_evaluation_config(load_config(
         repo/'configs/base.yaml', repo/f'configs/{setting}.yaml',
         repo/'configs/algo/dqn.yaml', repo/'configs/clearing/max_volume_v2.yaml',
+        *refinement_configs(root, setting),
         overrides=[f'experiment.results_root={root.resolve()}', 'algo1.clob_forecast_weights=[]'],
     ))
 
@@ -101,7 +110,7 @@ def validate_forecast_fit(repo: Path, root: Path, setting: str, *, smoke=False,
         raise ValueError(f'{directory}: forecast resolved configuration mismatch')
     overlay = directory/'forecast_overlay.yaml'
     fitted = load_config(repo/'configs/base.yaml', repo/f'configs/{setting}.yaml',
-                         repo/'configs/clearing/max_volume_v2.yaml', overlay)
+                         repo/'configs/clearing/max_volume_v2.yaml', *refinement_configs(root, setting), overlay)
     if len(fitted.algo1.clob_forecast_weights) != 4 or list(fitted.algo1.clob_forecast_weights) != protocol.get('weights'):
         raise ValueError(f'{directory}: fitted forecast coefficients disagree with protocol')
     return overlay
@@ -131,6 +140,8 @@ def prepare_forecast(repo: Path, root: Path, setting: str, *, smoke=False):
                '--setting', setting, '--config', str(repo/'configs/clearing/max_volume_v2.yaml'),
                '--episodes', str(contract['episodes_per_split']), '--output', str(directory),
                '--override', f'experiment.results_root={root.resolve()}']
+    for overlay in refinement_configs(root, setting):
+        command += ['--config', str(overlay)]
     if contract['symbol']:
         command += ['--symbol', contract['symbol']]
     subprocess.run(command, cwd=repo, check=True)

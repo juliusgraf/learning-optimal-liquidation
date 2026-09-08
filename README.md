@@ -81,3 +81,11 @@ rights to third-party market data. Software citation metadata is in
 For the paper submission, cite this GitHub repository and record the commit
 used for the experiments. The current source tree excludes manuscript files
 and market data; earlier commits retain the project's development history.
+
+Optional rough-Heston internal refinement and coupled diagnostics are documented in
+[docs/rough_heston_refinement/README.md](docs/rough_heston_refinement/README.md).
+The default and retained manuscript results use the legacy decision-grid generator.
+
+To replace only the 320 synthetic runs of the saved v20 campaign at the selected
+0.25-minute mesh while retaining its 200 historical runs, see
+[the prepared v20 rerun command](docs/rough_heston_refinement/rerun_v20.md).

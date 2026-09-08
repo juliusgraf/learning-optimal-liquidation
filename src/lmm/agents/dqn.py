@@ -25,7 +25,7 @@ Section 4):
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
@@ -33,7 +33,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from lmm.config import environment_contract, LEGACY_CLEARING
+from lmm.config import artifact_asdict, environment_contract, LEGACY_CLEARING
 from lmm.agents.base import (
     BELLMAN_FACTOR,
     Agent,
@@ -544,18 +544,18 @@ class DQNAgent(Agent):
             # changes trajectories, observations, rewards, or Bellman values
             # is included, including the shaped-vs-economic objective switch.
             "auction_enabled": bool(self.cfg.experiment.auction_enabled),
-            "grid": asdict(self.cfg.grid),
-            "clob_flow": asdict(self.cfg.clob_flow),
-            "auction_flow": asdict(self.cfg.auction_flow),
-            "midprice": asdict(self.cfg.midprice),
-            "algo1": asdict(self.cfg.algo1),
-            "reward": asdict(self.cfg.reward),
+            "grid": artifact_asdict(self.cfg.grid),
+            "clob_flow": artifact_asdict(self.cfg.clob_flow),
+            "auction_flow": artifact_asdict(self.cfg.auction_flow),
+            "midprice": artifact_asdict(self.cfg.midprice),
+            "algo1": artifact_asdict(self.cfg.algo1),
+            "reward": artifact_asdict(self.cfg.reward),
             "bellman": {
                 "chi": float(self.cfg.rl.chi),
                 "discount_mode": self.cfg.rl.discount_mode,
             },
-            "actions": asdict(self.cfg.actions),
-            "features": asdict(self.cfg.features),
+            "actions": artifact_asdict(self.cfg.actions),
+            "features": artifact_asdict(self.cfg.features),
             "h_cl_feature_enabled": bool(self.cfg.rl.h_cl_feature_enabled),
             "relative_price_features": self.cfg.rl.relative_price_features,
             "n_step": self.cfg.rl.n_step,

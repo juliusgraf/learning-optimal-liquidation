@@ -48,7 +48,7 @@ from lmm.market.clearing import (
     round_half_up_to_tick,
 )
 from lmm.market.generator import EpisodeGrid, MarketGenerator
-from lmm.market.midprice import MidPriceModel, build_midprice
+from lmm.market.midprice import MidPriceModel, RoughHestonMidPrice, build_midprice
 
 __all__ = ["MarketMakingEnv", "make_env"]
 
@@ -174,6 +174,8 @@ class MarketMakingEnv(gymnasium.Env):
         """Simulate/replay the complete revealed path and project half-up."""
         alpha = self.grid.alpha
         values = [round_half_up_to_tick(self._midprice.reset(self.np_random), alpha)]
+        if isinstance(self._midprice, RoughHestonMidPrice):
+            self._midprice.prepare_grid(self._episode_grid.clob_times, float(self.grid.tau_op))
         for t in self._episode_grid.clob_times[1:]:
             values.append(
                 round_half_up_to_tick(self._midprice.advance_to(float(t)), alpha)

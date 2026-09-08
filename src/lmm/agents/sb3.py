@@ -8,7 +8,6 @@ It never treats auction opening as termination of the economic episode.
 from __future__ import annotations
 
 import io
-from dataclasses import asdict
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -21,7 +20,7 @@ from stable_baselines3.common.logger import configure
 from stable_baselines3.common.type_aliases import ReplayBufferSamples
 from stable_baselines3.td3.policies import TD3Policy
 
-from lmm.config import environment_contract, LEGACY_CLEARING
+from lmm.config import artifact_asdict, environment_contract, LEGACY_CLEARING
 from lmm.agents.base import Agent
 from lmm.env.action_spaces import continuous_action_specs
 from lmm.rl.schedules import learning_rate_factor, learning_conditioning_contract
@@ -250,7 +249,7 @@ class SB3Agent(Agent):
             "environment": environment_contract(self.cfg),
             "schema": self.cfg.experiment.artifact_schema_version,
             "auction_enabled": self.cfg.experiment.auction_enabled,
-            **{key: asdict(getattr(self.cfg, key)) for key in (
+            **{key: artifact_asdict(getattr(self.cfg, key)) for key in (
                 "grid", "clob_flow", "auction_flow", "midprice", "algo1", "reward", "actions", "features", "algo")},
             "h_cl_feature_enabled": self.cfg.rl.h_cl_feature_enabled,
             "relative_price_features": self.cfg.rl.relative_price_features,

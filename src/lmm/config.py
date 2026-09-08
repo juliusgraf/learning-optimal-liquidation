@@ -66,10 +66,36 @@ CLEARING_SCHEMAS = {LEGACY_CLEARING: 15, VOLUME_MAX_CLEARING: 16}
 
 def environment_contract(cfg: ExperimentConfig) -> str:
     """Mechanism-specific identity; retained v15 artifacts keep their meaning."""
-    return {
+    base = {
         LEGACY_CLEARING: "shaped-j-economic-eval-sb3-2026-09-05-v15",
         VOLUME_MAX_CLEARING: "max-volume-auction-2026-09-07-v16",
     }[cfg.auction_flow.clearing_mechanism]
+    identity = price_generator_identity(cfg)
+    return base if identity == "legacy" else base + ":" + identity
+
+
+def price_generator_identity(cfg: ExperimentConfig) -> str:
+    """Retain old contracts verbatim; bind refined artifacts to model and mesh."""
+    import hashlib
+    import json
+
+    rough = cfg.midprice.rough_heston
+    if cfg.midprice.model != "rough_heston" or rough is None or rough.rough_heston_max_step_minutes is None:
+        return "legacy"
+    payload = {"rough_heston": dataclasses.asdict(rough), "grid": dataclasses.asdict(cfg.grid)}
+    digest = hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
+    return "rh-dyadic-v1-" + digest
+
+
+def artifact_asdict(value) -> dict:
+    """Default new fields are omitted solely in backwards-compatible checkpoint contracts."""
+    def prune(item):
+        if isinstance(item, dict):
+            return {k: prune(v) for k, v in item.items()
+                    if not (k == "rough_heston_max_step_minutes" and v is None)
+                    and not (k == "clob_forecast_price_generator" and v == "legacy")}
+        return item
+    return prune(dataclasses.asdict(value))
 
 
 class ConfigError(ValueError):
@@ -201,6 +227,12 @@ class RoughHestonParams:
     varsigma: float  # variance mean-reversion coefficient; => 0.3
     nu: float  # volatility of volatility; => 0.3
     s_star: float  # trading simulator-clock units per year; minute baseline => 98280
+    rough_heston_max_step_minutes: Optional[float] = None
+
+    def __post_init__(self) -> None:
+        step = self.rough_heston_max_step_minutes
+        if step is not None and (isinstance(step, bool) or not math.isfinite(step) or step <= 0):
+            raise ConfigError("rough_heston_max_step_minutes must be None or positive and finite")
 
     @property
     def rho(self) -> float:
@@ -270,6 +302,7 @@ class Algo1Params:
     # in four equal CLOB time bins. Empty preserves the original estimator.
     clob_forecast_weights: tuple[float, ...] = ()
     clob_forecast_mechanism: str = LEGACY_CLEARING
+    clob_forecast_price_generator: str = "legacy"
 
     @property
     def tau(self) -> float:
@@ -844,6 +877,8 @@ def _validate_experiment_config(cfg: ExperimentConfig) -> ExperimentConfig:
     mechanism = cfg.auction_flow.clearing_mechanism
     if mechanism not in CLEARING_SCHEMAS:
         raise ConfigError(f"unknown auction_flow.clearing_mechanism {mechanism!r}")
+    if weights and cfg.algo1.clob_forecast_price_generator != price_generator_identity(cfg):
+        raise ConfigError("forecast weights belong to a different price generator; refit on training paths")
     if cfg.algo1.clob_forecast_mechanism not in CLEARING_SCHEMAS:
         raise ConfigError("unknown algo1.clob_forecast_mechanism")
     if weights and cfg.algo1.clob_forecast_mechanism != mechanism:
@@ -1089,6 +1124,10 @@ def _validate_experiment_config(cfg: ExperimentConfig) -> ExperimentConfig:
                 "midprice.model=rough_heston requires midprice.rough_heston"
             )
         rough = cfg.midprice.rough_heston
+        if rough.rough_heston_max_step_minutes is not None and (
+            cfg.grid.time_unit != "minutes" or rough.s_star != 252 * 6.5 * 60
+        ):
+            raise ConfigError("refinement requires minutes and s_star=252*6.5*60")
         if not all(
             math.isfinite(value)
             for value in (

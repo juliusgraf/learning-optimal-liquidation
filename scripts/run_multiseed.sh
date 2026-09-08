@@ -11,6 +11,9 @@
 # Usage:
 #   scripts/run_multiseed.sh [--seeds "42 7 99 123 2024 314 577 811 1618 2718"] [--jobs N]
 #                            [--threads-per-job N] [--smoke] [--symbol TICKER] [--dry-run]
+# --replace-synthetic replaces the 320 synthetic runs across the saved v20
+# main matrix and two follow-ups, retaining 200 historical runs. See
+# docs/rough_heston_refinement/rerun_v20.md. Add --dry-run for a read-only plan.
 # Individual runs share a bounded queue across all seeds, algorithms and arms.
 # Report generation starts once, after every run succeeds.
 set -euo pipefail
@@ -28,6 +31,7 @@ AGGREGATE_SYMBOL=""
 SMOKE=0
 DRY_RUN=0
 LEGACY_CLEARING=0
+REPLACE_SYNTHETIC=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --seeds) SEEDS="$2"; SEEDS_EXPLICIT=1; shift 2 ;;
@@ -38,11 +42,12 @@ while [[ $# -gt 0 ]]; do
     --threads-per-job=*) THREADS_PER_JOB="${1#*=}"; shift ;;
     --dry-run) DRY_RUN=1; shift ;;
     --legacy-clearing) LEGACY_CLEARING=1; shift ;;
+    --replace-synthetic) REPLACE_SYNTHETIC=1; shift ;;
     --smoke) SMOKE=1; shift ;;
     --symbol) AGGREGATE_SYMBOL="$2"; shift 2 ;;
     --symbol=*) AGGREGATE_SYMBOL="${1#*=}"; shift ;;
     -h|--help)
-      echo "usage: $0 [--seeds \"42 7 99 123 2024 314 577 811 1618 2718\"] [--jobs N] [--threads-per-job N] [--smoke] [--symbol TICKER] [--dry-run] [--legacy-clearing]"
+      echo "usage: $0 [--seeds \"42 7 99 123 2024 314 577 811 1618 2718\"] [--jobs N] [--threads-per-job N] [--smoke] [--symbol TICKER] [--dry-run] [--legacy-clearing] [--replace-synthetic]"
       exit 0
       ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
@@ -123,4 +128,14 @@ QUEUE_ARGS=(--root "${LMM_RESULTS_ROOT:-$DEFAULT_ROOT}" --seeds $SEEDS
 [[ "$DRY_RUN" -eq 1 ]] && QUEUE_ARGS+=(--dry-run)
 [[ -n "$AGGREGATE_SYMBOL" ]] && QUEUE_ARGS+=(--symbol "$AGGREGATE_SYMBOL")
 [[ "$LEGACY_CLEARING" -eq 1 ]] && QUEUE_ARGS+=(--legacy-clearing)
-"$LMM_PYTHON" -m lmm.experiments.run_matrix "${QUEUE_ARGS[@]}"
+if [[ "$REPLACE_SYNTHETIC" -eq 1 ]]; then
+  if [[ "$SMOKE" -eq 1 || "$LEGACY_CLEARING" -eq 1 || -n "$AGGREGATE_SYMBOL" || "${LMM_RESULTS_ROOT:-$DEFAULT_ROOT}" != "$DEFAULT_ROOT" ]]; then
+    echo "--replace-synthetic targets the complete saved v20 synthetic matrix only; no smoke, legacy clearing, symbol, or root override" >&2
+    exit 2
+  fi
+  REPLACEMENT_ARGS=(--jobs "$JOBS" --threads-per-job "$THREADS_PER_JOB")
+  [[ "$DRY_RUN" -eq 1 ]] && REPLACEMENT_ARGS+=(--dry-run)
+  "$LMM_PYTHON" -m lmm.experiments.replace_synthetic "${REPLACEMENT_ARGS[@]}"
+else
+  "$LMM_PYTHON" -m lmm.experiments.run_matrix "${QUEUE_ARGS[@]}"
+fi

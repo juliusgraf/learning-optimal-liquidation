@@ -263,7 +263,7 @@ def validate_completion_manifest(run_dir: str | Path) -> None:
     )
 
 
-def _canonical_publication_config(run: "RunInfo", *, source_attestation=None) -> ExperimentConfig:
+def _canonical_publication_config(run: "RunInfo", *, source_attestation=None, retained_history=None) -> ExperimentConfig:
     """Resolve the exact current config stack for one publication identity."""
 
     if run.algo not in ALGO_ORDER:
@@ -284,14 +284,18 @@ def _canonical_publication_config(run: "RunInfo", *, source_attestation=None) ->
         if overlay is not None:
             paths.append(config_root / "treatment" / overlay)
     if run.cfg.auction_flow.clearing_mechanism == VOLUME_MAX_CLEARING:
-        from lmm.experiments.clearing_campaign import validate_forecast_fit
+        from lmm.experiments.clearing_campaign import refinement_configs, validate_forecast_fit
         # Derive the actual campaign root, then independently verify its fit;
         # never make saved run coefficients their own canonical reference.
         root = Path(run.run_dir).resolve().parent.parent
         setting = HISTORICAL_SETTING if run.setting == HISTORICAL_SETTING else 'synthetic_rough_heston'
         kwargs = {} if source_attestation is None else {'source_attestation': source_attestation}
-        fitted = validate_forecast_fit(repo_root, root, setting, **kwargs)
-        paths += [config_root/'clearing/max_volume_v2.yaml', fitted]
+        if retained_history is not None and run.setting == HISTORICAL_SETTING:
+            retained_history.validate_run(run.run_dir)
+            fitted = retained_history.forecast_overlay()
+        else:
+            fitted = validate_forecast_fit(repo_root, root, setting, **kwargs)
+        paths += [config_root/'clearing/max_volume_v2.yaml', *refinement_configs(root, setting), fitted]
     expected = load_config(
         *paths,
         overrides=[f"experiment.name={run.setting}"],
@@ -325,10 +329,10 @@ def _config_differences(expected: Any, observed: Any, prefix: str = "") -> list[
     return [] if expected == observed else [prefix or "<root>"]
 
 
-def _validate_canonical_publication_config(run: "RunInfo", *, source_attestation=None) -> None:
+def _validate_canonical_publication_config(run: "RunInfo", *, source_attestation=None, retained_history=None) -> None:
     if not isinstance(run.cfg, ExperimentConfig):
         raise ValueError("resolved publication config is not an ExperimentConfig")
-    expected = to_dict(_canonical_publication_config(run, source_attestation=source_attestation))
+    expected = to_dict(_canonical_publication_config(run, source_attestation=source_attestation, retained_history=retained_history))
     observed = to_dict(run.cfg)
 
     # The artifact root is operational rather than scientific.  Permit an
@@ -405,7 +409,7 @@ def _clean_head_sha() -> str:
 
 def validate_publication_runs(
     runs: Iterable["RunInfo"], *, expected_git_sha: str | None = None,
-    source_attestation=None,
+    source_attestation=None, retained_history=None,
 ) -> None:
     """Reject development/smoke artifacts from publication aggregation.
 
@@ -430,6 +434,11 @@ def validate_publication_runs(
         if expected_git_sha is not None and expected_git_sha != protocol_sha:
             errors.append("requested training revision disagrees with reporting amendment")
         expected_git_sha = protocol_sha
+    elif retained_history is not None:
+        if any(run.setting != HISTORICAL_SETTING for run in runs):
+            raise ValueError('retained provenance applies only to historical runs')
+        if expected_git_sha is not None:
+            raise ValueError('retained historical runs keep their individually recorded revisions')
     elif expected_git_sha is None:
         try:
             expected_git_sha = _clean_head_sha()
@@ -510,7 +519,7 @@ def validate_publication_runs(
         prefix = str(run.run_dir)
         cfg = run.cfg
         try:
-            _validate_canonical_publication_config(run, source_attestation=source_attestation)
+            _validate_canonical_publication_config(run, source_attestation=source_attestation, retained_history=retained_history)
         except (KeyError, TypeError, ValueError) as exc:
             errors.append(f"{prefix}: {exc}")
         git_sha_path = Path(run.run_dir) / "git_sha.txt"
@@ -520,6 +529,12 @@ def validate_publication_runs(
         if source_attestation is not None:
             try:
                 source_attestation.validate_run(run.run_dir)
+            except (ValueError, OSError) as exc:
+                errors.append(f'{prefix}: {exc}')
+        elif retained_history is not None:
+            try:
+                if saved_git_sha != retained_history.validate_run(run.run_dir):
+                    raise ValueError('retained historical source identity changed')
             except (ValueError, OSError) as exc:
                 errors.append(f'{prefix}: {exc}')
         elif expected_git_sha is None or saved_git_sha != expected_git_sha:

@@ -7,12 +7,16 @@ tau_op itself; the env stores that last value as the frozen auction mid.
 RNG discipline (ruling D10): each model consumes draws from the generator
 passed to ``reset`` in a fixed per-step order, unconditionally on the agent's
 policy, so seeded trajectories are policy-independent (common random
-numbers). ``HistoricalMidPrice`` draws nothing.
+numbers). Refined rough-Heston paths use a domain-separated private price
+stream and reserve the original parent draw budget at observation intervals.
+``HistoricalMidPrice`` draws nothing.
 """
 
 from __future__ import annotations
 
 import math
+import hashlib
+import json
 from abc import ABC, abstractmethod
 from pathlib import Path
 
@@ -32,6 +36,56 @@ __all__ = [
     "load_mid_paths",
     "build_midprice",
 ]
+
+
+def internal_time_grid(decision_times, opening: float, max_step: float | None) -> np.ndarray:
+    """Minutes; dyadic subdivisions of exogenous intervals give nested meshes.
+
+    Subdivide each original interval into the smallest power-of-two count
+    respecting max_step. Every tighter bound therefore contains prior nodes.
+    """
+    times = np.asarray(decision_times, dtype=float)
+    if (times.ndim != 1 or not len(times) or not np.isfinite(times).all()
+            or not math.isfinite(opening) or opening <= 0
+            or np.any(times < 0) or np.any(times > opening)):
+        raise ValueError("decision times must be finite and within [0, opening]")
+    anchors = np.unique(np.r_[0.0, times, opening])
+    if max_step is None:
+        return anchors
+    if isinstance(max_step, bool) or not math.isfinite(max_step) or max_step <= 0:
+        raise ValueError("max_step must be None or positive and finite")
+    pieces = []
+    for left, right in zip(anchors[:-1], anchors[1:]):
+        ratio = (right - left) / max_step
+        if not math.isfinite(ratio):
+            raise ValueError("max_step is below representable grid resolution")
+        count = 1 if ratio <= 1.0 else 2 ** math.ceil(math.log2(ratio))
+        if count > 10_000_000:
+            raise ValueError("internal interval exceeds 10 million steps; increase max_step")
+        nodes = left + (right - left) * (np.arange(count) / count)
+        pieces.append(nodes)
+    result = np.r_[np.concatenate(pieces), opening]
+    if np.any(np.diff(result) <= 0):
+        raise ValueError("max_step is below representable grid resolution")
+    return result
+
+
+def aggregate_brownian_increments(fine_times, fine_increments, coarse_times) -> np.ndarray:
+    """Sum each independent driver's year-scaled increments, never rescale twice."""
+    fine = np.asarray(fine_times, dtype=float)
+    coarse = np.asarray(coarse_times, dtype=float)
+    increments = np.asarray(fine_increments, dtype=float)
+    if (fine.ndim != 1 or coarse.ndim != 1 or len(fine) < 2 or len(coarse) < 2
+            or not np.isfinite(fine).all() or not np.isfinite(coarse).all()
+            or np.any(np.diff(fine) <= 0) or np.any(np.diff(coarse) <= 0)
+            or increments.shape != (len(fine) - 1, 2)
+            or not np.isfinite(increments).all()):
+        raise ValueError("require strict grids and finite (n_intervals, 2) increments")
+    indices = np.searchsorted(fine, coarse)
+    if (coarse[0] != fine[0] or coarse[-1] != fine[-1]
+            or np.any(indices >= len(fine)) or not np.array_equal(fine[indices], coarse)):
+        raise ValueError("coarse grid must be an exact subset with common endpoints")
+    return np.asarray([increments[a:b].sum(axis=0) for a, b in zip(indices[:-1], indices[1:])])
 
 
 class MidPriceModel(ABC):
@@ -93,7 +147,19 @@ class RoughHestonMidPrice(MidPriceModel):
         self._rng: np.random.Generator | None = None
 
     def reset(self, rng: np.random.Generator) -> float:
+        self._legacy_rng = rng
         self._rng = rng
+        if self.params.rough_heston_max_step_minutes is not None:
+            # Domain-separated price stream derived without consuming a market draw.
+            # The parent still consumes exactly the old two normals per reveal.
+            state = json.dumps(rng.bit_generator.state, sort_keys=True,
+                               default=lambda x: np.asarray(x).tolist())
+            digest = hashlib.sha256(("lmm-rh-dyadic-v1:" + state).encode()).digest()
+            self._rng = np.random.default_rng(int.from_bytes(digest, "little"))
+        self._internal_grid = None
+        self._supplied_increments = None
+        self._increment_index = 0
+        self._raw_prices = [float(self.grid.S0)]
         self._grid_t = 0.0
         self.mid = float(self.grid.S0)
         self._Y = math.log(self.mid)
@@ -104,17 +170,53 @@ class RoughHestonMidPrice(MidPriceModel):
         self._drift: list[float] = []  # drift_i, vectorized path only
         return self.mid
 
+    def prepare_grid(self, decision_times, opening: float, *, increments=None) -> None:
+        """Simulator-only setup; optional coupled year-scaled drivers for diagnostics."""
+        if self._grid_t != 0 or len(self._times) != 1:
+            raise ValueError("prepare_grid must follow reset, before any updates")
+        self._internal_grid = internal_time_grid(
+            decision_times, opening, self.params.rough_heston_max_step_minutes
+        )
+        if increments is not None:
+            values = np.asarray(increments, dtype=float)
+            if values.shape != (len(self._internal_grid) - 1, 2) or not np.isfinite(values).all():
+                raise ValueError("increments must be finite with shape (internal intervals, 2)")
+            self._supplied_increments = values.copy()
+
     def advance_to(self, t: float) -> float:
         if self._rng is None:
             raise RuntimeError("reset(rng) must be called before advance_to")
-        dt_years = (float(t) - self._grid_t) * self._years_per_grid_unit
-        self._grid_t = float(t)
-        if dt_years <= 0.0:  # legacy guard; never hit on a strictly increasing grid
+        t = float(t)
+        if not math.isfinite(t) or t < self._grid_t:
+            raise ValueError("time must be finite and monotone")
+        if t == self._grid_t:
             return self.mid
-        if self.method == "vectorized":
-            self._update_vectorized(dt_years)
+        refined = self.params.rough_heston_max_step_minutes is not None
+        if self._internal_grid is not None:
+            stop = int(np.searchsorted(self._internal_grid, t))
+            if stop >= len(self._internal_grid) or self._internal_grid[stop] != t:
+                raise ValueError("reveal time must belong to the prepared internal grid")
+            targets = self._internal_grid[self._increment_index + 1:stop + 1]
+        elif refined:
+            # Standalone callers can refine consecutive exogenous intervals too.
+            targets = internal_time_grid([0., t - self._grid_t], t - self._grid_t,
+                        self.params.rough_heston_max_step_minutes)[1:] + self._grid_t
         else:
-            self._update_naive(dt_years)
+            targets = [t]
+        if refined:
+            # Preserve the downstream auction stream exactly, including Gaussian
+            # rejection sampling. Do not add a component to SeedBundle's sorted list.
+            self._legacy_rng.normal()
+            self._legacy_rng.normal()
+        for target in targets:
+            dt_years = (float(target) - self._grid_t) * self._years_per_grid_unit
+            self._grid_t = float(target)
+            if self.method == "vectorized":
+                self._update_vectorized(dt_years)
+            else:
+                self._update_naive(dt_years)
+            self._raw_prices.append(self.mid)
+            self._increment_index += 1
         return self.mid
 
     # -- shared per-update head: draws and the log-price move ----------------
@@ -127,6 +229,8 @@ class RoughHestonMidPrice(MidPriceModel):
         z_perp = float(self._rng.normal())
         dw_v = sqrt_dt * z_v
         dw_perp = sqrt_dt * z_perp
+        if self._supplied_increments is not None:
+            dw_v, dw_perp = self._supplied_increments[self._increment_index]
 
         v_prev_pos = max(float(self._V[-1]), 0.0)
         if v_prev_pos > 0.0:
@@ -181,6 +285,23 @@ class RoughHestonMidPrice(MidPriceModel):
     def variance_path(self) -> np.ndarray:
         """The V_t path so far (test/diagnostic accessor)."""
         return np.asarray(self._V)
+
+    @property
+    def raw_price_path(self) -> np.ndarray:
+        """Unrounded internal prices, available only to simulator diagnostics."""
+        return np.asarray(self._raw_prices)
+
+    def variance_diagnostics(self) -> dict[str, float | int]:
+        values = self.variance_path
+        dt = np.diff(self._times)
+        return {
+            "nodes": len(values),
+            "negative_nodes": int(np.count_nonzero(values < 0)),
+            "negative_node_fraction": float(np.mean(values < 0)),
+            "negative_time_fraction": float(np.dot(values[:-1] < 0, dt) / dt.sum()) if len(dt) else 0.,
+            "minimum_variance": float(values.min()),
+            "finite": bool(np.isfinite(values).all() and np.isfinite(self.raw_price_path).all()),
+        }
 
 
 class HistoricalMidPrice(MidPriceModel):

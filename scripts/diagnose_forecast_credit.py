@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 import yaml
 from lmm.agents.benchmarks import TWAPBenchmarkAgent
-from lmm.config import load_config, economic_evaluation_config, environment_contract, save_resolved
+from lmm.config import load_config, economic_evaluation_config, environment_contract, price_generator_identity, save_resolved
 from lmm.env.mdp import make_env
 from lmm.rl.loops import run_episode
 
@@ -67,7 +67,8 @@ def main():
         clob_bin_width=cfg.grid.tau_op/4,
         source_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest()),indent=2))
     (a.output/'forecast_overlay.yaml').write_text(yaml.safe_dump({'algo1':{
-        'clob_forecast_weights':weights, 'clob_forecast_mechanism':cfg.auction_flow.clearing_mechanism}}))
+        'clob_forecast_weights':weights, 'clob_forecast_mechanism':cfg.auction_flow.clearing_mechanism,
+        'clob_forecast_price_generator':price_generator_identity(cfg)}}))
     print('weights',weights);print(summary.to_string())
 
 

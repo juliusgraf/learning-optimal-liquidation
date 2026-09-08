@@ -81,7 +81,14 @@ run_experiment() {
         echo "missing revised forecast: $forecast_overlay" >&2
         return 2
       fi
-      cfgs+=(--config configs/clearing/max_volume_v2.yaml --config "$forecast_overlay")
+      cfgs+=(--config configs/clearing/max_volume_v2.yaml)
+      # The synthetic-only v20 replacement installs this immutable mesh overlay
+      # in each affected root. It must precede the NEW fitted coefficients.
+      local refinement_overlay="$RESULTS_ROOT/_provenance/synthetic_refinement.yaml"
+      if [[ "$forecast_setting" == synthetic_rough_heston && -f "$refinement_overlay" ]]; then
+        cfgs+=(--config "$refinement_overlay")
+      fi
+      cfgs+=(--config "$forecast_overlay")
       ;;
     nearest_tick_v1) ;;
     *) echo "unknown clearing mechanism: $LMM_CLEARING_MECHANISM" >&2; return 2 ;;

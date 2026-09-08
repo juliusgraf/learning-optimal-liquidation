@@ -1,4 +1,4 @@
-# Synthetic setting: rough-Heston mid price on the common one-minute clock.
+# Synthetic setting: rough-Heston mid price on the realized CLOB decision clock.
 # The numerical grid is 120 minutes of CLOB trading followed by a 30-minute
 # closing auction, matching the historical experiment chronology.
 
@@ -16,6 +16,7 @@ midprice:
     varsigma: 0.3         # mean reversion
     nu: 0.3               # vol-of-vol
     s_star: 98280.0       # 252 * 6.5 * 60 trading minutes/year
+    rough_heston_max_step_minutes: null  # retained legacy generator; refinement is opt-in
 
 # Frozen from independent training paths, not policy/test PnL.
 # See docs/verification_v19/forecast_synthetic/protocol.json.
