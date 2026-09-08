@@ -8,7 +8,6 @@ It never treats auction opening as termination of the economic episode.
 from __future__ import annotations
 
 import io
-from dataclasses import asdict
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -21,7 +20,8 @@ from stable_baselines3.common.logger import configure
 from stable_baselines3.common.type_aliases import ReplayBufferSamples
 from stable_baselines3.td3.policies import TD3Policy
 
-from lmm.agents.base import Agent, ENVIRONMENT_CONTRACT
+from lmm.config import artifact_asdict, environment_contract, LEGACY_CLEARING
+from lmm.agents.base import Agent
 from lmm.env.action_spaces import continuous_action_specs
 from lmm.rl.schedules import learning_rate_factor, learning_conditioning_contract
 
@@ -246,10 +246,10 @@ class SB3Agent(Agent):
 
     def _contract(self):
         return {
-            "environment": ENVIRONMENT_CONTRACT,
+            "environment": environment_contract(self.cfg),
             "schema": self.cfg.experiment.artifact_schema_version,
             "auction_enabled": self.cfg.experiment.auction_enabled,
-            **{key: asdict(getattr(self.cfg, key)) for key in (
+            **{key: artifact_asdict(getattr(self.cfg, key)) for key in (
                 "grid", "clob_flow", "auction_flow", "midprice", "algo1", "reward", "actions", "features", "algo")},
             "h_cl_feature_enabled": self.cfg.rl.h_cl_feature_enabled,
             "relative_price_features": self.cfg.rl.relative_price_features,
@@ -281,6 +281,9 @@ class SB3Agent(Agent):
         contract = state.get("contract")
         if isinstance(contract, dict) and isinstance(contract.get('algo1'), dict):
             contract['algo1'].setdefault('clob_forecast_weights', ())
+            contract['algo1'].setdefault('clob_forecast_mechanism', LEGACY_CLEARING)
+        if isinstance(contract, dict) and isinstance(contract.get('auction_flow'), dict):
+            contract['auction_flow'].setdefault('clearing_mechanism', LEGACY_CLEARING)
         if isinstance(contract, dict):
             historical = contract.get('midprice', {}).get('historical')
             if isinstance(historical, dict):

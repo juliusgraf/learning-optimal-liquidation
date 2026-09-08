@@ -306,13 +306,18 @@ class ExogenousAuctionFlow:
             raise ValueError(f"unknown proposal status {status!r}")
         return status
 
-    def step(self, rng: np.random.Generator) -> AuctionEvents:
+    def step(self, rng: np.random.Generator, *, proposal_rngs=None) -> AuctionEvents:
         """Sample all indicators, then process ``B,D,J+,G+,J-,G-``.
 
         Here ``B``/``D`` are schedule arrival/cancellation, ``J`` market-order
         arrival, and ``G`` market-order cancellation.  Conditional marks are
         sampled only for proposed, eligible operations.
         """
+        # Diagnostics may couple marks by proposal even when changed prices
+        # change eligibility. Default uses the exact legacy RNG and draw order.
+        marks = [rng] * 6 if proposal_rngs is None else proposal_rngs
+        if len(marks) != 6:
+            raise ValueError("require six proposal RNGs")
         p = self.params
         proposed = rng.random(6) < np.asarray(
             [p.p1, p.p2, p.p3, p.p4, p.p3, p.p4], dtype=float
@@ -321,8 +326,8 @@ class ExogenousAuctionFlow:
 
         # B: exogenous linear-schedule arrival.
         if proposed[0]:
-            slope = float(rng.uniform(p.U1, p.U2))
-            offset = int(rng.integers(p.M1, p.M2 + 1))
+            slope = float(marks[0].uniform(p.U1, p.U2))
+            offset = int(marks[0].integers(p.M1, p.M2 + 1))
             rec = self._append_schedule(
                 slope,
                 self.frozen_mid + self.grid.alpha * offset,
@@ -341,7 +346,7 @@ class ExogenousAuctionFlow:
             if not eligible:
                 status["schedule_cancel"] = self._record("schedule_cancel", "ineligible")
             else:
-                rec = eligible[int(rng.integers(0, len(eligible)))]
+                rec = eligible[int(marks[1].integers(0, len(eligible)))]
                 rec.active = False
                 if self.is_valid():
                     status["schedule_cancel"] = self._record("schedule_cancel", "accepted")
@@ -352,7 +357,7 @@ class ExogenousAuctionFlow:
         # J+: buy market-order arrival.
         if proposed[2]:
             volume = sample_mo_volume(
-                rng,
+                marks[2],
                 self.clob_params.v_m,
                 self.clob_params.gamma_m,
                 self.clob_params.V_max,
@@ -370,7 +375,7 @@ class ExogenousAuctionFlow:
             if not eligible:
                 status["buy_cancel"] = self._record("buy_cancel", "ineligible")
             else:
-                idx = eligible[int(rng.integers(0, len(eligible)))]
+                idx = eligible[int(marks[3].integers(0, len(eligible)))]
                 old = self._buy_volumes[idx]
                 self._buy_volumes[idx] = 0.0
                 if self.is_valid():
@@ -382,7 +387,7 @@ class ExogenousAuctionFlow:
         # J-: sell market-order arrival.
         if proposed[4]:
             volume = sample_mo_volume(
-                rng,
+                marks[4],
                 self.clob_params.v_m,
                 self.clob_params.gamma_m,
                 self.clob_params.V_max,
@@ -400,7 +405,7 @@ class ExogenousAuctionFlow:
             if not eligible:
                 status["sell_cancel"] = self._record("sell_cancel", "ineligible")
             else:
-                idx = eligible[int(rng.integers(0, len(eligible)))]
+                idx = eligible[int(marks[5].integers(0, len(eligible)))]
                 old = self._sell_volumes[idx]
                 self._sell_volumes[idx] = 0.0
                 if self.is_valid():

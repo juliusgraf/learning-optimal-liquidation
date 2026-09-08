@@ -9,7 +9,7 @@ from typing import Callable, Mapping, Protocol
 
 import numpy as np
 
-from lmm.config import Algo1Params, GridParams
+from lmm.config import Algo1Params, GridParams, LEGACY_CLEARING, VOLUME_MAX_CLEARING
 from lmm.market.clob import BookSnapshot
 
 __all__ = [
@@ -22,6 +22,9 @@ __all__ = [
     "CappedPositivePartSchedule",
     "Eq2Cache",
     "round_half_up_to_tick",
+    "bracketing_tick_indices",
+    "select_clearing_tick",
+    "supply_demand",
     "clear_linear",
     "clear_with_external_schedule",
     "allocate_pro_rata",
@@ -36,6 +39,13 @@ logger = logging.getLogger(__name__)
 
 _EPS = 1e-12
 _SLOPE_EPS = 1e-8  # compatibility path only; revised clearing uses D_mu.
+# Quantities within atol + rtol*max(|a|,|b|) are tied. Grid membership and
+# distance ties use max(1e-12, 8 ulps of p/alpha), in TICK units. These are
+# numerical conventions of max_volume_v2, not configurable economic bands.
+VOLUME_ATOL = 1e-12
+VOLUME_RTOL = 1e-12
+TICK_ATOL = 1e-12
+TICK_ULPS = 8
 
 
 def _plain_map(values: Mapping[int, float]) -> dict[int, float]:
@@ -338,8 +348,10 @@ class ClearingInputs:
     net_market_volume: float
     fallback_mid: float
     hockey: tuple[float, float] | None = None  # compatibility only
-    buy_market_volume: float = 0.0
-    sell_market_volume: float = 0.0
+    # Net-only legacy callers imply the minimal one-sided decomposition.
+    # Explicit sides must both be supplied and agree with buy-minus-sell net.
+    buy_market_volume: float | None = None
+    sell_market_volume: float | None = None
 
 
 @dataclass(frozen=True)
@@ -352,6 +364,8 @@ class ClearingResult:
     tick_price: float
     residual_at_tick: float
     nonlinear: bool = False
+    tick_index: int | None = None
+    matched_volume: float | None = None
 
 
 @dataclass(frozen=True)
@@ -403,8 +417,13 @@ def _linear_aggregates(inputs: ClearingInputs) -> tuple[float, float]:
     S_exo = np.asarray(inputs.S_exo, dtype=float)
     K_agent = np.asarray(inputs.K_agent, dtype=float)
     S_agent = np.asarray(inputs.S_agent, dtype=float)
-    if K_exo.shape != S_exo.shape or K_agent.shape != S_agent.shape:
+    if (K_exo.ndim != 1 or K_agent.ndim != 1
+            or K_exo.shape != S_exo.shape or K_agent.shape != S_agent.shape):
         raise ValueError("each slope array must match its reference-price array")
+    if not all(np.all(np.isfinite(x)) for x in (K_exo, S_exo, K_agent, S_agent)):
+        raise ValueError("linear schedules must be finite")
+    if not math.isfinite(inputs.net_market_volume):
+        raise ValueError("net market volume must be finite")
     if np.any(K_exo < 0.0) or np.any(K_agent < 0.0):
         raise ValueError("linear schedule slopes must be nonnegative")
     D = float(np.sum(K_exo) + np.sum(K_agent))
@@ -412,18 +431,124 @@ def _linear_aggregates(inputs: ClearingInputs) -> tuple[float, float]:
     return D, R
 
 
-def clear_linear(inputs: ClearingInputs, alpha: float, D_mu: float) -> ClearingResult:
-    """Clear a valid linear book and project the root half-up to a tick."""
+def _tick_tolerance(coordinate: float) -> float:
+    return max(TICK_ATOL, TICK_ULPS * math.ulp(coordinate))
+
+
+def bracketing_tick_indices(p_star: float, alpha: float) -> tuple[int, ...]:
+    """Unique floor/ceil indices, snapping only machine-close on-grid roots.
+
+    Prices are nonnegative. Coordinates >= 2**48 are rejected because binary64
+    no longer resolves our sub-tick tie convention reliably there.
+    """
+    if not math.isfinite(alpha) or alpha <= 0 or not math.isfinite(p_star) or p_star < 0:
+        raise ValueError("finite nonnegative root and finite positive alpha required")
+    x = p_star / alpha
+    if not math.isfinite(x) or x >= 2**48:
+        raise ValueError("root/tick size exceeds supported tick-index precision")
+    nearest = round(x)
+    if abs(x - nearest) <= _tick_tolerance(x):
+        return (int(nearest),)
+    return (math.floor(x), math.ceil(x))
+
+
+def supply_demand(
+    exogenous_schedule_values: np.ndarray,
+    agent_net_quantity: float,
+    buy_market_volume: float,
+    sell_market_volume: float,
+) -> tuple[float, float]:
+    """Keep exogenous participants separate, but split the ONE net agent."""
+    values = np.asarray(exogenous_schedule_values, dtype=float)
+    agent, buy, sell = map(float, (agent_net_quantity, buy_market_volume, sell_market_volume))
+    if (not np.all(np.isfinite(values)) or not all(map(math.isfinite, (agent, buy, sell)))
+            or min(buy, sell) < 0):
+        raise ValueError("schedule values must be finite and market-order volumes nonnegative")
+    return (
+        float(np.sum(np.maximum(values, 0.0))) + max(agent, 0.0) + sell,
+        float(np.sum(np.maximum(-values, 0.0))) + max(-agent, 0.0) + buy,
+    )
+
+
+def _market_sides(inputs: ClearingInputs) -> tuple[float, float]:
+    buy, sell = inputs.buy_market_volume, inputs.sell_market_volume
+    if buy is None and sell is None:
+        return max(inputs.net_market_volume, 0.0), max(-inputs.net_market_volume, 0.0)
+    if buy is None or sell is None:
+        raise ValueError("provide both buy and sell market volumes, or neither")
+    if not all(map(math.isfinite, (buy, sell))) or min(buy, sell) < 0:
+        raise ValueError("market-order volumes must be finite and nonnegative")
+    if not math.isclose(buy - sell, inputs.net_market_volume, rel_tol=1e-12, abs_tol=1e-12):
+        raise ValueError("net market volume must equal buy minus sell")
+    return float(buy), float(sell)
+
+
+def _schedule_values(inputs, price, external_agent_schedule=None):
+    exogenous = np.asarray(inputs.K_exo) * (price - np.asarray(inputs.S_exo))
+    agent = float(np.sum(np.asarray(inputs.K_agent) * (price - np.asarray(inputs.S_agent))))
+    if external_agent_schedule is not None:
+        agent += float(external_agent_schedule.value(price))
+    return exogenous, agent
+
+
+def _book_supply_demand(inputs, price, external_agent_schedule=None):
+    return supply_demand(*_schedule_values(inputs, price, external_agent_schedule), *_market_sides(inputs))
+
+
+def select_clearing_tick(
+    p_star: float,
+    alpha: float,
+    quantities: Callable[[float], tuple[float, float]],
+    *,
+    mechanism: str = VOLUME_MAX_CLEARING,
+) -> int:
+    """Maximize (matched volume, -distance to root, price) on adjacent ticks.
+
+    ``quantities`` must supply nondecreasing supply and nonincreasing demand
+    from the same book whose admissible continuous root is ``p_star``.
+    Only this projection changes; raw Algorithm 1 and other rounding do not.
+    """
+    if not math.isfinite(alpha) or alpha <= 0 or not math.isfinite(p_star) or p_star < 0:
+        raise ValueError("finite nonnegative root and finite positive alpha required")
+    if mechanism == LEGACY_CLEARING:
+        return math.floor(p_star / alpha + 0.5)
+    if mechanism != VOLUME_MAX_CLEARING:
+        raise ValueError(f"unknown clearing mechanism {mechanism!r}")
+    candidates = bracketing_tick_indices(p_star, alpha)
+    best = candidates[0]
+    if len(candidates) == 1:
+        return best
+    volumes = [min(quantities(alpha * k)) for k in candidates]
+    if not all(math.isfinite(v) and v >= 0 for v in volumes):
+        raise ValueError("matched volumes must be finite and nonnegative")
+    volume_tol = VOLUME_ATOL + VOLUME_RTOL * max(volumes)
+    if abs(volumes[1] - volumes[0]) > volume_tol:
+        return candidates[int(volumes[1] > volumes[0])]
+    x = p_star / alpha
+    distances = [abs(k - x) for k in candidates]
+    if abs(distances[1] - distances[0]) <= _tick_tolerance(x):
+        return candidates[1]
+    return candidates[int(distances[1] < distances[0])]
+
+
+def clear_linear(
+    inputs: ClearingInputs, alpha: float, D_mu: float, *, mechanism: str = VOLUME_MAX_CLEARING,
+) -> ClearingResult:
+    """Project the linear root; revised residual bound is D*alpha (linear only)."""
     D, R = _linear_aggregates(inputs)
+    if not math.isfinite(D_mu) or D_mu <= 0 or D <= 0:
+        raise ValueError("D_mu and aggregate slope must be finite and positive")
     if D + _EPS < D_mu:
         raise AssertionError(f"invalid auction book: D={D} < D_mu={D_mu}")
     if R < -_EPS:
         raise AssertionError(f"invalid auction book: R={R} < 0")
     R = max(R, 0.0)
     continuous = R / D
-    tick = round_half_up_to_tick(continuous, alpha)
+    k = select_clearing_tick(continuous, alpha, lambda p: _book_supply_demand(inputs, p), mechanism=mechanism)
+    tick = alpha * k
     residual = D * tick - R
-    return ClearingResult(D, R, continuous, tick, residual)
+    volume = min(_book_supply_demand(inputs, tick))
+    return ClearingResult(D, R, continuous, tick, residual, tick_index=k, matched_volume=volume)
 
 
 def clear_with_external_schedule(
@@ -431,22 +556,36 @@ def clear_with_external_schedule(
     schedule: NetSupplySchedule,
     alpha: float,
     D_mu: float,
+    *,
+    mechanism: str = VOLUME_MAX_CLEARING,
 ) -> ClearingResult:
     """Clear a linear background plus one external monotone benchmark order."""
     D, R = _linear_aggregates(inputs)
+    if not math.isfinite(D_mu) or D_mu <= 0 or D <= 0:
+        raise ValueError("D_mu and aggregate slope must be finite and positive")
     if D + _EPS < D_mu:
         raise AssertionError(f"invalid auction book: D={D} < D_mu={D_mu}")
-    if R < -_EPS:
-        raise AssertionError(f"invalid auction book: R={R} < 0")
-    R = max(R, 0.0)
+    if mechanism == LEGACY_CLEARING:
+        if R < -_EPS:
+            raise AssertionError(f"invalid auction book: R={R} < 0")
+        R = max(R, 0.0)
+    # With a signed external schedule, R alone need not be nonnegative:
+    # admissibility is excess(0)<=0 for the COMPLETE book, checked below.
 
     def excess(price: float) -> float:
         return D * price - R + float(schedule.value(price))
 
     upper = max(float(inputs.fallback_mid) * 2.0, R / D + 1.0, 1.0)
-    continuous = solve_monotone_clearing(excess, (0.0, upper))
-    tick = round_half_up_to_tick(continuous, alpha)
-    return ClearingResult(D, R, continuous, tick, excess(tick), nonlinear=True)
+    if excess(0.0) > 0.0:
+        raise ValueError("external schedule has no admissible nonnegative root")
+    # Preserve the legacy root solve exactly. Revised roots are refined to
+    # sub-tick machine precision before classifying their adjacent ticks.
+    tol = 1e-10 if mechanism == LEGACY_CLEARING else alpha * TICK_ATOL
+    continuous = solve_monotone_clearing(excess, (0.0, upper), tol=tol)
+    k = select_clearing_tick(continuous, alpha, lambda p: _book_supply_demand(inputs, p, schedule), mechanism=mechanism)
+    tick = alpha * k
+    return ClearingResult(D, R, continuous, tick, excess(tick), nonlinear=True,
+                          tick_index=k, matched_volume=min(_book_supply_demand(inputs, tick, schedule)))
 
 
 def allocate_pro_rata(
@@ -456,20 +595,10 @@ def allocate_pro_rata(
     sell_market_volume: float,
 ) -> TerminalAllocation:
     """Allocate the rounded-price imbalance with the manuscript robust ratios."""
-    values = np.asarray(exogenous_schedule_values, dtype=float)
     agent = float(agent_net_quantity)  # aggregate before positive/negative split
-    Q_supply = (
-        float(np.sum(np.maximum(values, 0.0)))
-        + max(agent, 0.0)
-        + float(sell_market_volume)
+    Q_supply, Q_demand = supply_demand(
+        exogenous_schedule_values, agent, buy_market_volume, sell_market_volume,
     )
-    Q_demand = (
-        float(np.sum(np.maximum(-values, 0.0)))
-        + max(-agent, 0.0)
-        + float(buy_market_volume)
-    )
-    if min(Q_supply, Q_demand) < -_EPS:
-        raise ValueError("market-order volumes must be nonnegative")
 
     rho_supply = 1.0 if Q_supply == 0.0 or Q_supply <= Q_demand else Q_demand / Q_supply
     rho_demand = 1.0 if Q_demand == 0.0 or Q_demand <= Q_supply else Q_supply / Q_demand
@@ -499,28 +628,18 @@ def allocate_terminal(
     external_agent_schedule: NetSupplySchedule | None = None,
 ) -> TerminalAllocation:
     """Evaluate all schedules at the rounded price and allocate actual ``Z``."""
-    p = float(tick_price)
-    K_exo = np.asarray(inputs.K_exo, dtype=float)
-    S_exo = np.asarray(inputs.S_exo, dtype=float)
-    K_agent = np.asarray(inputs.K_agent, dtype=float)
-    S_agent = np.asarray(inputs.S_agent, dtype=float)
-    exogenous_values = K_exo * (p - S_exo)
-    agent_value = float(np.sum(K_agent * (p - S_agent)))
-    if external_agent_schedule is not None:
-        agent_value += float(external_agent_schedule.value(p))
     return allocate_pro_rata(
-        exogenous_values,
-        agent_value,
-        inputs.buy_market_volume,
-        inputs.sell_market_volume,
+        *_schedule_values(inputs, float(tick_price), external_agent_schedule),
+        *_market_sides(inputs),
     )
 
 
 class Eq2Cache:
     """Lagged auction indicative-price cache with revised rounded-result API."""
 
-    def __init__(self, grid: GridParams) -> None:
+    def __init__(self, grid: GridParams, mechanism: str = VOLUME_MAX_CLEARING) -> None:
         self.grid = grid
+        self.mechanism = mechanism
         self.n_degenerate_fallbacks = 0  # compatibility metric; revised path stays zero
         self._h = float(grid.S0)
         self._result: ClearingResult | None = None
@@ -537,17 +656,17 @@ class Eq2Cache:
         external_schedule: NetSupplySchedule | None = None,
     ) -> ClearingResult:
         result = (
-            clear_linear(inputs, self.grid.alpha, D_mu)
+            clear_linear(inputs, self.grid.alpha, D_mu, mechanism=self.mechanism)
             if external_schedule is None
-            else clear_with_external_schedule(inputs, external_schedule, self.grid.alpha, D_mu)
+            else clear_with_external_schedule(inputs, external_schedule, self.grid.alpha, D_mu, mechanism=self.mechanism)
         )
         self._result = result
         self._h = result.tick_price
         return result
 
     def recompute(self, inputs: ClearingInputs) -> float:
-        """Compatibility continuous-root path for the pre-integration env."""
-        root, degenerate = solve_clearing(inputs)
+        """Projected convenience API; only degenerate legacy books fall back."""
+        root, degenerate = solve_clearing(inputs, alpha=self.grid.alpha, mechanism=self.mechanism)
         self.n_degenerate_fallbacks += int(degenerate)
         self._h = float(root)
         self._result = None
@@ -567,28 +686,50 @@ class Eq2Cache:
 # ---------------------------------------------------------------------------
 
 
-def solve_linear_clearing(inputs: ClearingInputs) -> tuple[float, bool]:
+def solve_linear_clearing(
+    inputs: ClearingInputs, *, alpha: float | None = None, mechanism: str = VOLUME_MAX_CLEARING,
+) -> tuple[float, bool]:
+    """Continuous compatibility solver; pass alpha for the shared tick rule.
+
+    Omitting alpha intentionally returns a raw root, never a settlement price.
+    Degenerate compatibility books retain the historical fallback.
+    """
     D, R = _linear_aggregates(inputs)
     if D <= _SLOPE_EPS:
         return float(inputs.fallback_mid), True
+    if alpha is not None:
+        return clear_linear(inputs, alpha, _SLOPE_EPS, mechanism=mechanism).tick_price, False
     return float(R / D), False
 
 
-def solve_clearing(inputs: ClearingInputs) -> tuple[float, bool]:
+def solve_clearing(
+    inputs: ClearingInputs, *, alpha: float | None = None, mechanism: str = VOLUME_MAX_CLEARING,
+) -> tuple[float, bool]:
+    """Dispatch continuous (alpha omitted) or projected clearing explicitly."""
     if inputs.hockey is None:
-        return solve_linear_clearing(inputs)
-    return solve_clearing_with_hockey_stick(inputs, *inputs.hockey)
+        return solve_linear_clearing(inputs, alpha=alpha, mechanism=mechanism)
+    return solve_clearing_with_hockey_stick(inputs, *inputs.hockey, alpha=alpha, mechanism=mechanism)
 
 
 def solve_clearing_with_hockey_stick(
     inputs: ClearingInputs,
     z_slope: float,
     s_tilde: float,
+    *,
+    alpha: float | None = None,
+    mechanism: str = VOLUME_MAX_CLEARING,
 ) -> tuple[float, bool]:
-    """Old uncapped hockey-stick solver retained for staged integration."""
+    """Uncapped hockey-stick root; optional alpha uses aggregate-agent volume."""
     if z_slope < 0.0:
         raise ValueError("benchmark slope must be nonnegative")
     base = replace(inputs, hockey=None)
+    if alpha is not None:
+        root, degenerate = solve_clearing_with_hockey_stick(base, z_slope, s_tilde)
+        if degenerate:
+            return root, True
+        schedule = CappedPositivePartSchedule(z_slope, s_tilde, math.inf)
+        k = select_clearing_tick(root, alpha, lambda p: _book_supply_demand(base, p, schedule), mechanism=mechanism)
+        return alpha * k, False
     root, degenerate = solve_linear_clearing(base)
     if not degenerate and root <= s_tilde:
         return root, False
@@ -610,7 +751,7 @@ def solve_monotone_clearing(
 ) -> float:
     """Bisection with geometric bracket widening for monotone net supply."""
     lo, hi = map(float, bracket)
-    if lo >= hi:
+    if not all(map(math.isfinite, (lo, hi, tol))) or lo >= hi or tol <= 0:
         raise ValueError(f"invalid bracket {bracket!r}")
     f_lo, f_hi = float(excess_supply(lo)), float(excess_supply(hi))
     width = hi - lo
@@ -627,9 +768,23 @@ def solve_monotone_clearing(
         n += 1
     if f_lo > 0.0 or f_hi < 0.0:
         raise ValueError("no sign change found; excess supply has no root")
+    if not all(map(math.isfinite, (f_lo, f_hi))):
+        raise ValueError("nonfinite excess supply at bracket")
+    if tol < 1e-10:
+        if f_lo == 0.0:
+            return lo
+        if f_hi == 0.0:
+            return hi
     while hi - lo > tol:
         mid = 0.5 * (lo + hi)
-        if excess_supply(mid) < 0.0:
+        if mid == lo or mid == hi:
+            break  # machine precision; prevents stalled sub-ulp bisection
+        value = float(excess_supply(mid))
+        if not math.isfinite(value):
+            raise ValueError("nonfinite excess supply during root solve")
+        if value == 0.0 and tol < 1e-10:
+            return mid
+        if value < 0.0:
             lo = mid
         else:
             hi = mid

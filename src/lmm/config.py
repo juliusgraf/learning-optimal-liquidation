@@ -28,6 +28,10 @@ import yaml
 
 __all__ = [
     "ACTIVE_ARTIFACT_SCHEMA_VERSION",
+    "LEGACY_CLEARING",
+    "VOLUME_MAX_CLEARING",
+    "CLEARING_SCHEMAS",
+    "environment_contract",
     "ConfigError",
     "ExperimentMeta",
     "GridParams",
@@ -54,7 +58,44 @@ __all__ = [
 ]
 
 
-ACTIVE_ARTIFACT_SCHEMA_VERSION = 15
+LEGACY_CLEARING = "nearest_tick_v1"
+VOLUME_MAX_CLEARING = "max_volume_v2"
+ACTIVE_ARTIFACT_SCHEMA_VERSION = 16
+CLEARING_SCHEMAS = {LEGACY_CLEARING: 15, VOLUME_MAX_CLEARING: 16}
+
+
+def environment_contract(cfg: ExperimentConfig) -> str:
+    """Mechanism-specific identity; retained v15 artifacts keep their meaning."""
+    base = {
+        LEGACY_CLEARING: "shaped-j-economic-eval-sb3-2026-09-05-v15",
+        VOLUME_MAX_CLEARING: "max-volume-auction-2026-09-07-v16",
+    }[cfg.auction_flow.clearing_mechanism]
+    identity = price_generator_identity(cfg)
+    return base if identity == "legacy" else base + ":" + identity
+
+
+def price_generator_identity(cfg: ExperimentConfig) -> str:
+    """Retain old contracts verbatim; bind refined artifacts to model and mesh."""
+    import hashlib
+    import json
+
+    rough = cfg.midprice.rough_heston
+    if cfg.midprice.model != "rough_heston" or rough is None or rough.rough_heston_max_step_minutes is None:
+        return "legacy"
+    payload = {"rough_heston": dataclasses.asdict(rough), "grid": dataclasses.asdict(cfg.grid)}
+    digest = hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
+    return "rh-dyadic-v1-" + digest
+
+
+def artifact_asdict(value) -> dict:
+    """Default new fields are omitted solely in backwards-compatible checkpoint contracts."""
+    def prune(item):
+        if isinstance(item, dict):
+            return {k: prune(v) for k, v in item.items()
+                    if not (k == "rough_heston_max_step_minutes" and v is None)
+                    and not (k == "clob_forecast_price_generator" and v == "legacy")}
+        return item
+    return prune(dataclasses.asdict(value))
 
 
 class ConfigError(ValueError):
@@ -76,7 +117,7 @@ class ExperimentMeta:
     episodes: int  # E; active settings use one matched budget
     master_seed: int  # single master seed; ruling D10
     results_root: Path  # gitignored output root
-    artifact_schema_version: int = ACTIVE_ARTIFACT_SCHEMA_VERSION
+    artifact_schema_version: int = 15  # missing schema/mechanism preserves v1
     seeds: tuple[int, ...] = (42,)
     ablation_label: str = "H_on__shaping_on__auction_on"
     auction_enabled: bool = True
@@ -148,6 +189,8 @@ class AuctionFlowParams:
     U1: float  # exogenous schedule slope lower bound; => 0.1
     U2: float  # exogenous schedule slope upper bound; => 2.0
     B_inf: int  # exogenous auction quote-support half-width in ticks; => 150
+    # Missing in old configs means legacy, never an implicit simulator upgrade.
+    clearing_mechanism: str = LEGACY_CLEARING
 
     @property
     def M1(self) -> int:
@@ -184,6 +227,12 @@ class RoughHestonParams:
     varsigma: float  # variance mean-reversion coefficient; => 0.3
     nu: float  # volatility of volatility; => 0.3
     s_star: float  # trading simulator-clock units per year; minute baseline => 98280
+    rough_heston_max_step_minutes: Optional[float] = None
+
+    def __post_init__(self) -> None:
+        step = self.rough_heston_max_step_minutes
+        if step is not None and (isinstance(step, bool) or not math.isfinite(step) or step <= 0):
+            raise ConfigError("rough_heston_max_step_minutes must be None or positive and finite")
 
     @property
     def rho(self) -> float:
@@ -252,6 +301,8 @@ class Algo1Params:
     # Optional training-fitted reliability of the raw projected book signal
     # in four equal CLOB time bins. Empty preserves the original estimator.
     clob_forecast_weights: tuple[float, ...] = ()
+    clob_forecast_mechanism: str = LEGACY_CLEARING
+    clob_forecast_price_generator: str = "legacy"
 
     @property
     def tau(self) -> float:
@@ -823,6 +874,15 @@ def _validate_experiment_config(cfg: ExperimentConfig) -> ExperimentConfig:
     weights = cfg.algo1.clob_forecast_weights
     if weights and (len(weights) != 4 or any(not math.isfinite(w) or not 0 <= w <= 1 for w in weights)):
         raise ConfigError('algo1.clob_forecast_weights must be empty or four values in [0,1]')
+    mechanism = cfg.auction_flow.clearing_mechanism
+    if mechanism not in CLEARING_SCHEMAS:
+        raise ConfigError(f"unknown auction_flow.clearing_mechanism {mechanism!r}")
+    if weights and cfg.algo1.clob_forecast_price_generator != price_generator_identity(cfg):
+        raise ConfigError("forecast weights belong to a different price generator; refit on training paths")
+    if cfg.algo1.clob_forecast_mechanism not in CLEARING_SCHEMAS:
+        raise ConfigError("unknown algo1.clob_forecast_mechanism")
+    if weights and cfg.algo1.clob_forecast_mechanism != mechanism:
+        raise ConfigError("forecast weights were fitted under a different clearing mechanism; refit on training paths")
     if cfg.rl.auction_exposure_features and not cfg.rl.relative_price_features:
         raise ConfigError('auction exposure coordinates require relative prices')
     if cfg.rl.auction_inventory_asinh and not cfg.rl.auction_exposure_features:
@@ -969,10 +1029,10 @@ def _validate_experiment_config(cfg: ExperimentConfig) -> ExperimentConfig:
         raise ConfigError("reward.numerical_guard_bound must be finite and positive")
     if cfg.rl.discount_mode != "undiscounted":
         raise ConfigError("the revised objective requires rl.discount_mode='undiscounted'")
-    if cfg.experiment.artifact_schema_version != ACTIVE_ARTIFACT_SCHEMA_VERSION:
+    if cfg.experiment.artifact_schema_version != CLEARING_SCHEMAS[mechanism]:
         raise ConfigError(
-            "experiment.artifact_schema_version must equal the active schema "
-            f"{ACTIVE_ARTIFACT_SCHEMA_VERSION}"
+            "experiment.artifact_schema_version must equal "
+            f"{CLEARING_SCHEMAS[mechanism]} for {mechanism}"
         )
     if cfg.rl.normalizer_fit_episodes <= 0:
         raise ConfigError("rl.normalizer_fit_episodes must be positive")
@@ -1064,6 +1124,10 @@ def _validate_experiment_config(cfg: ExperimentConfig) -> ExperimentConfig:
                 "midprice.model=rough_heston requires midprice.rough_heston"
             )
         rough = cfg.midprice.rough_heston
+        if rough.rough_heston_max_step_minutes is not None and (
+            cfg.grid.time_unit != "minutes" or rough.s_star != 252 * 6.5 * 60
+        ):
+            raise ConfigError("refinement requires minutes and s_star=252*6.5*60")
         if not all(
             math.isfinite(value)
             for value in (

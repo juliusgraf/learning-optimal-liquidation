@@ -1,0 +1,11 @@
+# Diagnostic candidate ONLY. Overlay after synthetic_rough_heston.yaml.
+# For training, first fit forecasts on training paths with this overlay,
+# then apply that fit's forecast_overlay.yaml after this file.
+experiment:
+  name: synthetic_rough_heston_refinement_v1
+  results_root: results/rough_heston_refinement_v1
+midprice:
+  rough_heston:
+    rough_heston_max_step_minutes: 0.5
+algo1:
+  clob_forecast_weights: []

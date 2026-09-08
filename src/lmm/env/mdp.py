@@ -48,7 +48,7 @@ from lmm.market.clearing import (
     round_half_up_to_tick,
 )
 from lmm.market.generator import EpisodeGrid, MarketGenerator
-from lmm.market.midprice import MidPriceModel, build_midprice
+from lmm.market.midprice import MidPriceModel, RoughHestonMidPrice, build_midprice
 
 __all__ = ["MarketMakingEnv", "make_env"]
 
@@ -88,7 +88,7 @@ class MarketMakingEnv(gymnasium.Env):
         # policy before those times enter the filtration.
         self._generator = MarketGenerator(cfg.clob_flow, cfg.auction_flow, cfg.grid)
         self.algo1 = Algo1Estimator(cfg.algo1, cfg.grid)
-        self.eq2 = Eq2Cache(cfg.grid)
+        self.eq2 = Eq2Cache(cfg.grid, cfg.auction_flow.clearing_mechanism)
         self.features = FeatureExtractor(
             cfg.features, cfg.grid, cfg.clob_flow, cfg.auction_flow
         )
@@ -174,6 +174,8 @@ class MarketMakingEnv(gymnasium.Env):
         """Simulate/replay the complete revealed path and project half-up."""
         alpha = self.grid.alpha
         values = [round_half_up_to_tick(self._midprice.reset(self.np_random), alpha)]
+        if isinstance(self._midprice, RoughHestonMidPrice):
+            self._midprice.prepare_grid(self._episode_grid.clob_times, float(self.grid.tau_op))
         for t in self._episode_grid.clob_times[1:]:
             values.append(
                 round_half_up_to_tick(self._midprice.advance_to(float(t)), alpha)
@@ -533,6 +535,9 @@ class MarketMakingEnv(gymnasium.Env):
             "tick_price": result.tick_price,
             "clearing_residual": result.residual_at_tick,
             "nonlinear_clearing": result.nonlinear,
+            "clearing_mechanism": self.cfg.auction_flow.clearing_mechanism,
+            "clearing_tick_index": result.tick_index,
+            "matched_volume": result.matched_volume,
             "degenerate_fallback": False,
             "clob_economic_cash": 0.0,
             "auction_economic_cash": 0.0,
@@ -632,6 +637,7 @@ class MarketMakingEnv(gymnasium.Env):
             leave_agent_out_inputs,
             self.grid.alpha,
             self.cfg.auction_flow.D_mu,
+            mechanism=self.cfg.auction_flow.clearing_mechanism,
         )
 
         self._S_cl = result.tick_price

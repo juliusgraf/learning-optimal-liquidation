@@ -67,6 +67,12 @@ TRACE_COLUMNS = [
     "auction_anchor_price",
     "act_cancel",
     "degenerate_fallback",
+    "clearing_mechanism",
+    "clearing_tick_index",
+    "continuous_price",
+    "matched_volume",
+    "clearing_residual",
+    "nonlinear_clearing",
     # -- terminal row only --
     "is_terminal",
     "S_cl",
@@ -164,6 +170,12 @@ class EpisodeTraceRecorder:
                 auction_anchor_price=info["auction_anchor_price"],
                 act_cancel=a.cancel,
                 degenerate_fallback=int(info["degenerate_fallback"]),
+                clearing_mechanism=info["clearing_mechanism"],
+                clearing_tick_index=info["clearing_tick_index"],
+                continuous_price=info["continuous_price"],
+                matched_volume=info["matched_volume"],
+                clearing_residual=info["clearing_residual"],
+                nonlinear_clearing=info["nonlinear_clearing"],
             )
             if "S_cl" in info:  # terminal step (folded clearing reward)
                 row.update(

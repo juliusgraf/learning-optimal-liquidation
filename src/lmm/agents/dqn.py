@@ -25,7 +25,7 @@ Section 4):
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
@@ -33,9 +33,9 @@ import numpy as np
 import torch
 import torch.nn as nn
 
+from lmm.config import artifact_asdict, environment_contract, LEGACY_CLEARING
 from lmm.agents.base import (
     BELLMAN_FACTOR,
-    ENVIRONMENT_CONTRACT,
     Agent,
     Transition,
 )
@@ -544,18 +544,18 @@ class DQNAgent(Agent):
             # changes trajectories, observations, rewards, or Bellman values
             # is included, including the shaped-vs-economic objective switch.
             "auction_enabled": bool(self.cfg.experiment.auction_enabled),
-            "grid": asdict(self.cfg.grid),
-            "clob_flow": asdict(self.cfg.clob_flow),
-            "auction_flow": asdict(self.cfg.auction_flow),
-            "midprice": asdict(self.cfg.midprice),
-            "algo1": asdict(self.cfg.algo1),
-            "reward": asdict(self.cfg.reward),
+            "grid": artifact_asdict(self.cfg.grid),
+            "clob_flow": artifact_asdict(self.cfg.clob_flow),
+            "auction_flow": artifact_asdict(self.cfg.auction_flow),
+            "midprice": artifact_asdict(self.cfg.midprice),
+            "algo1": artifact_asdict(self.cfg.algo1),
+            "reward": artifact_asdict(self.cfg.reward),
             "bellman": {
                 "chi": float(self.cfg.rl.chi),
                 "discount_mode": self.cfg.rl.discount_mode,
             },
-            "actions": asdict(self.cfg.actions),
-            "features": asdict(self.cfg.features),
+            "actions": artifact_asdict(self.cfg.actions),
+            "features": artifact_asdict(self.cfg.features),
             "h_cl_feature_enabled": bool(self.cfg.rl.h_cl_feature_enabled),
             "relative_price_features": self.cfg.rl.relative_price_features,
             "n_step": self.cfg.rl.n_step,
@@ -570,7 +570,7 @@ class DQNAgent(Agent):
         initial/best/final snapshots to keep them small)."""
         state = {
             "artifact_schema_version": self.artifact_schema_version,
-            "environment_contract": ENVIRONMENT_CONTRACT,
+            "environment_contract": environment_contract(self.cfg),
             "q_architecture": self.q["clob"].architecture,
             "q_architectures": {phase: network.architecture for phase, network in self.q.items()},
             "dqn_contract": self._checkpoint_contract(),
@@ -605,7 +605,7 @@ class DQNAgent(Agent):
                 "checkpoint artifact_schema_version mismatch: "
                 f"expected {self.artifact_schema_version}, got {saved_schema}"
             )
-        if state.get("environment_contract") != ENVIRONMENT_CONTRACT:
+        if state.get("environment_contract") != environment_contract(self.cfg):
             raise ValueError(
                 "checkpoint environment contract mismatch; old auction/grid "
                 "checkpoints cannot be loaded by the revised pipeline"
@@ -621,6 +621,9 @@ class DQNAgent(Agent):
         contract = state.get("dqn_contract")
         if isinstance(contract, dict) and isinstance(contract.get('algo1'), dict):
             contract['algo1'].setdefault('clob_forecast_weights', ())
+            contract['algo1'].setdefault('clob_forecast_mechanism', LEGACY_CLEARING)
+        if isinstance(contract, dict) and isinstance(contract.get('auction_flow'), dict):
+            contract['auction_flow'].setdefault('clearing_mechanism', LEGACY_CLEARING)
         if isinstance(contract, dict):
             contract.get('hyperparams_except_device', {}).setdefault('weight_decay', 0.0)
             contract.get('hyperparams_except_device', {}).setdefault('auction_control_exploration_probability', 0.0)

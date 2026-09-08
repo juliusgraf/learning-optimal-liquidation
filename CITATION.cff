@@ -1,5 +1,5 @@
 cff-version: 1.2.0
-message: "Please cite this software when using its simulator or experimental framework."
+message: "Please cite this software when using its simulator or experimental framework. Citation is requested, not required by the MIT license."
 type: software
 title: "Learning Liquidation with Closing Auctions"
 authors:
@@ -7,6 +7,14 @@ authors:
     given-names: Julius
   - family-names: Mastrolia
     given-names: Thibaut
-version: 0.1.0
 license: MIT
 repository-code: "https://github.com/juliusgraf/Learning-Market-Making"
+references:
+  - type: unpublished
+    title: "Learning Optimal Liquidation with Closing Auctions"
+    authors:
+      - family-names: Graf
+        given-names: Julius
+      - family-names: Mastrolia
+        given-names: Thibaut
+    notes: "Accompanying manuscript; publication metadata and DOI have not been established."

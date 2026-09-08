@@ -19,6 +19,7 @@ cd "$REPO_ROOT"
 # configuration.  The same value is also forwarded into the resolved config
 # below, so the launcher's filesystem path and train.py's path cannot diverge.
 RESULTS_ROOT="${LMM_RESULTS_ROOT:-results/revision_v19}"
+LMM_PYTHON="${LMM_PYTHON:-python3}"
 
 # Keep Matplotlib's font/config cache reusable across the many short reporting
 # processes launched by a full matrix.  This also makes the pipeline work when
@@ -67,6 +68,31 @@ run_experiment() {
   for extra_cfg in ${EXTRA_CONFIGS[@]+"${EXTRA_CONFIGS[@]}"}; do
     cfgs+=(--config "$extra_cfg")
   done
+  case "${LMM_CLEARING_MECHANISM:-nearest_tick_v1}" in
+    max_volume_v2)
+      if [[ -z "${LMM_FORECAST_ROOT:-}" ]]; then
+        echo "revised clearing requires the campaign's completed forecast fits" >&2
+        return 2
+      fi
+      local forecast_setting=synthetic_rough_heston
+      [[ "$setting_cfg" == configs/historical_sp500_midquotes.yaml ]] && forecast_setting=historical_sp500_midquotes
+      local forecast_overlay="$LMM_FORECAST_ROOT/$forecast_setting/forecast_overlay.yaml"
+      if [[ ! -r "$forecast_overlay" ]]; then
+        echo "missing revised forecast: $forecast_overlay" >&2
+        return 2
+      fi
+      cfgs+=(--config configs/clearing/max_volume_v2.yaml)
+      # The synthetic-only v20 replacement installs this immutable mesh overlay
+      # in each affected root. It must precede the NEW fitted coefficients.
+      local refinement_overlay="$RESULTS_ROOT/_provenance/synthetic_refinement.yaml"
+      if [[ "$forecast_setting" == synthetic_rough_heston && -f "$refinement_overlay" ]]; then
+        cfgs+=(--config "$refinement_overlay")
+      fi
+      cfgs+=(--config "$forecast_overlay")
+      ;;
+    nearest_tick_v1) ;;
+    *) echo "unknown clearing mechanism: $LMM_CLEARING_MECHANISM" >&2; return 2 ;;
+  esac
   local seed_args=() sym_args=() train_over=() eval_args=()
   [[ -n "$SEED" ]] && seed_args=(--seed "$SEED")
   [[ -n "$symbol" ]] && sym_args=(--symbol "$symbol")
@@ -116,7 +142,7 @@ run_experiment() {
       ${train_over[@]+"${train_over[@]}"}
     )
     [[ -n "$symbol" ]] && validation_args+=(--symbol "$symbol")
-    if python3 -m lmm.experiments.publication "${validation_args[@]}"; then
+    if "$LMM_PYTHON" -m lmm.experiments.publication "${validation_args[@]}"; then
       echo ">>> skip validated completed run ${run_dir}"
       return 0
     fi
@@ -127,19 +153,19 @@ run_experiment() {
 
   # Guard empty-array expansion for bash 3.2 (macOS) under `set -u`.
   echo ">>> train ${run_dir}"
-  python3 -m lmm.experiments.train "${cfgs[@]}" --run-name "$run_name" \
+  "$LMM_PYTHON" -m lmm.experiments.train "${cfgs[@]}" --run-name "$run_name" \
     ${seed_args[@]+"${seed_args[@]}"} ${sym_args[@]+"${sym_args[@]}"} ${train_over[@]+"${train_over[@]}"}
 
   echo ">>> evaluate ${run_dir}"
-  python3 -m lmm.experiments.evaluate --run-dir "$run_dir" \
+  "$LMM_PYTHON" -m lmm.experiments.evaluate --run-dir "$run_dir" \
     ${sym_args[@]+"${sym_args[@]}"} "${eval_args[@]}"
 
   echo ">>> paired policy differences ${run_dir}"
-  python3 -m lmm.experiments.policy_differences --run-dir "$run_dir" --benchmark as
-  python3 -m lmm.experiments.policy_differences --run-dir "$run_dir" --benchmark twap
+  "$LMM_PYTHON" -m lmm.experiments.policy_differences --run-dir "$run_dir" --benchmark as
+  "$LMM_PYTHON" -m lmm.experiments.policy_differences --run-dir "$run_dir" --benchmark twap
 
   echo ">>> bind completed pipeline artifacts ${run_dir}"
-  python3 -m lmm.experiments.publication \
+  "$LMM_PYTHON" -m lmm.experiments.publication \
     --write-completion-manifest "$run_dir"
 
   echo ">>> done ${run_dir}"

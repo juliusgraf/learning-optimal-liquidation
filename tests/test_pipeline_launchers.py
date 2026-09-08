@@ -29,6 +29,7 @@ def _child_calls(tmp_path: Path, script: str, *args: str) -> list[str]:
     env = os.environ.copy()
     env["PATH"] = f"{fake_bin}:{env['PATH']}"
     env["PIPELINE_CALL_LOG"] = str(call_log)
+    env['LMM_PYTHON'] = str(fake_python)
     result = subprocess.run(
         ["/bin/bash", f"scripts/{script}", *args],
         cwd=REPO,
@@ -93,6 +94,7 @@ def test_run_multiseed_default_is_full_five_seed_treatment_publication(tmp_path)
     calls = _child_calls(tmp_path, "run_multiseed.sh")
     assert len(calls) == 1
     assert "lmm.experiments.run_matrix" in calls[0]
+    assert '--root results/revision_v20' in calls[0]
     assert calls[0].endswith("--seeds 42 7 99 123 2024 314 577 811 1618 2718 --jobs 1 --threads-per-job 2")
 
 
@@ -231,3 +233,9 @@ def test_per_run_pipeline_writes_manifest_after_both_difference_artifacts():
     manifest = script.index("--write-completion-manifest \"$run_dir\"")
     assert as_difference < twap_difference < manifest
     assert "pipeline_complete.txt" not in script
+
+
+def test_legacy_multiseed_is_explicit_and_keeps_legacy_root(tmp_path):
+    calls = _child_calls(tmp_path, 'run_multiseed.sh', '--legacy-clearing', '--dry-run')
+    assert '--root results/revision_v19' in calls[0]
+    assert calls[0].endswith('--dry-run --legacy-clearing')

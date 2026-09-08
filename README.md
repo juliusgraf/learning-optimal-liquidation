@@ -1,75 +1,103 @@
 # Learning Liquidation with Closing Auctions
 
-Research code for end-of-day liquidation through a continuous limit order book
-followed by a closing call auction. DQN uses discrete controls; DDPG, TD3 and SAC
-use continuous proposals projected onto the same executable grid. Synthetic
-rough-Heston and historical-midquote settings share the market mechanics.
-Historical inputs determine prices only; order flow and auction clearing remain
-simulated.
+Research software for end-of-day liquidation through a continuous limit order
+book and a closing call auction. DQN, DDPG, TD3 and SAC share a simulator and
+executable action grid. Historical inputs supply midquotes; order flow, auction
+clearing and allocation remain simulated.
 
-## Quick start
+This checkout is a **draft public-release candidate**, with a compact replication
+evidence bundle. It has not been published. Repository preparation, support for
+the paper's replication claim, and verified public availability are separate
+outcomes; see [the readiness report](release/READINESS.md).
 
-Python 3.10 or newer is required. Run commands from the repository root.
+The current manuscript uses the completed **v20** campaign: 320 synthetic runs
+at a maximum internal rough-Heston step of 0.25 minutes, and 200 retained
+historical runs. The original synthetic and historical source revisions differ.
+The [provenance manifest](release/provenance.json) and
+[replication guide](REPRODUCING.md) identify them explicitly. The older v19
+summaries in `docs/` are development history, not the current paper's results.
 
-```bash
+## Install and run a small check
+
+Python 3.10+ is declared by the package. The recorded paper environment is Python
+3.14.4 on macOS arm64; [recorded direct dependency versions](release/paper-environment.txt)
+are preserved separately from the broad installation requirements.
+
+From a source checkout, create a fresh environment:
+
+```sh
 python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install -e ".[dev]"
-pytest -q -m 'not network and not slow'
+. .venv/bin/activate
+python -m pip install -c release/paper-environment.txt -e '.[dev]'
+export MPLBACKEND=Agg
+export MPLCONFIGDIR="$PWD/.cache/matplotlib"
+python scripts/smoke_release.py
+pytest -q -m 'not network and not slow and not market_data'
 ```
 
-The public test suite runs without a market-data account. Tests requiring the
-private historical dataset skip explicitly when it is absent. Synthetic
-experiments require no external data:
+The smoke check runs two identical synthetic CPU episodes, without training,
+market data, credentials, model weights, tracking or uploads. It is not a paper
+result. The tests use explicit synthetic fixtures in `tests/fixtures/`; they
+never replace missing paper inputs. Current Linux CI has an unresolved exact
+legacy-trajectory hash mismatch; see the readiness report before assuming
+cross-platform bitwise reproducibility.
 
-```bash
-# Four training episodes and three evaluation episodes; a pipeline check only.
-LMM_RESULTS_ROOT=results/smoke scripts/run_synthetic_dqn.sh --smoke
+Regenerate and verify the paired benchmark supporting table from bundled,
+unrounded seed means:
 
-# Inspect the main experiment matrix without training.
-scripts/run_multiseed.sh --dry-run
+```sh
+python scripts/release_support.py --check
+# Optional: writes to a NEW directory outside the checkout.
+python scripts/release_support.py --output /tmp/lmm-support-table
+python scripts/release_validate.py
 ```
 
-The smoke run is not a scientific result. Full training budgets, data setup and
-report generation are documented in [REPRODUCING.md](REPRODUCING.md).
+Draft validation checks contents and provenance. Its success does **not** clear
+reported blockers or establish publication. Full experiments are explicit opt-in
+operations described in [REPRODUCING.md](REPRODUCING.md).
 
-## Model and results
+## What is supplied
 
-- [Model specification](docs/model.md): timing, controls, clearing and objectives.
-- [Learning design](docs/rl_design.md): observations, conditioning and selection.
-- [Results and protocol index](docs/README.md): completed-study summaries and evidence.
-- [Metric definitions](docs/metrics_schema.md): economic and training accounting.
-- [Historical-data setup](data/README.md): obtain and validate your own authorized inputs.
+- Simulator, learners, configuration overlays, tests and execution/reporting entry points.
+- All 520 run identities, resolved configurations, complete recorded training,
+  validation, test and normalization seeds, selection records, fitted normalization
+  state, dependency records, AS coefficients and original artifact hashes in
+  `release/evidence/campaign.json` and its companion records.
+- Compact saved numerical outputs for current headline, treatment and follow-up
+  comparisons, plus the existing paired-reference support table.
+- The existing mesh diagnostic and recovered historical episode-to-date mappings,
+  with their limits and preparation-time transformations identified.
+- Manuscript and figure sources under `paper/`, retained without modification in
+  this preparation. The full run directories and original checkpoints remain local;
+  their hashes do not make those objects publicly accessible.
 
-The completed study comprises 440 main runs and two 40-run synthetic comparisons,
-with ten training seeds per cell. Headline training uses weighted preference
-rewards; selection and comparisons use economic PnL less terminal inventory risk.
-The negative of economic PnL is implementation shortfall relative to initial
-midprice under the stated residual-marking convention. Machine-readable metric
-names and saved results retain their original sign conventions.
+**AS calibration evidence limit:** the actual AS coefficients used in the paper
+are preserved, but accepted/excluded calibration counts and original fit samples
+are missing from the supplied records. See the
+[calibration disclosure](REPRODUCING.md#saved-analysis-and-calibration-p-001-p-003-p-004-p-005)
+and [saved coefficient records](release/evidence/as_calibration.json).
 
-The findings support dense auction credit and method-dependent incremental
-forecast value. Additional preference terms have no established marginal benefit
-when conditioning is matched. See the [main results](docs/revision_v19_verdict.md)
-and [matched comparison](docs/economic_dense_h_results_verdict_v19.md).
+Vendor quote archives and processed price paths are **not** included in the
+proposed package. Historical reproduction requires separately authorized,
+matching inputs; see [data access and preprocessing](data/README.md). Historical
+test dates were inspected during development. No untouched-date claim is made.
 
-The manuscript is maintained separately. The public repository includes source,
-tests, configurations and compact analysis summaries. Market data, trained
-checkpoints and full report bundles are excluded. Historical test dates were
-inspected during development; these experiments are not exchange-auction backtests.
+The Git repository's reachable history contains historical data and other
+superseded materials. `.gitignore` and the curated staging package do not make
+that history safe to expose. Owner review is required before changing visibility.
 
-## Reproducibility and distribution
+## Model, license and citation
 
-The executable specification is `configs/base.yaml` composed with a setting,
-algorithm and optional treatment overlay. Saved runs retain their resolved
-configurations and source identity. Changes must not overwrite completed runs
-or weaken provenance validation.
+See [model mechanics](docs/model.md), [learner design](docs/rl_design.md),
+[metric definitions](docs/metrics_schema.md), and [contribution guidance](CONTRIBUTING.md).
 
-[CONTRIBUTING.md](CONTRIBUTING.md) describes validation and contribution practices.
-The software is available under the [MIT license](LICENSE); this does not grant
-rights to third-party market data. Software citation metadata is in
-[CITATION.cff](CITATION.cff).
+First-party software and software documentation use the standard [MIT license](LICENSE),
+with confirmed holders Julius Graf and Thibaut Mastrolia, copyright 2026.
+[Distribution scope and third-party notices](THIRD_PARTY_NOTICES.md) distinguish
+software, installed dependencies, research assets and restricted vendor data.
+Permission to distribute non-code research assets does not assign them an MIT license.
+Academic citation is requested separately in [CITATION.cff](CITATION.cff).
 
-For the paper submission, cite this GitHub repository and record the commit
-used for the experiments. The current source tree excludes manuscript files
-and market data; earlier commits retain the project's development history.
+The [owner publication runbook](release/RUNBOOK.md) supplies final commit/tag,
+checksumming and unauthenticated-access checks. Do not fill a manuscript release
+identifier or release commit from this uncommitted preparation.

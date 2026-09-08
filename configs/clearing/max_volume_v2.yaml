@@ -1,0 +1,9 @@
+# Changed simulator. Overlay AFTER the setting (whose fitted weights are v1).
+# Empty weights expose raw Algorithm 1 for refitting; they are not a new fit.
+experiment:
+  artifact_schema_version: 16
+  results_root: results/revision_v20
+auction_flow:
+  clearing_mechanism: max_volume_v2
+algo1:
+  clob_forecast_weights: []

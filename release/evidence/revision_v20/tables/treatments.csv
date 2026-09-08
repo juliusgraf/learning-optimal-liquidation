@@ -1,0 +1,21 @@
+contrast,algorithm,metric,mean,ci_low,ci_high,n_seeds
+"Auction access, matched information and economic training (on - off)",ddpg,effect_bps,1.051419607,0.7488982889,1.258388861,10
+"Auction access, matched information and economic training (on - off)",dqn,effect_bps,0.5724444397,0.1172946287,1.077558483,10
+"Auction access, matched information and economic training (on - off)",sac,effect_bps,0.7723694802,0.1447070845,1.405431272,10
+"Auction access, matched information and economic training (on - off)",td3,effect_bps,0.6245904865,0.2984244558,0.9298492879,10
+Auction anchor (indicative - frozen mid),ddpg,effect_bps,-0.3709257218,-0.7153404398,-0.06008038174,10
+Auction anchor (indicative - frozen mid),dqn,effect_bps,-0.4446671008,-0.8958947922,0.06730884971,10
+Auction anchor (indicative - frozen mid),sac,effect_bps,-0.9161766126,-1.403090608,-0.4788991068,10
+Auction anchor (indicative - frozen mid),td3,effect_bps,-0.4208323733,-0.6740847444,-0.07197606412,10
+Combined manuscript preferences (on - off),ddpg,effect_bps,-0.1953323197,-0.4589318667,0.08813561077,10
+Combined manuscript preferences (on - off),dqn,effect_bps,0.02346080203,-0.324929333,0.354155393,10
+Combined manuscript preferences (on - off),sac,effect_bps,-0.0197232363,-0.242223909,0.2430492605,10
+Combined manuscript preferences (on - off),td3,effect_bps,-0.1300322094,-0.33881063,0.05573377245,10
+Dense auction credit (on - off),ddpg,effect_bps,2.082031612,0.9549822391,3.226965312,10
+Dense auction credit (on - off),dqn,effect_bps,0.7256334021,0.1779650913,1.187544395,10
+Dense auction credit (on - off),sac,effect_bps,0.7431207684,0.2440183965,1.259088116,10
+Dense auction credit (on - off),td3,effect_bps,1.77503787,0.8215552179,2.698214298,10
+"H observation, fixed anchor and economic training (on - off)",ddpg,effect_bps,-0.3184060276,-0.9389811492,0.1099714971,10
+"H observation, fixed anchor and economic training (on - off)",dqn,effect_bps,-0.4415621567,-0.779032731,-0.0940582273,10
+"H observation, fixed anchor and economic training (on - off)",sac,effect_bps,0.4376385869,-0.001927431264,0.9533526166,10
+"H observation, fixed anchor and economic training (on - off)",td3,effect_bps,0.03382382013,-0.5239610156,0.5692346306,10

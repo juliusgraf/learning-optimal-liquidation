@@ -136,7 +136,7 @@ def test_scope_discloses_training_pool_and_reused_historical_holdout(tmp_path):
     assert "training dates only" in scope
     assert "reused holdout" in scope
     assert "Additional training seeds do not add independent historical dates" in scope
-    assert R.experiment_scope([example_run(tmp_path)]) == ""
+    assert "nearest_tick_v1" in R.experiment_scope([example_run(tmp_path)])
 
 
 @pytest.mark.parametrize("has_actor", [False, True])

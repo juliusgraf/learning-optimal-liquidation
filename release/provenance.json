@@ -1,0 +1,560 @@
+{
+  "schema": "lmm-release-provenance-v1",
+  "prepared_at_utc_date": "2026-09-08",
+  "preparation_start_head": "64df3bc6421fe0e7d267386831b699482beb2706",
+  "release_commit": null,
+  "release_identifier": null,
+  "publication_status": "NOT PERFORMED",
+  "repository_url": "https://github.com/juliusgraf/Learning-Market-Making",
+  "repository_visibility_observed": "private",
+  "origin": "Release-preparation audit of existing local evidence; not contemporaneous experiment provenance",
+  "license_confirmation": {
+    "holders": [
+      "Julius Graf",
+      "Thibaut Mastrolia"
+    ],
+    "year": 2026,
+    "authority": "explicit author confirmation in this session for both holders and first-party software/documentation",
+    "research_asset_distribution": "explicit author confirmation for manuscript, figures, derived historical summaries and checkpoints; no new non-code asset license assigned",
+    "raw_vendor_data": "not authorized for redistribution"
+  },
+  "verification_levels": {
+    "A": "Traced to existing output",
+    "B": "Figure/table regenerated from saved numerical results",
+    "C": "Analysis rerun from supplied inputs",
+    "D": "Complete experiment independently rerun"
+  },
+  "artifacts": [
+    {
+      "id": "auction_mechanism.pdf.txt",
+      "path": "paper/figures/auction_mechanism.pdf.txt",
+      "sha256": "7a8f869ac10c0a97a31766c02b69ec2b43db772fed8ff2a5a9eb50423018c872",
+      "availability": "bundled",
+      "origin": "existing figure asset; original publication source hash verified"
+    },
+    {
+      "id": "cashflow_comparison.pdf.txt",
+      "path": "paper/figures/cashflow_comparison.pdf.txt",
+      "sha256": "3755134214f6fbbd02d4affc339ce76b1277b97576b0bbef5938ff0c754a4e87",
+      "availability": "bundled",
+      "origin": "existing figure asset; original publication source hash verified"
+    },
+    {
+      "id": "credit_assignment.pdf.txt",
+      "path": "paper/figures/credit_assignment.pdf.txt",
+      "sha256": "829c5a4f04f71e2e1c0c50fa295054f8afaa41474da908d9171d6a7b57062366",
+      "availability": "bundled",
+      "origin": "existing figure asset; original publication source hash verified"
+    },
+    {
+      "id": "economic_performance.pdf.txt",
+      "path": "paper/figures/economic_performance.pdf.txt",
+      "sha256": "03ea90ec658c7eaf0a1e0078d113902de30b5644ceb2ba47872a47c37765a371",
+      "availability": "bundled",
+      "origin": "existing figure asset; original publication source hash verified"
+    },
+    {
+      "id": "learning.pdf.txt",
+      "path": "paper/figures/learning.pdf.txt",
+      "sha256": "a97afd3cd693871553917824eb14e0e681d084d336da0fcc45b6151bbb36038f",
+      "availability": "bundled",
+      "origin": "existing figure asset; original publication source hash verified"
+    },
+    {
+      "id": "preferences_comparison.pdf.txt",
+      "path": "paper/figures/preferences_comparison.pdf.txt",
+      "sha256": "976efb9b9d9fec43dbb2b0af81d14eed11c1113f31a658f0aff192f776726e88",
+      "availability": "bundled",
+      "origin": "existing figure asset; original publication source hash verified"
+    },
+    {
+      "id": "treatments.pdf.txt",
+      "path": "paper/figures/treatments.pdf.txt",
+      "sha256": "e458df5f73dcf0b7749e3691cc9b7d9097dd67a5e62295dc2e03e08f06565e32",
+      "availability": "bundled",
+      "origin": "existing figure asset; original publication source hash verified"
+    },
+    {
+      "id": "paper/main.tex",
+      "path": "paper/main.tex",
+      "sha256": "b1700c826eba2f3f9b1a92bbd2c749b95d25a57e27f99f4b29d2d28d0f284cdc",
+      "availability": "bundled",
+      "origin": "existing manuscript/provenance, untouched during release preparation"
+    },
+    {
+      "id": "paper/main.pdf",
+      "path": "paper/main.pdf",
+      "sha256": "527ce74db7fb783bf6b8f90dbd41f66f1108601014730fd5687d4c0a94504da4",
+      "availability": "bundled",
+      "origin": "existing manuscript/provenance, untouched during release preparation"
+    },
+    {
+      "id": "paper/results/refresh_manifest.json",
+      "path": "paper/results/refresh_manifest.json",
+      "sha256": "abf4d0666490a3865d59d2b48e2e31f658d5d8e741f326477786f364a31cf54c",
+      "availability": "bundled",
+      "origin": "existing manuscript/provenance, untouched during release preparation"
+    },
+    {
+      "id": "paper/results/analysis_inputs.json",
+      "path": "paper/results/analysis_inputs.json",
+      "sha256": "e60d4eef05e496fae7e0c63847437cd4f59939d457e683097fd0b6da246ca748",
+      "availability": "bundled",
+      "origin": "existing manuscript/provenance, untouched during release preparation"
+    },
+    {
+      "id": "paper/results/supplement_manifest.json",
+      "path": "paper/results/supplement_manifest.json",
+      "sha256": "47bf21bd7ae96545963d9400b842439a2fdfc8eb84192d567d28f8a3e9a46aab",
+      "availability": "bundled",
+      "origin": "existing manuscript/provenance, untouched during release preparation"
+    },
+    {
+      "id": "paper/results/verification.json",
+      "path": "paper/results/verification.json",
+      "sha256": "59217319e5ecb9b2c70338de1f7bfb6c90da05ea3e652b366c1603d55108e2fa",
+      "availability": "bundled",
+      "origin": "existing manuscript/provenance, untouched during release preparation"
+    },
+    {
+      "id": "original-historical-input",
+      "path": "data/historical_sp500_midquotes_1m.csv",
+      "sha256": "1cc2d3c050f1ec88effb9b43081d00158fd835586efc51c0ab26b7836ba861ac",
+      "availability": "restricted-local",
+      "external_reference": null,
+      "restriction": "authorized Alpaca SIP access; original prices and raw archives not redistributed; identities in evidence/data.json"
+    },
+    {
+      "id": "full-runs-and-checkpoints",
+      "path": "results/revision_v20{,_cashflow,_economic_dense_h}/",
+      "availability": "local-only",
+      "external_reference": null,
+      "hash_index": "release/evidence/campaign.json",
+      "restriction": "original complete run directories and model weights are not bundled; author permits checkpoints/derived outputs, but no public artifact locator supplied"
+    },
+    {
+      "id": "as_calibration.json",
+      "path": "release/evidence/as_calibration.json",
+      "sha256": "fadd869bc2ce742a653af494341ceff654c946e6c1a79f3ad908368c7eddf4f7",
+      "availability": "bundled",
+      "origin": "existing output or explicitly labeled preparation-time extraction; embedded origin identifies transformations"
+    },
+    {
+      "id": "benchmark_supplement.csv",
+      "path": "release/evidence/benchmark_supplement.csv",
+      "sha256": "961e8dadb508a27991c8bd96fd3a9a40bbca7a534fbba74eda018c0134de2ea2",
+      "availability": "bundled",
+      "origin": "existing output or explicitly labeled preparation-time extraction; embedded origin identifies transformations"
+    },
+    {
+      "id": "campaign.json",
+      "path": "release/evidence/campaign.json",
+      "sha256": "e070fd0925e86f4ef3f2e0d3a9c90b48c254381ebccd9361f28c759e9550285a",
+      "availability": "bundled",
+      "origin": "existing output or explicitly labeled preparation-time extraction; embedded origin identifies transformations"
+    },
+    {
+      "id": "data.json",
+      "path": "release/evidence/data.json",
+      "sha256": "fa00a39d9226858b63d355b5706037e13fc64a82f37cc7ac9e4ce41a7e4de551",
+      "availability": "bundled",
+      "origin": "existing output or explicitly labeled preparation-time extraction; embedded origin identifies transformations"
+    },
+    {
+      "id": "forecast_by_algorithm_seed.csv",
+      "path": "release/evidence/forecast_by_algorithm_seed.csv",
+      "sha256": "25acd153116e418189d5efa3bc7d9c6f02b6e8bc5c86950c9bb66565855c2ca5",
+      "availability": "bundled",
+      "origin": "existing output or explicitly labeled preparation-time extraction; embedded origin identifies transformations"
+    },
+    {
+      "id": "forecast_fits.json",
+      "path": "release/evidence/forecast_fits.json",
+      "sha256": "c49e6e8a1b0a51620ec313266be130faf113f3c9645368499a49994d62124e0f",
+      "availability": "bundled",
+      "origin": "existing output or explicitly labeled preparation-time extraction; embedded origin identifies transformations"
+    },
+    {
+      "id": "forecast_summary.csv",
+      "path": "release/evidence/forecast_summary.csv",
+      "sha256": "68948fd26c733fe77b29e08c5b964afe79d6b56e79a01361cf857e0e636d6b4f",
+      "availability": "bundled",
+      "origin": "existing output or explicitly labeled preparation-time extraction; embedded origin identifies transformations"
+    },
+    {
+      "id": "historical_dates.json",
+      "path": "release/evidence/historical_dates.json",
+      "sha256": "994f64cf3368bc323f62c126e02c84f11977a53d0689feb72e092f06368cf4a7",
+      "availability": "bundled",
+      "origin": "existing output or explicitly labeled preparation-time extraction; embedded origin identifies transformations"
+    },
+    {
+      "id": "mesh_diagnostic.json",
+      "path": "release/evidence/mesh_diagnostic.json",
+      "sha256": "30af16a9212980ff49a0affb2705f0632fcf096f2e6526270fee2c977007ed0a",
+      "availability": "bundled",
+      "origin": "existing output or explicitly labeled preparation-time extraction; embedded origin identifies transformations"
+    },
+    {
+      "id": "revision_v20/audit/credit_learning_by_seed.csv",
+      "path": "release/evidence/revision_v20/audit/credit_learning_by_seed.csv",
+      "sha256": "b940756b5955ddb26aabf51690ff24f7eb1a9e17004936c18444002a2417dcc9",
+      "availability": "bundled",
+      "origin": "existing output or explicitly labeled preparation-time extraction; embedded origin identifies transformations"
+    },
+    {
+      "id": "revision_v20/audit/credit_learning_common_support.csv",
+      "path": "release/evidence/revision_v20/audit/credit_learning_common_support.csv",
+      "sha256": "3332e8dd126de04023d406c02387b634b4b2bbb083695fde45cc55fda526fec3",
+      "availability": "bundled",
+      "origin": "existing output or explicitly labeled preparation-time extraction; embedded origin identifies transformations"
+    },
+    {
+      "id": "revision_v20/audit/economic_by_seed.csv",
+      "path": "release/evidence/revision_v20/audit/economic_by_seed.csv",
+      "sha256": "4efda30fa78b19c07dff8e199b08e958b26bcdb7d9eccb950a512bfd87330273",
+      "availability": "bundled",
+      "origin": "existing output or explicitly labeled preparation-time extraction; embedded origin identifies transformations"
+    },
+    {
+      "id": "revision_v20/audit/treatments_by_seed.csv",
+      "path": "release/evidence/revision_v20/audit/treatments_by_seed.csv",
+      "sha256": "4dc2a982de232e0d2e9f700ea0c43af7131e3b5cf26337cce19bf273c9e2a0a2",
+      "availability": "bundled",
+      "origin": "existing output or explicitly labeled preparation-time extraction; embedded origin identifies transformations"
+    },
+    {
+      "id": "revision_v20/audit/validation_by_seed.csv",
+      "path": "release/evidence/revision_v20/audit/validation_by_seed.csv",
+      "sha256": "5c3a784702fa5fda205dae91faa3a60951a1a7fdc6e982771131a9a2c40d1d29",
+      "availability": "bundled",
+      "origin": "existing output or explicitly labeled preparation-time extraction; embedded origin identifies transformations"
+    },
+    {
+      "id": "revision_v20/audit/validation_common_support.csv",
+      "path": "release/evidence/revision_v20/audit/validation_common_support.csv",
+      "sha256": "faf19f8620177288178378a36c1405eaa42cb5689101d411c1a02729c7a5dcfc",
+      "availability": "bundled",
+      "origin": "existing output or explicitly labeled preparation-time extraction; embedded origin identifies transformations"
+    },
+    {
+      "id": "revision_v20/tables/auction_mechanism.csv",
+      "path": "release/evidence/revision_v20/tables/auction_mechanism.csv",
+      "sha256": "fca1a34c429318094400ae64a0b34054de04746662fb535a330086308dc1c4e7",
+      "availability": "bundled",
+      "origin": "existing output or explicitly labeled preparation-time extraction; embedded origin identifies transformations"
+    },
+    {
+      "id": "revision_v20/tables/economic_performance.csv",
+      "path": "release/evidence/revision_v20/tables/economic_performance.csv",
+      "sha256": "98e1dacc1d9b629766ecaf785acbb7ae89e14b1ed5205234632117344f1759ed",
+      "availability": "bundled",
+      "origin": "existing output or explicitly labeled preparation-time extraction; embedded origin identifies transformations"
+    },
+    {
+      "id": "revision_v20/tables/treatments.csv",
+      "path": "release/evidence/revision_v20/tables/treatments.csv",
+      "sha256": "252e3a40c155a3bab18a1e93e365655556c6de1f61b5928a61b43b7a99ec4f26",
+      "availability": "bundled",
+      "origin": "existing output or explicitly labeled preparation-time extraction; embedded origin identifies transformations"
+    },
+    {
+      "id": "revision_v20_cashflow/by_seed.csv",
+      "path": "release/evidence/revision_v20_cashflow/by_seed.csv",
+      "sha256": "ce9b651cdc4e66c4a7674d62879a069bdd2fefc2fe604d2f946903861bd879aa",
+      "availability": "bundled",
+      "origin": "existing output or explicitly labeled preparation-time extraction; embedded origin identifies transformations"
+    },
+    {
+      "id": "revision_v20_cashflow/comparison.csv",
+      "path": "release/evidence/revision_v20_cashflow/comparison.csv",
+      "sha256": "778151aca31c9ba121a0f698df8026660c86ac28ab82bbfcffcae6292dece50c",
+      "availability": "bundled",
+      "origin": "existing output or explicitly labeled preparation-time extraction; embedded origin identifies transformations"
+    },
+    {
+      "id": "revision_v20_economic_dense_h/by_seed.csv",
+      "path": "release/evidence/revision_v20_economic_dense_h/by_seed.csv",
+      "sha256": "ac58edd1cc90687907900bcc5b3c182c688c9cdd14582db6aa8873d4ca0d4d55",
+      "availability": "bundled",
+      "origin": "existing output or explicitly labeled preparation-time extraction; embedded origin identifies transformations"
+    },
+    {
+      "id": "revision_v20_economic_dense_h/comparison.csv",
+      "path": "release/evidence/revision_v20_economic_dense_h/comparison.csv",
+      "sha256": "cae3c3a7f1ea528cde54dcc774fefdc66b2790a0dd7737998adcdd500763e790",
+      "availability": "bundled",
+      "origin": "existing output or explicitly labeled preparation-time extraction; embedded origin identifies transformations"
+    },
+    {
+      "id": "shortfall_summary.csv",
+      "path": "release/evidence/shortfall_summary.csv",
+      "sha256": "0f4439ca75f806ddda56d326c1d11f59aceea925f85834c685a2b258323b36d6",
+      "availability": "bundled",
+      "origin": "existing output or explicitly labeled preparation-time extraction; embedded origin identifies transformations"
+    },
+    {
+      "id": "source_revisions.json",
+      "path": "release/evidence/source_revisions.json",
+      "sha256": "158c1eae13d1e13a68a5da25be7b540cee280fada582acfb00da2d3b3bd0e2a3",
+      "availability": "bundled",
+      "origin": "existing output or explicitly labeled preparation-time extraction; embedded origin identifies transformations"
+    }
+  ],
+  "results": [
+    {
+      "paper_identifier": "tab:economic_performance",
+      "description": "Headline ordinary and penalized shortfalls",
+      "artifact_ids": [
+        "revision_v20/audit/economic_by_seed.csv",
+        "shortfall_summary.csv"
+      ],
+      "source_revision_binding": "campaign.json run original_revision; mesh diagnostic uses its own source/checkpoint hashes",
+      "configuration_seed_selection_binding": "campaign.json complete run records, forecast_fits.json, as_calibration.json",
+      "script_or_command": "paper/results/analyze.py",
+      "historical_exact_shell_command": null,
+      "command_limit": "entry point identified from inspected code; original shell argv not universally recorded; regeneration command is not an invented original invocation",
+      "verification_level": "A",
+      "verification": "existing input/output digest bindings verified; P-003 additionally recomputed from supplied seed means",
+      "remaining_dependencies": "original full runs/checkpoints and authorized historical data needed for full regeneration/experiments; see artifact availability"
+    },
+    {
+      "paper_identifier": "tab:benchmark_supplement",
+      "description": "48 paired reference intervals and 30 ordinary-shortfall levels",
+      "artifact_ids": [
+        "revision_v20/audit/economic_by_seed.csv",
+        "benchmark_supplement.csv"
+      ],
+      "source_revision_binding": "campaign.json run original_revision; mesh diagnostic uses its own source/checkpoint hashes",
+      "configuration_seed_selection_binding": "campaign.json complete run records, forecast_fits.json, as_calibration.json",
+      "script_or_command": "python scripts/release_support.py --check",
+      "historical_exact_shell_command": "paper/results/supplement.py (existing generator, not rerun here)",
+      "command_limit": "entry point identified from inspected code; original shell argv not universally recorded; regeneration command is not an invented original invocation",
+      "verification_level": "B",
+      "verification": "existing input/output digest bindings verified; P-003 additionally recomputed from supplied seed means",
+      "remaining_dependencies": "original full runs/checkpoints and authorized historical data needed for full regeneration/experiments; see artifact availability"
+    },
+    {
+      "paper_identifier": "tab:forecast_accuracy",
+      "description": "Forecast accuracy",
+      "artifact_ids": [
+        "forecast_summary.csv",
+        "forecast_by_algorithm_seed.csv",
+        "forecast_fits.json"
+      ],
+      "source_revision_binding": "campaign.json run original_revision; mesh diagnostic uses its own source/checkpoint hashes",
+      "configuration_seed_selection_binding": "campaign.json complete run records, forecast_fits.json, as_calibration.json",
+      "script_or_command": "paper/results/analyze.py",
+      "historical_exact_shell_command": null,
+      "command_limit": "entry point identified from inspected code; original shell argv not universally recorded; regeneration command is not an invented original invocation",
+      "verification_level": "A",
+      "verification": "existing input/output digest bindings verified; P-003 additionally recomputed from supplied seed means",
+      "remaining_dependencies": "original full runs/checkpoints and authorized historical data needed for full regeneration/experiments; see artifact availability"
+    },
+    {
+      "paper_identifier": "tab:treatments",
+      "description": "Five main and two follow-up contrasts",
+      "artifact_ids": [
+        "revision_v20/tables/treatments.csv",
+        "revision_v20/audit/treatments_by_seed.csv",
+        "revision_v20_cashflow/comparison.csv",
+        "revision_v20_cashflow/by_seed.csv",
+        "revision_v20_economic_dense_h/comparison.csv",
+        "revision_v20_economic_dense_h/by_seed.csv"
+      ],
+      "source_revision_binding": "campaign.json run original_revision; mesh diagnostic uses its own source/checkpoint hashes",
+      "configuration_seed_selection_binding": "campaign.json complete run records, forecast_fits.json, as_calibration.json",
+      "script_or_command": "lmm.experiments.make_report and lmm.experiments.cashflow_comparison",
+      "historical_exact_shell_command": null,
+      "command_limit": "entry point identified from inspected code; original shell argv not universally recorded; regeneration command is not an invented original invocation",
+      "verification_level": "A",
+      "verification": "existing input/output digest bindings verified; P-003 additionally recomputed from supplied seed means",
+      "remaining_dependencies": "original full runs/checkpoints and authorized historical data needed for full regeneration/experiments; see artifact availability"
+    },
+    {
+      "paper_identifier": "fig:economic_shortfall",
+      "description": "Market economic performance",
+      "artifact_ids": [
+        "revision_v20/audit/economic_by_seed.csv",
+        "economic_performance.pdf.txt"
+      ],
+      "source_revision_binding": "campaign.json run original_revision; mesh diagnostic uses its own source/checkpoint hashes",
+      "configuration_seed_selection_binding": "campaign.json complete run records, forecast_fits.json, as_calibration.json",
+      "script_or_command": "lmm.experiments.make_report",
+      "historical_exact_shell_command": null,
+      "command_limit": "entry point identified from inspected code; original shell argv not universally recorded; regeneration command is not an invented original invocation",
+      "verification_level": "A",
+      "verification": "existing input/output digest bindings verified; P-003 additionally recomputed from supplied seed means",
+      "remaining_dependencies": "original full runs/checkpoints and authorized historical data needed for full regeneration/experiments; see artifact availability"
+    },
+    {
+      "paper_identifier": "fig:auction_value_inventory",
+      "description": "Auction value/inventory accounting",
+      "artifact_ids": [
+        "revision_v20/tables/auction_mechanism.csv",
+        "revision_v20/audit/economic_by_seed.csv",
+        "auction_mechanism.pdf.txt"
+      ],
+      "source_revision_binding": "campaign.json run original_revision; mesh diagnostic uses its own source/checkpoint hashes",
+      "configuration_seed_selection_binding": "campaign.json complete run records, forecast_fits.json, as_calibration.json",
+      "script_or_command": "lmm.experiments.make_report",
+      "historical_exact_shell_command": null,
+      "command_limit": "entry point identified from inspected code; original shell argv not universally recorded; regeneration command is not an invented original invocation",
+      "verification_level": "A",
+      "verification": "existing input/output digest bindings verified; P-003 additionally recomputed from supplied seed means",
+      "remaining_dependencies": "original full runs/checkpoints and authorized historical data needed for full regeneration/experiments; see artifact availability"
+    },
+    {
+      "paper_identifier": "fig:forecast_information",
+      "description": "Synthetic control contrasts",
+      "artifact_ids": [
+        "revision_v20/audit/treatments_by_seed.csv",
+        "treatments.pdf.txt"
+      ],
+      "source_revision_binding": "campaign.json run original_revision; mesh diagnostic uses its own source/checkpoint hashes",
+      "configuration_seed_selection_binding": "campaign.json complete run records, forecast_fits.json, as_calibration.json",
+      "script_or_command": "lmm.experiments.make_report",
+      "historical_exact_shell_command": null,
+      "command_limit": "entry point identified from inspected code; original shell argv not universally recorded; regeneration command is not an invented original invocation",
+      "verification_level": "A",
+      "verification": "existing input/output digest bindings verified; P-003 additionally recomputed from supplied seed means",
+      "remaining_dependencies": "original full runs/checkpoints and authorized historical data needed for full regeneration/experiments; see artifact availability"
+    },
+    {
+      "paper_identifier": "fig:learning_guidance",
+      "description": "Learning credit and two follow-ups",
+      "artifact_ids": [
+        "revision_v20/audit/credit_learning_by_seed.csv",
+        "revision_v20_cashflow/by_seed.csv",
+        "revision_v20_economic_dense_h/by_seed.csv",
+        "credit_assignment.pdf.txt",
+        "cashflow_comparison.pdf.txt",
+        "preferences_comparison.pdf.txt"
+      ],
+      "source_revision_binding": "campaign.json run original_revision; mesh diagnostic uses its own source/checkpoint hashes",
+      "configuration_seed_selection_binding": "campaign.json complete run records, forecast_fits.json, as_calibration.json",
+      "script_or_command": "lmm.experiments.make_report and lmm.experiments.cashflow_comparison",
+      "historical_exact_shell_command": null,
+      "command_limit": "entry point identified from inspected code; original shell argv not universally recorded; regeneration command is not an invented original invocation",
+      "verification_level": "A",
+      "verification": "existing input/output digest bindings verified; P-003 additionally recomputed from supplied seed means",
+      "remaining_dependencies": "original full runs/checkpoints and authorized historical data needed for full regeneration/experiments; see artifact availability"
+    },
+    {
+      "paper_identifier": "fig:headline_learning",
+      "description": "Headline learning curves",
+      "artifact_ids": [
+        "revision_v20/audit/validation_by_seed.csv",
+        "learning.pdf.txt"
+      ],
+      "source_revision_binding": "campaign.json run original_revision; mesh diagnostic uses its own source/checkpoint hashes",
+      "configuration_seed_selection_binding": "campaign.json complete run records, forecast_fits.json, as_calibration.json",
+      "script_or_command": "lmm.experiments.make_report",
+      "historical_exact_shell_command": null,
+      "command_limit": "entry point identified from inspected code; original shell argv not universally recorded; regeneration command is not an invented original invocation",
+      "verification_level": "A",
+      "verification": "existing input/output digest bindings verified; P-003 additionally recomputed from supplied seed means",
+      "remaining_dependencies": "original full runs/checkpoints and authorized historical data needed for full regeneration/experiments; see artifact availability"
+    },
+    {
+      "paper_identifier": "P-004",
+      "description": "AS fitted coefficients used",
+      "artifact_ids": [
+        "as_calibration.json"
+      ],
+      "source_revision_binding": "campaign.json run original_revision; mesh diagnostic uses its own source/checkpoint hashes",
+      "configuration_seed_selection_binding": "campaign.json complete run records, forecast_fits.json, as_calibration.json",
+      "script_or_command": "lmm.experiments.evaluate -> ASBenchmarkAgent.calibrate",
+      "historical_exact_shell_command": null,
+      "command_limit": "entry point identified from inspected code; original shell argv not universally recorded; regeneration command is not an invented original invocation",
+      "verification_level": "A",
+      "verification": "existing input/output digest bindings verified; P-003 additionally recomputed from supplied seed means",
+      "remaining_dependencies": "original full runs/checkpoints and authorized historical data needed for full regeneration/experiments; see artifact availability"
+    },
+    {
+      "paper_identifier": "P-005",
+      "description": "Mesh-sensitivity sentence",
+      "artifact_ids": [
+        "mesh_diagnostic.json"
+      ],
+      "source_revision_binding": "campaign.json run original_revision; mesh diagnostic uses its own source/checkpoint hashes",
+      "configuration_seed_selection_binding": "campaign.json complete run records, forecast_fits.json, as_calibration.json",
+      "script_or_command": "lmm.experiments.refinement; original command recipe in docs/rough_heston_refinement/README.md",
+      "historical_exact_shell_command": null,
+      "command_limit": "entry point identified from inspected code; original shell argv not universally recorded; regeneration command is not an invented original invocation",
+      "verification_level": "A",
+      "verification": "existing input/output digest bindings verified; P-003 additionally recomputed from supplied seed means",
+      "remaining_dependencies": "original full runs/checkpoints and authorized historical data needed for full regeneration/experiments; see artifact availability"
+    }
+  ],
+  "blockers": [
+    {
+      "id": "history-distribution",
+      "status": "open",
+      "scope": "public repository",
+      "reason": "Reachable history includes vendor input data and superseded assets; raw-price redistribution not authorized by the software/research-asset confirmations. Review public history scope before visibility change."
+    },
+    {
+      "id": "linux-portability",
+      "status": "open",
+      "scope": "technical release",
+      "reason": "Starting HEAD hosted Linux CI failed exact legacy episode hash; numerical cause not isolated. Local macOS passed; test not weakened. Pinned CPU install and modified CI not run remotely."
+    },
+    {
+      "id": "artifact-availability",
+      "status": "open",
+      "scope": "full replication claim",
+      "reason": "Original code identities available only through history still under review; full run files/checkpoints have no stable public locator. Restricted data qualification and promised bundle scope need final owner review."
+    },
+    {
+      "id": "as-sample-accounting",
+      "status": "open",
+      "scope": "P-004 evidence",
+      "reason": "Saved A/k present for all 520 evaluations, but accepted/excluded calibration counts and sample records not saved. K_hat is algebraically derived, not a saved independent fit record."
+    },
+    {
+      "id": "owner-candidate-review",
+      "status": "open",
+      "scope": "finalization",
+      "reason": "Uncommitted preparation requires owner review before committing. Resolve this approval gate with the reviewed scope before the owner commit; exact clean SHA and tag are checked by the validator. Actual publication is a separate external verification, never a prerequisite for preparing its candidate."
+    }
+  ],
+  "coverage": {
+    "starting_worktree": "clean",
+    "shallow": false,
+    "reachable_commits": 87,
+    "local_branches": 6,
+    "remote_tracking_refs_including_HEAD": 5,
+    "local_tags": 0,
+    "stash": "included in reachable-blob scan",
+    "submodule_gitlinks": 0,
+    "lfs_pointers_in_reachable_scan": 0,
+    "reachable_blobs_scanned": 2117,
+    "expanded_archive_members_scanned": 15,
+    "archive_expansion_limits": 20,
+    "original_run_completion_manifests_verified": 520,
+    "completion_bound_files_verified": 15800,
+    "retained_historical_directory_hashes_verified": 200,
+    "recorded_seed_set_separation_checks": 520,
+    "historical_opening_marks_crosschecked": 131300,
+    "hosted": {
+      "repository_metadata": "authenticated connector; private",
+      "releases": "empty list",
+      "actions_runs": "9 listed, all 9 first artifact pages empty",
+      "logs": "latest HEAD job inspected; older logs not exhaustively scanned",
+      "current_head_ci": "failure: test_legacy_golden_episode",
+      "public_unauthenticated_access": "not established"
+    },
+    "limits": [
+      "Unreachable Git objects, remote-only history and GitHub settings not fully enumerated",
+      "Restricted raw archive interiors hit 10 MB expansion bound (20 archives); excluded from proposed package",
+      "Ignored full experiment trees/caches and binary/image visual content not comprehensively scanned",
+      "PDF metadata checked for current manuscript; historical PDF content not fully extracted",
+      "Original preprocessing commit and AS fit sample counts not recorded",
+      "No full experiment rerun; no clean dependency install from public index",
+      "Signed-out repository/release/artifact access not verified; no publication"
+    ],
+    "recorded_seed_date_assignments_recovered": 160100,
+    "forecast_fit_recorded_seeds_per_setting": 512
+  }
+}

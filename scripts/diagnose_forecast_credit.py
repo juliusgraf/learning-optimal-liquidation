@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 import yaml
 from lmm.agents.benchmarks import TWAPBenchmarkAgent
-from lmm.config import load_config, economic_evaluation_config
+from lmm.config import load_config, economic_evaluation_config, environment_contract, price_generator_identity, save_resolved
 from lmm.env.mdp import make_env
 from lmm.rl.loops import run_episode
 
@@ -24,11 +24,14 @@ def main():
     p.add_argument('--setting',default='synthetic_rough_heston')
     p.add_argument('--symbol')
     p.add_argument('--episodes',type=int,default=256)
+    p.add_argument('--config', action='append', default=[], help='additional overlays after setting and algorithm')
+    p.add_argument('--override', '-o', action='append', default=[])
     a=p.parse_args()
     if not 1<=a.episodes<=512:p.error('At most 512 forecast paths per split')
+    cfg=economic_evaluation_config(load_config('configs/base.yaml',f'configs/{a.setting}.yaml','configs/algo/dqn.yaml', *a.config,
+        overrides=[*a.override, 'algo1.clob_forecast_weights=[]']))
     a.output.mkdir(parents=True,exist_ok=False)
-    cfg=economic_evaluation_config(load_config('configs/base.yaml',f'configs/{a.setting}.yaml','configs/algo/dqn.yaml',
-        overrides=['algo1.clob_forecast_weights=[]']))
+    save_resolved(cfg, a.output/'config_resolved.yaml')
     rows=[]
     for split,seed in [('train',194713),('validation',194719)]:
         env=make_env(cfg,symbol=a.symbol,data_split=split); policy=NoOrders(cfg)
@@ -57,10 +60,15 @@ def main():
         decision_weighted_summary='equal observation weights; retained for comparison',
         coefficients='unchanged restricted least squares on training observations'),indent=2))
     (a.output/'protocol.json').write_text(json.dumps(dict(purpose=__doc__,episodes_per_split=a.episodes,
+        clearing_mechanism=cfg.auction_flow.clearing_mechanism,
+        environment_contract=environment_contract(cfg),artifact_schema_version=cfg.experiment.artifact_schema_version,
         setting=a.setting,symbol=a.symbol,weights=weights,train_seed=194713,validation_seed=194719,
-        fit='no-intercept restricted least squares, 30-minute CLOB bins, training only',
+        fit='no-intercept restricted least squares, four equal CLOB bins, training only',
+        clob_bin_width=cfg.grid.tau_op/4,
         source_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest()),indent=2))
-    (a.output/'forecast_overlay.yaml').write_text(yaml.safe_dump({'algo1':{'clob_forecast_weights':weights}}))
+    (a.output/'forecast_overlay.yaml').write_text(yaml.safe_dump({'algo1':{
+        'clob_forecast_weights':weights, 'clob_forecast_mechanism':cfg.auction_flow.clearing_mechanism,
+        'clob_forecast_price_generator':price_generator_identity(cfg)}}))
     print('weights',weights);print(summary.to_string())
 
 

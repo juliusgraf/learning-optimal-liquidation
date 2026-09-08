@@ -1,0 +1,7 @@
+# User-selected rerun mesh; accuracy is not established by this setting.
+# Keeps v20 names/root. A fresh training-only forecast overlay must follow it.
+midprice:
+  rough_heston:
+    rough_heston_max_step_minutes: 0.25
+algo1:
+  clob_forecast_weights: []

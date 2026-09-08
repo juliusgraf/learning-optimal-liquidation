@@ -114,6 +114,16 @@ def generate(root, headline_root, seeds, *, conditioned=False):
     control_column = 'economic_dense_bps' if conditioned else 'cashflow_bps'
     control_label = 'conditioned economic training' if conditioned else 'cash-flow training'
     note = DENSE_NOTE if conditioned else NOTE
+    if Path(headline_root).name == 'revision_v20':
+        note = note.replace('v19', 'v20')
+        mesh = Path(headline_root) / '_provenance/synthetic_refinement.yaml'
+        if mesh.exists():
+            import yaml
+            step = yaml.safe_load(mesh.read_text())['midprice']['rough_heston']['rough_heston_max_step_minutes']
+            note += (f' Both arms were retrained under rough-Heston internal refinement '
+                     f'with maximum step {step:g} minutes, using a new training-only '
+                     'forecast fit and per-run normalization/reference fits. This mesh '
+                     'is a selected numerical setting, not an established accuracy threshold.')
     rows, inputs = [], []
     for algo in P.ALGO_ORDER:
         for seed in seeds:

@@ -26,6 +26,8 @@ __all__ = [
 BELLMAN_FACTOR: Final[float] = 1.0
 REWARD_SCALE: Final[float] = 1.0e-3
 ENVIRONMENT_CONTRACT: Final[str] = "shaped-j-economic-eval-sb3-2026-09-05-v15"
+# Legacy public constant retained for v15 consumers. New checkpoint/report code
+# must use config.environment_contract(cfg), which also distinguishes v16.
 
 Action = Union[int, np.ndarray]  # discrete index (DQN) or continuous vector
 

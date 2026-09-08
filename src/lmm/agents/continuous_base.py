@@ -32,9 +32,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from lmm.config import environment_contract
 from lmm.agents.base import (
     BELLMAN_FACTOR,
-    ENVIRONMENT_CONTRACT,
     REWARD_SCALE,
     Agent,
     Transition,
@@ -473,7 +473,7 @@ class ContinuousActorCriticAgent(Agent):
     def save(self, path: str | Path, *, include_replay: bool = False) -> None:
         state = {
             "artifact_schema_version": self.artifact_schema_version,
-            "environment_contract": ENVIRONMENT_CONTRACT,
+            "environment_contract": environment_contract(self.cfg),
             "feature_normalizer": self._feature_normalizer_state(),
             "hyperparams": self.hp.__dict__,
             "episode": self._episode,
@@ -509,7 +509,7 @@ class ContinuousActorCriticAgent(Agent):
                 "checkpoint artifact_schema_version mismatch: "
                 f"expected {self.artifact_schema_version}, got {saved_schema}"
             )
-        if state.get("environment_contract") != ENVIRONMENT_CONTRACT:
+        if state.get("environment_contract") != environment_contract(self.cfg):
             raise ValueError(
                 "checkpoint environment contract mismatch; old auction/grid "
                 "checkpoints cannot be loaded by the revised pipeline"

@@ -1,16 +1,25 @@
 # Revised artifact and metrics schema
 
-All current confirmation runs live under
-`results/revision_v17/<experiment_name>/<run_name>/`. Readers require both the
-current `artifact_schema_version` and the exact environment contract identifier
-stored in checkpoints and evaluation metadata. Missing or mismatched values are
-fatal; the pipeline does not load old checkpoints or result directories.
+Retained v19 results use schema 15, `nearest_tick_v1`, and environment contract
+`shaped-j-economic-eval-sb3-2026-09-05-v15`. Revised clearing uses schema 16,
+`max_volume_v2`, and `max-volume-auction-2026-09-07-v16`, with separate outputs
+under `results/revision_v20`. Readers check schema and environment contract
+against the resolved mechanism. They reject mismatches and pooling of different
+clearing mechanisms. Missing mechanism fields in supported legacy configs,
+checkpoints and metadata mean v1; they never opt into v2. Unsupported earlier
+schema versions remain rejected. Retained results are not revised evidence.
 
 ## Provenance
 
 Every run saves:
 
 - the complete resolved configuration;
+- `auction_flow.clearing_mechanism` in configs and `clearing_mechanism` in run
+  and evaluation metadata; a mechanism-specific environment contract in every
+  checkpoint (native and SB3);
+- `algo1.clob_forecast_mechanism`, which must match clearing whenever fitted
+  weights are nonempty; forecast-fit protocols also record schema, mechanism
+  and environment identity;
 - master and component seed information, including train/validation/test and
   normalizer-calibration episode seeds;
 - git state, Python/platform information, and package versions;
@@ -158,7 +167,11 @@ The evaluation directory also contains:
 - `h_forecasts.csv` and `h_forecast_summary.csv` — signed bias, MAE, RMSE, and
   benchmark improvements grouped by physical time-to-close in minutes;
 - `traces/<policy>_ep<i>.csv` — per-step anatomy traces, including auction
-  anchor label, absolute anchor coordinate, and anchor price.
+  anchor label, absolute anchor coordinate, and anchor price. Auction rows also
+  record `clearing_mechanism`, integer `clearing_tick_index`, `continuous_price`,
+  `matched_volume`, signed `clearing_residual` and `nonlinear_clearing` for the
+  post-action book generating `h_next`. The linear `D*alpha` bound does not
+  apply to nonlinear rows using the background linear slope alone.
 
 ## Paired policy differences
 
