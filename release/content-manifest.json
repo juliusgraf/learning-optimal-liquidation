@@ -20,8 +20,8 @@
   "files": [
     {
       "path": ".github/workflows/tests.yml",
-      "bytes": 1216,
-      "sha256": "d75fad16a6a20671fad396afc27986676d4adc544475e74ef4ebb3de17916606"
+      "bytes": 1310,
+      "sha256": "f9586c4e63499e9c9efafeba7b0fef94ead107bc12a04d0e40c1dc866b20b48d"
     },
     {
       "path": ".gitignore",
