@@ -27,7 +27,7 @@
 
 \begin{abstract} 
 \begingroup
-We study liquidation when continuous trading is followed by a closing auction. The trader sells through a limit-order book, then submits signed auction schedules to adjust the remaining inventory. A projected clearing signal and intermediate auction feedback connect the two phases. We compare DQN with projected DDPG, TD3 and SAC policies on a common executable grid, using synthetic rough-Heston prices and historical midprice paths within a simulated market. Policies are selected and evaluated by inventory-penalized implementation shortfall, separately from the weighted training objective. They improve on stylized AS and TWAP references, and matched synthetic comparisons support useful auction access for the continuous learners. Dense auction credit improves learning. The clearing forecast is informative, but its incremental decision value depends on the learner; added forecast-relative preferences show no established marginal benefit when learning conditioning is matched. These results concern the stated simulator and calibration, including reused historical test dates, rather than real-exchange profitability.
+We study liquidation when continuous trading is followed by a closing auction. The trader sells through a limit-order book, then submits signed auction schedules to adjust the remaining inventory. A projected clearing signal and intermediate auction feedback connect the two phases. We compare DQN with projected DDPG, TD3 and SAC policies on a common executable grid, using synthetic rough-Heston prices and historical midprice paths within a simulated market. Policies are selected and evaluated by inventory-penalized implementation shortfall, separately from the weighted training objective. They improve on stylized AS and TWAP references, and matched synthetic comparisons support useful auction access for all four learners. Dense auction credit improves learning. The clearing forecast is informative, but its incremental decision value depends on the learner; added forecast-relative preferences show no established marginal benefit when learning conditioning is matched. These results concern the stated simulator and calibration, including reused historical test dates, rather than real-exchange profitability.
 
 \endgroup
 \vspace{3mm}
@@ -71,7 +71,7 @@ We formulate a single-agent, feature-based reinforcement-learning problem \cite{
 
 The headline policies train on the weighted preference objective $J$. Potential and reference adjustments are used only for learning; checkpoint selection and policy comparisons instead minimize inventory-penalized implementation shortfall, excluding fictive rewards. Our references are a stylized AS policy adapted from \cite{avellaneda2008high,gueant2013dealing} and a time-weighted average price policy. The stylized benchmarks provide a reproducible analytical reference for evaluating the proposed framework; comparisons are conditional on the stated heuristic calibration and are not interpreted as establishing superiority over optimally calibrated execution models.\vspace{0.5em}
 
-The completed study addresses three empirical questions. First, do the learned policies use the closing call to improve liquidation and inventory management? Second, does forecast accuracy translate into incremental decision value? Third, does dense feedback help learn from delayed auction outcomes, separately from the additional preferences in $J$? Across the tested settings, headline policies improve inventory-penalized shortfall relative to the references, although this does not imply uniformly better ordinary shortfall or a universal algorithm ranking. Realized auction contributions and the matched retrained-access comparison support useful auction participation, with uncertain DQN access effects. Matched synthetic comparisons show benefits from dense auction credit, learner-dependent incremental H-feature value, and no established marginal preference benefit once conditioning is held fixed. The negative anchoring results and adverse historical outcomes are retained in Section \ref{subsec:results_exhibits}.
+The completed study addresses three empirical questions. First, do the learned policies use the closing call to improve liquidation and inventory management? Second, does forecast accuracy translate into incremental decision value? Third, does dense feedback help learn from delayed auction outcomes, separately from the additional preferences in $J$? Across the tested settings, headline policies improve inventory-penalized shortfall relative to the references, although this does not imply uniformly better ordinary shortfall or a universal algorithm ranking. Realized auction contributions and the matched retrained-access comparison support useful auction participation, with positive access-effect intervals for all four learners. Matched synthetic comparisons show benefits from dense auction credit, learner-dependent incremental H-feature value, and no established marginal preference benefit once conditioning is held fixed. The negative anchoring results and adverse historical outcomes are retained in Section \ref{subsec:results_exhibits}.
 
 \paragraph{Outline.}
 Section \ref{sec:marketmodel} specifies the market, clearing rule and projected clearing signal. Section \ref{sec:MDP} defines admissible controls, the training objective and economic shortfall criteria. Section \ref{sec:learning} describes the learners, followed by the reference policies in Section \ref{sec:benchmark}. Section \ref{sec:numerics} presents the experimental protocol, simulator calibration and results, distinguishing the main campaign from its two synthetic follow-ups. Section \ref{sec:conclusion} concludes.
@@ -118,7 +118,7 @@ Based on the random arrivals of market takers, there is (at least partial) execu
 \[
    \sum_{i=N_{t-}^++1}^{N_t^+}\nu_t^{+,i} > \sum_{j =1}^{\delta_t-1} V_{t}^{+,j}.
 \]
-Note that as soon as the buying volume of market takers reaches selling index $k_t$ of the agent, her order gets (at least partially) executed.
+Note that as soon as the buying volume of market takers reaches selling index $k_t$ of the agent, her order gets (at least partially) executed. The whole remark holds under the premise that the agent has a live sell order with positive remaining volume.
 \end{remark}
 
 For $i\in\llbracket0,n\rrbracket$, let $E_{t_i}$ denote the total number of shares executed over $(t_i,t_{i+1}]$ from the order submitted by the agent at $t_i$. This quantity is observed at $t_{i+1}$ and is given by
@@ -286,7 +286,7 @@ Before using the raw estimate as a forecast, we shrink its displacement from the
 \[
 H_t^\cl=S_t^{\mathrm{mid}}+w_{b(t)}\bigl(H_t^\circ-S_t^{\mathrm{mid}}\bigr).
 \]
-Here $b(t)\in\llbracket 0,l \rrbracket$ identifies the time bin containing $t$. We consider $l=3$ from now on. For example, when working on a time horizon of 120 minutes, the four equal quarters before opening are $[0,30)$, $[30,60)$, $[60,90)$ and $[90,120)$ minutes in the numerical setting. This correction neither feeds back into Algorithm \ref{alg:hyp_clearing_price} nor rounds the CLOB forecast to a tick. Initially, the raw estimate and midprice both equal 100. We fit the weights separately on 256 no-order training paths for each setting. Within each bin, we regress the eventual {clearing price}'s displacement from the current midprice on the corresponding raw-estimate displacement. The regression has no intercept and constrains the coefficient to $[0,1]$; a bin with zero predictor sum of squares receives weight zero. Historical calibration draws only from the pooled training sessions, and all order flow and clearing on these paths are simulated. The fitted weights for the four successive quarters are $(0,0.188,0.234,0.413)$ on synthetic paths and $(0.193,0.312,0.384,0.523)$ on historical paths. Thus the fit puts more weight on the raw estimate as closing approaches. The weights are then frozen across learners and treatments. No validation or test outcome enters the fit. This forecast calibration is separate from the moment-based slope calculation and the residual-book conversion below.\vspace{0.5em}
+Here $b(t)\in\llbracket 0,l \rrbracket$ identifies the time bin containing $t$. We consider $l=3$ from now on. For example, when working on a time horizon of 120 minutes, the four equal quarters before opening are $[0,30)$, $[30,60)$, $[60,90)$ and $[90,120)$ minutes in the numerical setting. This correction neither feeds back into Algorithm \ref{alg:hyp_clearing_price} nor rounds the CLOB forecast to a tick. Initially, the raw estimate and midprice both equal 100. We fit the weights separately on 256 no-order training paths for each setting. Within each bin, we regress the eventual {clearing price}'s displacement from the current midprice on the corresponding raw-estimate displacement. The regression has no intercept and constrains the coefficient to $[0,1]$; a bin with zero predictor sum of squares receives weight zero. Historical calibration draws only from the pooled training sessions, and all order flow and clearing on these paths are simulated. The fitted weights for the four successive quarters are $(0.075,0.112,0.225,0.340)$ on synthetic paths and $(0.192,0.312,0.384,0.523)$ on historical paths. Thus the fit puts more weight on the raw estimate as closing approaches. The weights are then frozen across learners and treatments. No validation or test outcome enters the fit. This forecast calibration is separate from the moment-based slope calculation and the residual-book conversion below.\vspace{0.5em}
 
 At auction opening, the environment inherits the last calibrated pre-action CLOB forecast:
 \[
@@ -497,7 +497,7 @@ Positive shortfall denotes underperformance of the initial-midprice benchmark; n
 \mathrm{IS}_\lambda=\mathrm{IS}+\lambda I_{\tau^\cl}^{2}.
 \label{eq:penalized_shortfall}
 \end{equation}
-The quadratic term is neither an actual cash expense nor part of ordinary implementation shortfall. Minimizing $\mathbb E_\pi[\mathrm{IS}_\lambda]$ is equivalent to maximizing the former risk-adjusted criterion: $\bar J(\pi)=-\mathbb E_\pi[\mathrm{IS}]$ and $\bar J_\lambda(\pi)=-\mathbb E_\pi[\mathrm{IS}_\lambda]$. We retain $(\bar{\mathbf P}_\lambda)$ for this economic control problem.\vspace{0.5em}
+The quadratic term is neither an actual cash expense nor part of ordinary implementation shortfall. Minimizing $\mathbb E_\pi[\mathrm{IS}_\lambda]$ is equivalent to maximizing the former risk-adjusted criterion: $\bar J(\pi)=-\mathbb E_\pi[\mathrm{IS}]$ and $\bar J_\lambda(\pi)=-\mathbb E_\pi[\mathrm{IS}_\lambda]$.\vspace{0.5em}
 
 Economic-only training replaces the CLOB multiplier by one and omits interim credits, their clawbacks and terminal purchase attenuation, while retaining actual cash, fees, residual marking and terminal inventory risk. These preferences change $J$; initial-value centering and learning-only conditioning are treated separately in Section \ref{subsec:conditioning}. Neither shortfall measure includes preferences or conditioning adjustments. Headline training uses weighted $J$, while validation checkpoint selection and policy comparisons minimize expected inventory-penalized shortfall, and SAC additionally uses phase-specific, automatically tuned proposal-entropy regularization.
 \endgroup
@@ -763,7 +763,7 @@ In both simulations we consider the following setting: a two-hour CLOB phase fol
 \label{subsec:experimental_protocol}
 We evaluate DQN, DDPG, TD3 and SAC in six price environments: synthetic rough-Heston paths and historical midprice paths for CAT, GOOGL, JPM, MSFT and PG. Each learner is trained with ten master seeds under each specification. The main experiment comprises 240 runs under the headline specification and 200 runs for synthetic controls. Two subsequent synthetic comparisons add 40 runs each, using the rerun headline checkpoints as their common reference. AS and TWAP require evaluation but no training.\vspace{0.5em}
 
-All numerical exhibits below use the completed 520-run campaign with volume-maximizing tick projection for both lagged auction indications and terminal settlement. Forecast weights and clearing-dependent reference calibration were refitted using training data, policies were retrained and reselected, and matched evaluations were repeated. Results from the earlier nearest-tick campaign are not pooled with these runs. The replication bundle records the saved configurations, artifact hashes and source-provenance attestation.\vspace{0.5em}
+All numerical exhibits below use the updated 520-run v20 bundle with volume-maximizing tick projection for both lagged auction indications and terminal settlement. Its 320 synthetic runs were replaced using the internal rough-Heston grid with maximum step $0.25$ minutes described below. Synthetic forecast weights, normalization and reference conditioning were refitted on training data, policies were retrained and reselected, and matched evaluations were repeated. The 200 historical runs and their forecast fit retain their original artifacts and source revisions. Neither the superseded decision-grid synthetic results nor the earlier nearest-tick campaign are pooled into these exhibits. The replication bundle binds the replacement and retained historical artifacts to saved configurations, hashes and source disclosures. Differences from the superseded synthetic campaign include recalibration and retraining; they are not fixed-policy, coupled-mesh estimates of discretization error, and the selected step is not an established accuracy threshold.\vspace{0.5em}
 
 Historical training draws whole sessions from all five tickers over August 3--14, 2026. Validation and testing are conducted separately for each ticker over August 17--21 and August 24--28, respectively. No test episode enters the stated forecast fitting, normalization, or within-run validation-checkpoint rule. The test dates were inspected during development, so the historical results should not be interpreted as evidence from an untouched holdout. Repeating these dates with new simulation seeds measures variation in the simulated market, not variation across additional historical sessions.\vspace{0.5em}
 
@@ -931,7 +931,7 @@ After the final action at $t_m$, the controlled environment freezes the post-act
     \item $(v_m,\gamma_m)$ are the parameters of the Pareto distribution modeling the volumes of the market orders throughout the whole trading sessions. This reproduces the well-known heavy tail behavior of the density of market order size, see for example \cite{gopikrishnan2000statistical,gabaix2009power,bouchaud2001power}. The market model allows orders of maximum size $V$: greater liquidity takers will accumulate at volume $V$.
     \item $(\beta_a,\beta_b)$ represent the parameters of the Beta distribution modeling the first volume of the limit order book. {The exogenous best-level depth law $V_\infty\operatorname{Beta}(\beta_a,\beta_b)$ is a stylized modeling choice, not an empirically fitted distribution. The beta policies in \cite{jerome2022market,wang2024market} instead parameterize a market maker's allocation of its own order volume across price levels; they provide an analogy, not an estimation or validation of this exogenous depth law.}  Note that $V_\infty$ is a rescaling parameter as the Beta distribution has support $[0,1]$. Further volumes in the limit order book decay geometrically with parameter $\rho_{\text{lob}} \in (0,1]$ and are truncated via the maximum order book depth $L_\infty$, that is $V_t^{\zeta,j}=0$ for $j > L_\infty$.
     \item $(U_1,U_2)$ represent the bounds between which exogenous market maker sample their supply slopes from during the auction phase.
-    \item $B_\infty$ {represents} the integer bound of the price at which exogenous market makers quote during the auction phase. {Exogenous market makers during the auction have reference prices sampled as} $S_t^i \sim S_{\tau^\op}^\mathrm{mid} + \alpha \mathcal{U}(\llbracket -B_\infty,B_\infty \rrbracket)$ because the auction opening time is the last time market participants see the mid price. Note that {this auction reference-price specification has been introduced} in \cite{derchu2023equilibria}.
+    \item $B_\infty$ {represents} the integer bound of the price at which exogenous market makers quote during the auction phase. {Exogenous market makers during the auction have reference prices sampled as} $S_t^i \sim S_{\tau^\op}^\mathrm{mid} + \alpha \mathcal{U}(\llbracket -B_\infty,B_\infty \rrbracket)$ because the auction opening time is the last time market participants see the mid price. Note that {a similar auction reference-price specification has been introduced} in \cite{derchu2023equilibria}.
     \item {At each one-minute auction decision, independent Bernoulli proposals govern market-maker arrival ($p_1$), cancellation of a nonpersistent market-maker schedule ($p_2$), and, independently on each side, market-order arrival ($p_3$) and cancellation of an active market order ($p_4$). Each proposed update is accepted only if the resulting exogenous book is valid.}
 \end{itemize}
 
@@ -1032,9 +1032,9 @@ As $\sigma$ drops out of the risk-neutral $\gamma\to0$ policy used here, we omit
 \label{subsec:results_exhibits}
 
 \subsubsection{Economic performance and auction use}
-The learned policies improve the trade-off between execution and terminal inventory relative to the AS and TWAP references. Table \ref{tab:economic_performance} summarizes ordinary and inventory-penalized shortfall; Figure \ref{fig:economic_shortfall} retains the market-level detail. Every learner has lower inventory-penalized shortfall than both references in all six settings, with positive paired improvement intervals. This advantage does not extend to mean ordinary shortfall: all 24 learner--market means are higher than AS, although this is not a claim that every ordinary-shortfall difference is statistically established. Smaller inventory penalties account for their overall economic advantage.\vspace{0.5em}
+The learned policies improve the trade-off between execution and terminal inventory relative to the AS and TWAP references. Table \ref{tab:economic_performance} summarizes ordinary and inventory-penalized shortfall; Figure \ref{fig:economic_shortfall} retains the market-level detail. Table \ref{tab:benchmark_supplement} reports the paired reference comparisons and market-specific ordinary-shortfall levels. Every learner has lower inventory-penalized shortfall than both references in all six settings: all 48 paired improvement intervals are positive. These intervals are pointwise, without adjustment for multiple comparisons. This advantage does not extend to mean ordinary shortfall: all 24 learner--market means are higher than AS, as shown alongside the AS means in Table \ref{tab:benchmark_supplement}, although this is not a claim that every ordinary-shortfall difference is statistically established. Smaller inventory penalties account for their overall economic advantage.\vspace{0.5em}
 
-No learner dominates the others. In the synthetic setting, mean penalized shortfall is between $-4.1$ and $-3.4$ bps. DDPG has the lowest mean, but its paired comparisons with the other learners remain uncertain. MSFT is a useful counterexample to interpreting reference-relative gains as profitability: all four learners have positive penalized shortfall, with intervals above zero. Their mean ordinary shortfalls are also positive, although those intervals include zero.\vspace{0.5em}
+No learner dominates the others. In the synthetic setting, mean penalized shortfall is between $-4.5$ and $-4.0$ bps. SAC has the lowest mean, but its paired comparisons with the other learners remain uncertain. MSFT is a useful counterexample to interpreting reference-relative gains as profitability: all four learners have positive penalized shortfall, with intervals above zero. Their mean ordinary shortfalls are also positive, although those intervals include zero (Table \ref{tab:benchmark_supplement}).\vspace{0.5em}
 
 \begin{table}[!htbp]
 \centering
@@ -1045,29 +1045,31 @@ No learner dominates the others. In the synthetic setting, mean penalized shortf
 \cmidrule(lr){2-3}\cmidrule(l){4-5}
 \textbf{Policy} & {\boldmath$\mathrm{IS}$} & \textbf{\boldmath$\mathrm{IS}_\lambda$ [95\% interval]} & {\boldmath$\mathrm{IS}$} & \textbf{\boldmath$\mathrm{IS}_\lambda$ [95\% interval]} \\
 \midrule
-DQN & $-4.52$ & $-3.36\;[-4.96,-1.72]$ & $-7.12$ & $-5.97\;[-6.42,-5.52]$ \\
-DDPG & $-4.91$ & $-4.06\;[-6.11,-2.09]$ & $-7.74$ & $-6.68\;[-7.04,-6.31]$ \\
-TD3 & $-4.43$ & $-3.82\;[-5.70,-1.84]$ & $-7.27$ & $-6.39\;[-6.70,-6.05]$ \\
-SAC & $-4.40$ & $-3.73\;[-5.34,-1.95]$ & $-7.35$ & $-6.44\;[-6.86,-5.99]$ \\
+DQN & $-5.11$ & $-4.19\;[-5.85,-2.76]$ & $-7.12$ & $-5.97\;[-6.42,-5.52]$ \\
+DDPG & $-5.08$ & $-4.03\;[-5.97,-2.32]$ & $-7.74$ & $-6.68\;[-7.04,-6.31]$ \\
+TD3 & $-5.28$ & $-4.40\;[-6.25,-2.75]$ & $-7.27$ & $-6.39\;[-6.70,-6.05]$ \\
+SAC & $-5.39$ & $-4.54\;[-6.35,-3.15]$ & $-7.35$ & $-6.44\;[-6.86,-5.99]$ \\
 \midrule
-AS & $-5.17$ & $-0.12\;[-2.17,1.97]$ & $-8.44$ & $-3.39\;[-4.06,-2.71]$ \\
-TWAP & $0.48$ & $6.45\;[4.18,8.86]$ & $-3.46$ & $2.53\;[2.27,2.79]$ \\
+AS & $-6.45$ & $-1.41\;[-2.98,-0.06]$ & $-8.44$ & $-3.39\;[-4.06,-2.71]$ \\
+TWAP & $-0.36$ & $5.61\;[4.10,7.01]$ & $-3.46$ & $2.53\;[2.27,2.79]$ \\
 \bottomrule
 \end{tabular}
 \caption{Headline shortfalls in initial-notional basis points; lower is better. Ordinary shortfall ($\mathrm{IS}$) excludes the terminal inventory penalty, whereas $\mathrm{IS}_\lambda$ includes it. Means weight ten seeds equally; historical summaries first average the five fixed tickers within seed. Brackets give pointwise 95\% bootstrap intervals for penalized-shortfall levels only, not paired policy differences. Historical order flow and auctions are simulated on reused price dates.}
 \label{tab:economic_performance}
 \end{table}
 
+\input{results/benchmark_supplement}
+
 How much does the auction itself contribute? Holding a learner's CLOB trajectory fixed, its auction contribution is the reduction in penalized shortfall relative to submitting no auction orders:
 \[
 Z_{\tau^\cl}\bigl(S_{\tau^\cl}^\cl-S_{\tau^\op}^{\mathrm{mid}}\bigr)-\sum_{i=n+1}^{m}d_{t_i}c_{t_i}
 +\lambda\bigl(I_{\tau^\op}^2-I_{\tau^\cl}^2\bigr).
 \]
-The execution-price edge net of fees reduces ordinary shortfall; the remaining term measures inventory-penalty relief, not cash income. Figure \ref{fig:auction_value_inventory} shows positive mean contributions throughout the headline settings. Synthetic DQN is the only case whose interval includes zero, at $0.14$ bps with a 95\% interval of $[-0.04,0.32]$. The continuous learners obtain larger mean contributions than DQN in both the synthetic and pooled, fixed-ticker historical summaries. In the latter, most of the contribution comes from reducing inventory risk rather than improving execution prices. These comparisons follow each learner's own CLOB policy; they do not measure auction skill at a common opening inventory.\vspace{0.5em}
+The execution-price edge net of fees reduces ordinary shortfall; the remaining term measures inventory-penalty relief, not cash income. Figure \ref{fig:auction_value_inventory} shows positive mean contributions throughout the headline settings. Synthetic TD3 is the only case whose interval includes zero, at $0.35$ bps with a 95\% interval of $[-0.02,0.73]$. The continuous learners obtain larger mean contributions than DQN in both the synthetic and pooled, fixed-ticker historical summaries. In the latter, most of the contribution comes from reducing inventory risk rather than improving execution prices. These comparisons follow each learner's own CLOB policy; they do not measure auction skill at a common opening inventory.\vspace{0.5em}
 
-The policies sell most inventory before the call, but auction trading need not reduce absolute holdings. Synthetic TD3 and SAC slightly increase mean absolute inventory while reducing its mean quadratic penalty. The two observations are compatible: absolute inventory and squared inventory weight large positions differently. Any residual position is marked at the frozen midprice, not forcibly executed.\vspace{0.5em}
+The policies sell most inventory before the call, but auction trading need not reduce absolute holdings. Synthetic DQN, TD3 and SAC increase mean absolute inventory while reducing its mean quadratic penalty. The two observations are compatible: absolute inventory and squared inventory weight large positions differently. Any residual position is marked at the frozen midprice, not forcibly executed.\vspace{0.5em}
 
-Retraining with and without auction access asks a different question, because the CLOB policy can adapt to the available closing liquidity. In this matched synthetic comparison (E-0 versus No-A; Table \ref{tab:treatments} and the bottom panel of Figure \ref{fig:forecast_information}), auction access lowers penalized shortfall for DDPG, TD3 and SAC, while the DQN effect remains uncertain. Thus the evidence supports useful auction access without implying either complete liquidation or a benefit for every learner.
+Retraining with and without auction access asks a different question, because the CLOB policy can adapt to the available closing liquidity. In this matched synthetic comparison (E-0 versus No-A; Table \ref{tab:treatments} and the bottom panel of Figure \ref{fig:forecast_information}), auction access lowers penalized shortfall for all four learners, with positive paired intervals. Thus the evidence supports useful auction access in these settings without implying complete liquidation or a benefit outside the tested policies and calibration.
 
 \begin{figure}[!htbp]
 
@@ -1086,7 +1088,7 @@ Retraining with and without auction access asks a different question, because th
 \end{figure}
 
 \subsubsection{Forecast information}
-{Table \ref{tab:forecast_accuracy} displays the forecast errors. The projected clearing signal has lower mean absolute error (MAE) and root mean squared error (RMSE) than the contemporaneous midprice in both phases of every setting.} The improvement is modest during continuous trading and more pronounced during the call. On synthetic paths, auction mean absolute error falls from about $0.140$ to $0.049$ model-price units. This measures prediction of the simulator's clearing price, not an observed exchange auction.\vspace{0.5em}
+{Table \ref{tab:forecast_accuracy} displays the forecast errors. The projected clearing signal has lower mean absolute error (MAE) and root mean squared error (RMSE) than the contemporaneous midprice in both phases of every setting.} The improvement is modest during continuous trading and more pronounced during the call. On synthetic paths, auction mean absolute error falls from about $0.147$ to $0.050$ model-price units. This measures prediction of the simulator's clearing price, not an observed exchange auction.\vspace{0.5em}
 
 \begingroup
 The estimand is forecast error along the realized paths of the selected deterministic headline DQN, DDPG, TD3 and SAC policies, evaluated on the 100 test episodes per algorithm, master seed and market specified in Section \ref{subsec:experimental_protocol}. We record $H_t^\cl$ and $S_t^{\mathrm{mid}}$ before each action at decision times $t<\tau^\cl$, including the initial CLOB decision and auction opening. Terminal observations at $\tau^\cl$, where the indicative price equals settlement, are excluded. The auction midprice comparator is frozen at opening. Each forecast is compared with that episode's eventual simulated clearing price under the same policy, which can depend on its subsequent actions; this is not a no-order or policy-independent forecasting target.\vspace{0.5em}
@@ -1106,8 +1108,8 @@ Within each phase and episode, average absolute errors and squared errors over i
 \cmidrule(lr){3-5}\cmidrule(lr){6-7}
 \textbf{Market} & \textbf{Phase} & \textbf{H} & \textbf{Midprice} & \textbf{Reduction [95\% CI]} & \textbf{H} & \textbf{Midprice} \\
 \midrule
-Synthetic & CLOB & 0.1802 & 0.1926 & 0.0124 [0.0104, 0.0142] & 0.2902 & 0.2958 \\
- & Auction & 0.0488 & 0.1400 & 0.0911 [0.0851, 0.0966] & 0.0876 & 0.1813 \\
+Synthetic & CLOB & 0.1726 & 0.1837 & 0.0111 [0.0097, 0.0126] & 0.2775 & 0.2831 \\
+ & Auction & 0.0504 & 0.1471 & 0.0967 [0.0884, 0.1050] & 0.0908 & 0.1964 \\
 \addlinespace[4pt]
 CAT & CLOB & 0.1127 & 0.1314 & 0.0187 [0.0177, 0.0197] & 0.1675 & 0.1811 \\
  & Auction & 0.0331 & 0.1200 & 0.0868 [0.0813, 0.0921] & 0.0505 & 0.1598 \\
@@ -1129,9 +1131,9 @@ PG & CLOB & 0.0752 & 0.0863 & 0.0111 [0.0106, 0.0116] & 0.1096 & 0.1176 \\
 \label{tab:forecast_accuracy}
 \end{table}
 \endgroup
-Better prediction does not necessarily yield better decisions (Table \ref{tab:treatments}; Figure \ref{fig:forecast_information}). With the frozen-mid anchor, economic objective and dense conditioning held fixed, explicit access to H improves DDPG's penalized shortfall, while the effects for DQN, TD3 and SAC remain uncertain. H-off retains other clearing-relevant observations, so these results do not distinguish redundant information from a learner's difficulty exploiting the forecast.\vspace{0.5em}
+The incremental decision value of the clearing forecast depends on the learner (Table \ref{tab:treatments}; Figure \ref{fig:forecast_information}). With the frozen-mid anchor, economic objective and dense conditioning held fixed, explicit access to H worsens DQN's penalized shortfall, while the effects for DDPG, TD3 and SAC remain uncertain. SAC achieves the lowest mean synthetic penalized shortfall under the headline specification and shows a positive estimated benefit from H access in this matched information comparison. Together, these findings suggest that SAC can use clearing information effectively, although neither its superiority over the other learners nor its incremental H-access benefit is conclusively established: the paired learner comparisons remain uncertain, and SAC's H-access interval narrowly includes zero. The two findings concern different specifications: the headline uses the full training scheme with indicative anchoring, whereas the information comparison uses economic training with frozen-mid anchoring. H-off retains other clearing-relevant observations, so these results do not distinguish redundant information from a learner's difficulty exploiting the forecast.\vspace{0.5em}
 
-The headline choice of using H to anchor auction quotes is less successful. Relative to the frozen-mid anchor, indicative anchoring worsens penalized shortfall for DQN and TD3; the DDPG and SAC effects are uncertain. The two anchors expose different parts of the bounded action grid. Forecast accuracy, access to the H feature and its use as a quote anchor are therefore separate questions.
+The clearing forecast provides a natural reference around which the agent learns quote deviations, but accurate prediction alone does not guarantee an effective liquidation strategy. The agent receives H as its estimate of the clearing price; inventory, execution probability, fees and price impact also shape its preferred action. Relative to the frozen-mid anchor, indicative anchoring worsens penalized shortfall for DDPG, TD3 and SAC; the DQN effect is uncertain. Both conditions retain H access, so the comparison concerns how this information is used to parameterize quotes. The two anchors expose different parts of the bounded action grid, affecting both the available quote levels and the learning problem. Thus belief-based anchoring is an intuitive design choice that can underperform the tested alternative; this comparison does not identify a globally optimal strategy. Forecast accuracy, access to the H feature and its use as a quote anchor are therefore separate questions.
 
 \begin{figure}[!htbp]
 
@@ -1142,11 +1144,11 @@ The headline choice of using H to anchor auction quotes is less successful. Rela
 \end{figure}
 
 \subsubsection{Learning from delayed auction outcomes}
-Because auction orders settle only at the close, a learner receives little immediate economic feedback about its decisions. Dense auction credit helps bridge that delay. Against sparse credit, it reduces selected-policy test penalized shortfall for all four learners, with mean improvements ranging from $0.91$ to $1.80$ bps and positive intervals throughout. The validation comparisons also favor dense credit for every learner at episode 250 (Figure \ref{fig:learning_guidance}). This comparison changes the auction potential while retaining the economic objective and common CLOB conditioning; it does not add an economic cash flow.\vspace{0.5em}
+Because auction orders settle only at the close, a learner receives little immediate economic feedback about its decisions. Dense auction credit helps bridge that delay. Against sparse credit, it reduces selected-policy test penalized shortfall for all four learners, with mean improvements ranging from $0.73$ to $2.08$ bps and positive intervals throughout. The validation comparisons also favor dense credit for every learner at episode 250 (Figure \ref{fig:learning_guidance}). This comparison changes the auction potential while retaining the economic objective and common CLOB conditioning; it does not add an economic cash flow.\vspace{0.5em}
 
-The complete headline training scheme also outperforms raw cash-flow training on average. At the indicative anchor, the mean reduction in penalized shortfall is $3.28$--$4.80$ bps across learners, with positive intervals for all four methods. The headline scheme wins 39 of the 40 paired seed means; DQN at seed 1618 is the exception, with penalized shortfall higher by $0.21$ bps. This is a broader comparison than dense versus sparse credit: raw cash-flow training removes both the preferences in $J$ and learning conditioning, including initial-value centering. The gains cannot be assigned to any one of those changes.\vspace{0.5em}
+The complete headline training scheme also outperforms raw cash-flow training on average. At the indicative anchor, the mean reduction in penalized shortfall is $3.53$--$5.16$ bps across learners, with positive intervals for all four methods. The headline scheme wins 39 of the 40 paired seed means; DQN at seed 314 is the exception, with penalized shortfall higher by $0.15$ bps. This is a broader comparison than dense versus sparse credit: raw cash-flow training removes both the preferences in $J$ and learning conditioning, including initial-value centering. The gains cannot be assigned to any one of those changes.\vspace{0.5em}
 
-The matched preference comparisons are less conclusive. Removing the forecast-relative preferences while retaining the headline conditioning and anchor has no clearly established effect on penalized shortfall for any learner. The earlier comparison at the frozen-mid anchor gives the same qualitative result: every interval includes zero. Dense credit therefore has a demonstrated benefit in these experiments, whereas the additional preferences have no established marginal benefit. The latter result neither proves equivalence nor identifies the effects of individual preference terms.\vspace{0.5em}
+The matched preference comparisons show no established marginal benefit from the additional preferences. At the indicative anchor, adding the forecast-relative preferences while retaining conditioning worsens SAC penalized shortfall by $0.16$ bps, with a 95\% interval of $[0.05,0.30]$ for the increase; the other learners remain uncertain. At the frozen-mid anchor, every preference-effect interval includes zero. Dense credit therefore has a demonstrated benefit in these experiments, whereas the additional preferences can be detrimental. Uncertain effects neither prove equivalence nor identify the effects of individual preference terms.\vspace{0.5em}
 
 Table \ref{tab:treatments} collects the matched effects, separating the broad training-scheme comparison from changes to individual design choices.
 
@@ -1159,46 +1161,46 @@ Table \ref{tab:treatments} collects the matched effects, separating the broad tr
 \textbf{Contrast (first versus second)} & \textbf{DQN} & \textbf{DDPG} & \textbf{TD3} & \textbf{SAC} \\
 \midrule
 \shortstack[l]{Dense versus sparse credit\\E-F versus E-S}
-& \shortstack{$0.91$\\\scriptsize $[0.31,1.60]$}
-& \shortstack{$1.80$\\\scriptsize $[0.94,2.69]$}
-& \shortstack{$1.11$\\\scriptsize $[0.37,1.69]$}
-& \shortstack{$1.05$\\\scriptsize $[0.44,1.65]$} \\
+& \shortstack{$0.73$\\\scriptsize $[0.18,1.19]$}
+& \shortstack{$2.08$\\\scriptsize $[0.95,3.23]$}
+& \shortstack{$1.78$\\\scriptsize $[0.82,2.70]$}
+& \shortstack{$0.74$\\\scriptsize $[0.24,1.26]$} \\
 \addlinespace[4pt]
 \shortstack[l]{H access\\E-F versus E-0}
-& \shortstack{$-0.25$\\\scriptsize $[-0.77,0.25]$}
-& \shortstack{$0.88$\\\scriptsize $[0.20,1.53]$}
-& \shortstack{$0.03$\\\scriptsize $[-0.90,0.74]$}
-& \shortstack{$-0.18$\\\scriptsize $[-0.49,0.13]$} \\
+& \shortstack{$-0.44$\\\scriptsize $[-0.78,-0.09]$}
+& \shortstack{$-0.32$\\\scriptsize $[-0.94,0.11]$}
+& \shortstack{$0.03$\\\scriptsize $[-0.52,0.57]$}
+& \shortstack{$0.44$\\\scriptsize $[0.00,0.95]$} \\
 \addlinespace[4pt]
 \shortstack[l]{Indicative versus frozen-mid anchor\\J-I versus J-F}
-& \shortstack{$-0.77$\\\scriptsize $[-1.43,-0.24]$}
-& \shortstack{$0.04$\\\scriptsize $[-0.42,0.60]$}
-& \shortstack{$-0.69$\\\scriptsize $[-1.04,-0.37]$}
-& \shortstack{$-0.27$\\\scriptsize $[-0.55,0.09]$} \\
+& \shortstack{$-0.44$\\\scriptsize $[-0.90,0.07]$}
+& \shortstack{$-0.37$\\\scriptsize $[-0.72,-0.06]$}
+& \shortstack{$-0.42$\\\scriptsize $[-0.67,-0.07]$}
+& \shortstack{$-0.92$\\\scriptsize $[-1.40,-0.48]$} \\
 \addlinespace[4pt]
 \shortstack[l]{Preferences, frozen-mid anchor\\J-F versus E-F}
-& \shortstack{$0.25$\\\scriptsize $[-0.21,0.81]$}
-& \shortstack{$-0.19$\\\scriptsize $[-0.50,0.08]$}
-& \shortstack{$0.49$\\\scriptsize $[-0.15,1.29]$}
-& \shortstack{$-0.23$\\\scriptsize $[-0.56,0.04]$} \\
+& \shortstack{$0.02$\\\scriptsize $[-0.32,0.35]$}
+& \shortstack{$-0.20$\\\scriptsize $[-0.46,0.09]$}
+& \shortstack{$-0.13$\\\scriptsize $[-0.34,0.06]$}
+& \shortstack{$-0.02$\\\scriptsize $[-0.24,0.24]$} \\
 \addlinespace[4pt]
 \shortstack[l]{Retrained auction access\\E-0 versus No-A}
-& \shortstack{$0.61$\\\scriptsize $[-0.12,1.38]$}
-& \shortstack{$0.37$\\\scriptsize $[0.16,0.57]$}
-& \shortstack{$0.55$\\\scriptsize $[0.20,0.87]$}
-& \shortstack{$0.75$\\\scriptsize $[0.54,0.97]$} \\
+& \shortstack{$0.57$\\\scriptsize $[0.12,1.08]$}
+& \shortstack{$1.05$\\\scriptsize $[0.75,1.26]$}
+& \shortstack{$0.62$\\\scriptsize $[0.30,0.93]$}
+& \shortstack{$0.77$\\\scriptsize $[0.14,1.41]$} \\
 \midrule
 \shortstack[l]{Complete scheme versus raw cash flow\\J-I versus Cash-I}
-& \shortstack{$3.28$\\\scriptsize $[0.97,6.90]$}
-& \shortstack{$3.54$\\\scriptsize $[2.57,4.61]$}
-& \shortstack{$4.41$\\\scriptsize $[3.68,5.26]$}
-& \shortstack{$4.80$\\\scriptsize $[3.77,5.80]$} \\
+& \shortstack{$3.53$\\\scriptsize $[1.10,6.64]$}
+& \shortstack{$3.65$\\\scriptsize $[2.84,4.57]$}
+& \shortstack{$4.83$\\\scriptsize $[4.03,5.70]$}
+& \shortstack{$5.16$\\\scriptsize $[4.08,6.27]$} \\
 \addlinespace[4pt]
 \shortstack[l]{Preferences, indicative anchor\\J-I versus E-I}
-& \shortstack{$-0.01$\\\scriptsize $[-0.31,0.29]$}
-& \shortstack{$0.33$\\\scriptsize $[-0.06,0.67]$}
-& \shortstack{$0.05$\\\scriptsize $[-0.14,0.22]$}
-& \shortstack{$-0.32$\\\scriptsize $[-0.74,0.09]$} \\
+& \shortstack{$-0.01$\\\scriptsize $[-0.60,0.53]$}
+& \shortstack{$0.04$\\\scriptsize $[-0.60,0.57]$}
+& \shortstack{$-0.12$\\\scriptsize $[-0.31,0.06]$}
+& \shortstack{$-0.16$\\\scriptsize $[-0.30,-0.05]$} \\
 \bottomrule
 \end{tabular}
 \caption{Matched synthetic effects: second-condition minus first-condition penalized shortfall in basis points, so positive values favor the first condition. Each cell reports a mean reduction and its pointwise 95\% percentile interval over ten paired seed means. Schemes are defined in Table \ref{tab:treatment_specification}; the final two rows are the indicative-anchor follow-ups. Both preference contrasts hold conditioning fixed; the raw-cash-flow contrast removes both preferences and conditioning. Intervals are not adjusted for multiple comparisons.}
@@ -1243,7 +1245,7 @@ Figure \ref{fig:headline_learning} shows how validation performance varies acros
 \begingroup
 \section{Conclusion}
 \label{sec:conclusion}
-A closing auction is both a source of execution liquidity and a final opportunity to manage inventory. In our experiments, policies that anticipate the call improve inventory-penalized shortfall relative to AS and TWAP, while their mean ordinary shortfalls remain higher than AS. The main finding is that anticipating the auction can improve the execution--inventory trade-off, with dense feedback helping learners use this opportunity. Historical auction contributions come mainly from inventory-risk relief. Retraining with auction access also benefits the continuous learners in the synthetic setting; the DQN effect remains uncertain. Dense auction credit improves learning despite the delay before settlement. The forecast itself is informative, but its incremental decision value depends on the learner, and using it as a quote anchor can worsen performance. Once learning conditioning is held fixed, we find no established marginal benefit from the added forecast-relative preferences.\vspace{0.5em}
+A closing auction is both a source of execution liquidity and a final opportunity to manage inventory. In our experiments, policies that anticipate the call improve inventory-penalized shortfall relative to AS and TWAP, while their mean ordinary shortfalls remain higher than AS. The main finding is that anticipating the auction can improve the execution--inventory trade-off, with dense feedback helping learners use this opportunity. Historical auction contributions come mainly from inventory-risk relief. Retraining with auction access also benefits all four learners in the synthetic setting. Dense auction credit improves learning despite the delay before settlement. The forecast itself is informative, but its incremental decision value depends on the learner, and using it as a quote anchor can worsen performance. Once learning conditioning is held fixed, we find no established marginal benefit from the added forecast-relative preferences, and they worsen SAC performance at the indicative anchor.\vspace{0.5em}
 
 These findings suggest that RL has the potential to be effective for optimal liquidation and \textit{in fine} market making in complex structures beyond simple LOBs with closing auction, as for example workup session or AHEAD mechanism \cite{duffie2017size,derchu2024ahead} or sequence of periodic auctions \cite{milgrom1985economics,madhavan1992trading, budish2014implementation}.
 

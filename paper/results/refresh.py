@@ -23,6 +23,11 @@ def replace_rows(text,label,start,rows):
  return text[:begin]+block[:a]+'\n'.join(rows)+'\n'+block[b:]+text[end:]
 
 main=(PAPER/'main.tex').read_text()
+for path in (REPORT/'manifest.json', REPORT.parent/'_provenance/synthetic_replacement.json',
+             REPO/'results/revision_v20_cashflow/_comparison/manifest.json',
+             REPO/'results/revision_v20_economic_dense_h/_comparison/manifest.json',
+             HERE/'analysis_inputs.json'):
+ inputs[str(path.relative_to(REPO))]=digest(path)
 s=read(HERE/'shortfall_summary.csv').set_index(['market','policy'])
 rows=[]
 for i,algo in enumerate([*ALGORITHMS,'as','twap']):
@@ -83,5 +88,5 @@ for name,source in figures.items():
  outputs[str(destination.relative_to(REPO))]=dict(source=str(source.relative_to(REPO)),sha256=digest(destination))
 (HERE/'refresh_manifest.json').write_text(json.dumps(dict(campaign='revision_v20',inputs=inputs,figure_outputs=outputs,
  tables=['tab:economic_performance','tab:forecast_accuracy','tab:treatments'],
- note='Numbers use revised runs only. The PDF .txt suffix is retained for compatibility with the supplied LaTeX source.'),indent=2)+'\n')
+ note='320 replacement synthetic runs use maximum step 0.25 minutes with new training-only calibration and retrained policies; 200 historical runs retain their original provenance. Superseded synthetic results are excluded. The PDF .txt suffix is retained for compatibility with the supplied LaTeX source.'),indent=2)+'\n')
 print('Refreshed three tables and seven figures from v20 results.')

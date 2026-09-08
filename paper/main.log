@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026) (preloaded format=pdflatex 2026.3.22)  7 SEP 2026 20:48
+This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026) (preloaded format=pdflatex 2026.3.22)  7 SEP 2026 21:33
 entering extended mode
  restricted \write18 enabled.
  file:line:error style messages enabled.
@@ -754,46 +754,46 @@ LaTeX Font Info:    Trying to load font information for U+stmry on input line 27
 
 {/usr/local/texlive/2026/texmf-var/fonts/map/pdftex/updmap/pdftex.map}{/usr/local/texlive/2026/texmf-dist/fonts/enc/dvips/cm-super/cm-super-t1.enc}{/usr/local/texlive/2026/texmf-dist/fonts/enc/dvips/cm-super/cm-super-ts1.enc}] [2] [3] [4] [5] [6] [7] [8] [9] [10]
 Package hyperref Info: bookmark level for unknown algorithm defaults to 0 on input line 255.
- [11] [12] [13] [14] [15] [16] [17] [18] [19] [20] [21] [22] [23] [24] [25] [26] [27] [28] [29] [30] [31] [32] [33]
-<figures/economic_performance.pdf.txt, id=640, 939.42435pt x 456.06804pt>
+ [11] [12] [13] [14] [15] [16] [17] [18] [19] [20] [21] [22] [23] [24] [25] [26] [27] [28] [29] [30] [31] [32] (./results/benchmark_supplement.tex) [33]
+<figures/economic_performance.pdf.txt, id=644, 939.42435pt x 456.06804pt>
 File: figures/economic_performance.pdf.txt Graphic file (type pdf)
 <use figures/economic_performance.pdf.txt>
-Package pdftex.def Info: figures/economic_performance.pdf.txt  used on input line 1075.
+Package pdftex.def Info: figures/economic_performance.pdf.txt  used on input line 1077.
 (pdftex.def)             Requested size: 469.75502pt x 228.05434pt.
-<figures/auction_mechanism.pdf.txt, id=641, 851.45667pt x 484.68695pt>
+<figures/auction_mechanism.pdf.txt, id=645, 851.45667pt x 484.68695pt>
 File: figures/auction_mechanism.pdf.txt Graphic file (type pdf)
 <use figures/auction_mechanism.pdf.txt>
-Package pdftex.def Info: figures/auction_mechanism.pdf.txt  used on input line 1083.
+Package pdftex.def Info: figures/auction_mechanism.pdf.txt  used on input line 1085.
 (pdftex.def)             Requested size: 469.75502pt x 267.40697pt.
- [34 <./figures/economic_performance.pdf.txt>] [35 <./figures/auction_mechanism.pdf.txt>]
-<figures/treatments.pdf.txt, id=720, 620.94913pt x 663.40492pt>
+ [34] [35 <./figures/economic_performance.pdf.txt> <./figures/auction_mechanism.pdf.txt>] [36]
+<figures/treatments.pdf.txt, id=728, 623.13914pt x 663.40492pt>
 File: figures/treatments.pdf.txt Graphic file (type pdf)
 <use figures/treatments.pdf.txt>
-Package pdftex.def Info: figures/treatments.pdf.txt  used on input line 1139.
-(pdftex.def)             Requested size: 403.9896pt x 431.61299pt.
- [36] [37 <./figures/treatments.pdf.txt>]
-<figures/credit_assignment.pdf.txt, id=772, 621.10965pt x 441.90884pt>
+Package pdftex.def Info: figures/treatments.pdf.txt  used on input line 1141.
+(pdftex.def)             Requested size: 403.9896pt x 430.09457pt.
+ [37] [38 <./figures/treatments.pdf.txt>]
+<figures/credit_assignment.pdf.txt, id=780, 621.10965pt x 441.90884pt>
 File: figures/credit_assignment.pdf.txt Graphic file (type pdf)
 <use figures/credit_assignment.pdf.txt>
-Package pdftex.def Info: figures/credit_assignment.pdf.txt  used on input line 1213.
+Package pdftex.def Info: figures/credit_assignment.pdf.txt  used on input line 1215.
 (pdftex.def)             Requested size: 375.80544pt x 267.37927pt.
-<figures/cashflow_comparison.pdf.txt, id=773, 490.86313pt x 238.49101pt>
+<figures/cashflow_comparison.pdf.txt, id=781, 490.86313pt x 238.49101pt>
 File: figures/cashflow_comparison.pdf.txt Graphic file (type pdf)
 <use figures/cashflow_comparison.pdf.txt>
-Package pdftex.def Info: figures/cashflow_comparison.pdf.txt  used on input line 1216.
+Package pdftex.def Info: figures/cashflow_comparison.pdf.txt  used on input line 1218.
 (pdftex.def)             Requested size: 230.18253pt x 111.83604pt.
-<figures/preferences_comparison.pdf.txt, id=774, 490.86313pt x 238.49101pt>
+<figures/preferences_comparison.pdf.txt, id=782, 490.86313pt x 238.49101pt>
 File: figures/preferences_comparison.pdf.txt Graphic file (type pdf)
 <use figures/preferences_comparison.pdf.txt>
-Package pdftex.def Info: figures/preferences_comparison.pdf.txt  used on input line 1220.
+Package pdftex.def Info: figures/preferences_comparison.pdf.txt  used on input line 1222.
 (pdftex.def)             Requested size: 230.18253pt x 111.83604pt.
- [38]
-<figures/learning.pdf.txt, id=780, 938.68275pt x 456.06804pt>
+ [39]
+<figures/learning.pdf.txt, id=788, 938.68275pt x 456.06804pt>
 File: figures/learning.pdf.txt Graphic file (type pdf)
 <use figures/learning.pdf.txt>
-Package pdftex.def Info: figures/learning.pdf.txt  used on input line 1235.
+Package pdftex.def Info: figures/learning.pdf.txt  used on input line 1237.
 (pdftex.def)             Requested size: 469.75502pt x 228.23526pt.
- [39 <./figures/credit_assignment.pdf.txt> <./figures/cashflow_comparison.pdf.txt> <./figures/preferences_comparison.pdf.txt>] [40 <./figures/learning.pdf.txt>] (./main.bbl [41] [42] [43]) [44] (./main.aux)
+ [40 <./figures/credit_assignment.pdf.txt> <./figures/cashflow_comparison.pdf.txt> <./figures/preferences_comparison.pdf.txt>] [41 <./figures/learning.pdf.txt>] (./main.bbl [42] [43] [44]) [45] (./main.aux)
  ***********
 LaTeX2e <2025-11-01>
 L3 programming layer <2026-01-19>
@@ -802,18 +802,18 @@ Package rerunfilecheck Info: File `main.out' has not changed.
 (rerunfilecheck)             Checksum: AD5F569CAD0677AC5AC2C9E6AE620F6E;6734.
  ) 
 Here is how much of TeX's memory you used:
- 26915 strings out of 467525
- 488388 string characters out of 5418982
- 897014 words of memory out of 5000000
- 55079 multiletter control sequences out of 15000+600000
- 656306 words of font info for 120 fonts, out of 8000000 for 9000
+ 26946 strings out of 467525
+ 488960 string characters out of 5418982
+ 895327 words of memory out of 5000000
+ 55100 multiletter control sequences out of 15000+600000
+ 660214 words of font info for 135 fonts, out of 8000000 for 9000
  1141 hyphenation exceptions out of 8191
  89i,15n,97p,2075b,924s stack positions out of 10000i,1000n,20000p,200000b,200000s
 </usr/local/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx10.pfb></usr/local/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmex10.pfb></usr/local/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi10.pfb></usr/local/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi6.pfb></usr/local/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi8.pfb></usr/local/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cmextra/cmmib8.pfb></usr/local/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmr10.pfb></usr/local/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmr6.pfb></usr/local/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmr8.pfb></usr/local/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmss10.pfb></usr/local/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy10.pfb></usr/local/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy6.pfb></usr/local/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy8.pfb></usr/local/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/symbols/msam10.pfb></usr/local/texlive/2026/texmf-dist/fonts/type1/public/amsfonts/symbols/msbm10.pfb></usr/local/texlive/2026/texmf-dist/fonts/type1/public/cm-super/sfbx1000.pfb></usr/local/texlive/2026/texmf-dist/fonts/type1/public/cm-super/sfbx1095.pfb></usr/local/texlive/2026/texmf-dist/fonts/type1/public/cm-super/sfbx1200.pfb></usr/local/texlive/2026/texmf-dist/fonts/type1/public/cm-super/sfbx1440.pfb></usr/local/texlive/2026/texmf-dist/fonts/type1/public/cm-super/sfcc1200.pfb></usr/local/texlive/2026/texmf-dist/fonts/type1/public/cm-super/sfrm0600.pfb></usr/local/texlive/2026/texmf-dist/fonts/type1/public/cm-super/sfrm0800.pfb></usr/local/texlive/2026/texmf-dist/fonts/type1/public/cm-super/sfrm0900.pfb></usr/local/texlive/2026/texmf-dist/fonts/type1/public/cm-super/sfrm1000.pfb></usr/local/texlive/2026/texmf-dist/fonts/type1/public/cm-super/sfrm1095.pfb></usr/local/texlive/2026/texmf-dist/fonts/type1/public/cm-super/sfrm1200.pfb></usr/local/texlive/2026/texmf-dist/fonts/type1/public/cm-super/sfrm1728.pfb></usr/local/texlive/2026/texmf-dist/fonts/type1/public/cm-super/sfti1095.pfb></usr/local/texlive/2026/texmf-dist/fonts/type1/public/cm-super/sftt0900.pfb></usr/local/texlive/2026/texmf-dist/fonts/type1/public/cm-super/sftt1095.pfb></usr/local/texlive/2026/texmf-dist/fonts/type1/public/stmaryrd/stmary10.pfb>
-Output written on main.pdf (44 pages, 1149684 bytes).
+Output written on main.pdf (45 pages, 1158838 bytes).
 PDF statistics:
- 1074 PDF objects out of 1200 (max. 8388607)
- 845 compressed objects within 9 object streams
- 262 named destinations out of 1000 (max. 500000)
+ 1082 PDF objects out of 1200 (max. 8388607)
+ 852 compressed objects within 9 object streams
+ 264 named destinations out of 1000 (max. 500000)
  272 words of extra memory for PDF output out of 10000 (max. 10000000)
 

@@ -1,14 +1,20 @@
 {
   "campaign": "revision_v20",
-  "empirical_tables": 3,
-  "numeric_cells_verified": 216,
+  "empirical_tables": 4,
+  "numeric_cells_verified": 450,
   "figure_assets_verified": 7,
+  "benchmark_table_numeric_cells_verified": 234,
+  "paired_reference_intervals_verified": 48,
+  "ordinary_shortfall_levels_verified": 30,
   "forecast_headline_runs": 240,
   "forecast_episodes_per_run": 100,
   "forecast_market_phase_rows": 12,
-  "qualitative_claim_checks": "benchmark gaps, raw PnL comparison, forecast improvement, credit at episode 250, 39/40 cash-flow wins",
-  "source_attestation_valid": true,
+  "qualitative_claim_checks": "benchmark gaps, raw PnL comparison, forecast improvement, credit at episode 250, 39/40 cash-flow wins and exception, all treatment interval signs, auction uncertainty, synthetic ranking, fitted weights",
+  "refined_synthetic_runs_verified": 320,
+  "retained_historical_runs_verified": 200,
+  "retained_historical_provenance_valid": true,
+  "max_step_minutes": 0.25,
   "latex_warnings": 0,
-  "main_tex_sha256": "15d4168688291f61a52fdba5479ce6b5aacc60b73d3f1b975befa2996a1523a8",
-  "pdf_sha256": "093e670b617a1f3fe6135e25155da0e55ed86193aa2264c1c0ad2b145aa09db0"
+  "main_tex_sha256": "b1700c826eba2f3f9b1a92bbd2c749b95d25a57e27f99f4b29d2d28d0f284cdc",
+  "pdf_sha256": "527ce74db7fb783bf6b8f90dbd41f66f1108601014730fd5687d4c0a94504da4"
 }
