@@ -1,8 +1,7 @@
 """Train any agent on any setting from config (Phase 4).
 
-Writes the configured results root (currently results/revision_v16) with config_resolved.yaml,
-seed.txt, git_sha.txt, metrics.csv (per-episode), checkpoints/, logs/run.log
-(engineering conventions, CLAUDE.md). Figures/tables are produced separately
+Writes the configured results root with config_resolved.yaml,
+seed.txt, git_sha.txt, metrics.csv (per-episode), checkpoints/, logs/run.log. Figures/tables are produced separately
 by make_figures.py / make_tables.py from these saved outputs.
 
 Checkpoints: ``initial.pt`` BEFORE any training (the untrained initial-policy

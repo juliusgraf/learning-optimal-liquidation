@@ -65,5 +65,6 @@ not describe continuous-market matching.
 
 Reproducing a particular venue more literally would require specifying those
 additional rules together. The present change corrects a concrete volume loss
-while preserving the approved model and enables a separately versioned rerun.
-Retained paper results and fitted forecasts remain `nearest_tick_v1` evidence.
+while preserving the model's other conventions. The completed v20 paper
+campaign and its fitted forecasts use `max_volume_v2`; older v19 results
+remain `nearest_tick_v1` evidence.

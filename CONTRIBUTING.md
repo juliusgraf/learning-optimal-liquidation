@@ -4,7 +4,7 @@ Install the development dependencies with `python -m pip install -e ".[dev]"`.
 Run the offline suite before submitting a change:
 
 ```bash
-pytest -q -m 'not network and not slow'
+pytest -q -m 'not network and not slow and not market_data'
 ```
 
 Historical integration tests require separately obtained market data and skip

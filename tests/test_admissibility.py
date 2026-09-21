@@ -1,9 +1,9 @@
 """Admissibility tests: Adm(x) and the cancel-all constraint C(x)
-(CLAUDE.md, time-free state-only constraint; rulings D4, D11).
+(time-free state-only constraint; rulings D4, D11).
 
 C(x) = max_i (1 - x^{9,(i)}) * 1{x^{17,(i)} > 0}: a cancel-all is admissible
 iff a live prior order with K^a > 0 exists. The env's internal-ledger mask
-must agree with C evaluated on paper_state() (CLAUDE.md implementation
+must agree with C evaluated on paper_state() (state-admissibility implementation
 note), and the env must REJECT inadmissible submissions (masking, never
 projection — AUDIT N12).
 """
@@ -20,7 +20,7 @@ from helpers import NOOP_AUCTION, drive_to_auction, load_synthetic_cfg, new_env
 
 
 def C_of_paper_state(ps) -> float:
-    """The CLAUDE.md formula, evaluated literally on X^9 and X^17."""
+    """The state-admissibility formula, evaluated literally on X^9 and X^17."""
     x9, x17 = ps["X9"], ps["X17"]
     vals = (1.0 - x9) * (x17 > 0.0)
     return float(np.max(vals)) if len(vals) else 0.0
@@ -98,7 +98,7 @@ def assert_cancel_admissible(env, expected: bool):
 
 
 def test_cancel_forbidden_at_auction_open_and_after_abstain(synthetic_cfg):
-    """C(x) = 0 at the auction open (property (i) of CLAUDE.md) and stays 0
+    """C(x) = 0 at the auction open (the auction-open boundary condition) and stays 0
     while the agent only abstains (K^a = 0 submissions are no entries)."""
     env = new_env(synthetic_cfg)
     drive_to_auction(env, seed=2)
@@ -341,7 +341,7 @@ def test_negative_discrete_action_indices_are_rejected(synthetic_cfg):
 
 
 def test_ledger_mask_agrees_with_C_on_paper_state_throughout(synthetic_cfg):
-    """CLAUDE.md implementation note: the env's internal liveness ledger is
+    """state-admissibility implementation note: the env's internal liveness ledger is
     equivalent to evaluating C on paper_state() — asserted at EVERY auction
     decision of an episode with a mixed submit/abstain/cancel policy."""
     env = new_env(synthetic_cfg)

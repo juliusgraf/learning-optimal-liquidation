@@ -3,7 +3,7 @@
 Sampling uses the buffer's PRIVATE ``np.random.Generator`` (ruling D10);
 stored actions are the EXECUTED actions (AUDIT N12). One buffer instance per
 phase network; the CLOB buffer's junction rows (next state in the auction,
-CLAUDE.md cross-phase rule) store the auction next-obs and the auction-grid
+cross-phase rule) store the auction next-obs and the auction-grid
 admissibility mask zero-padded to this buffer's widths — the agent splits the
 batch on ``junction`` and un-pads before the target-network pass.
 """

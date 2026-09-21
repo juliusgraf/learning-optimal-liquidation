@@ -1,13 +1,16 @@
 # Revised artifact and metrics schema
 
-Retained v19 results use schema 15, `nearest_tick_v1`, and environment contract
+Historical v19 results use schema 15, `nearest_tick_v1`, and environment contract
 `shaped-j-economic-eval-sb3-2026-09-05-v15`. Revised clearing uses schema 16,
 `max_volume_v2`, and `max-volume-auction-2026-09-07-v16`, with separate outputs
-under `results/revision_v20`. Readers check schema and environment contract
+under `results/revision_v20`. All 520 current paper runs use schema 16 and
+`max_volume_v2`; the 320 refined synthetic runs additionally bind their
+rough-Heston generator settings in the environment-contract suffix. Readers
+check schema and environment contract
 against the resolved mechanism. They reject mismatches and pooling of different
 clearing mechanisms. Missing mechanism fields in supported legacy configs,
 checkpoints and metadata mean v1; they never opt into v2. Unsupported earlier
-schema versions remain rejected. Retained results are not revised evidence.
+schema versions remain rejected. Historical v19 results are not v20 evidence.
 
 ## Provenance
 

@@ -1,4 +1,4 @@
-"""Sign-convention tests (ruling D3; CLAUDE.md BINDING conventions).
+"""Sign-convention tests for the simulator accounting contract.
 
 zeta = + is the BUY side for market orders: buy market volume weakly RAISES
 the clearing price, sell volume weakly LOWERS it; N^+ counts BUYING market

@@ -34,6 +34,6 @@ midprice:
     artifact_normalization: none
 
 # Frozen from independent training paths, not policy/test PnL.
-# See docs/verification_v19/forecast_historical/protocol.json.
+# Original fit protocol is retained in the development Git history.
 algo1:
   clob_forecast_weights: [0.1927835944860103, 0.31404426670363056, 0.38617992636298226, 0.5256308476764042]

@@ -1,0 +1,46 @@
+{
+  "schema": "lmm-runtime-estimate-v1",
+  "hardware": {
+    "source": "Owner confirmed this MacBook ran the campaign; sysctl hardware queried during submission preparation.",
+    "model_identifier": "Mac17,9",
+    "chip": "Apple M5 Pro",
+    "physical_cpu_cores": 15,
+    "memory_bytes": 25769803776,
+    "model_name": "MacBook Pro"
+  },
+  "training_log_intervals": {
+    "historical": {
+      "runs": 200,
+      "min_seconds": 112.749,
+      "median_seconds": 300.8345,
+      "max_seconds": 490.212,
+      "sum_seconds": 57975.564
+    },
+    "synthetic": {
+      "runs": 320,
+      "min_seconds": 84.693,
+      "median_seconds": 255.1055,
+      "max_seconds": 618.686,
+      "sum_seconds": 93511.865
+    }
+  },
+  "training_interval_scope": "First to last timestamp in each of the 520 local logs/run.log files; excludes initialization before the first log, post-training evaluation, paired contrasts and reporting. Local logs are not distributed.",
+  "synthetic_pipeline": {
+    "runs": 320,
+    "workers": 10,
+    "elapsed_seconds": 11114.137,
+    "source": "results/revision_v20/_orchestration/synthetic_replacement/status.json",
+    "source_sha256": "9f36158b5d123a018badb137e4774c1a61649b16345eddf1fa3d3cad987f49a4"
+  },
+  "planning_estimates": {
+    "single_training_and_evaluation_minutes": [
+      3,
+      15
+    ],
+    "full_520_run_campaign_hours_at_10_workers": [
+      5,
+      7
+    ],
+    "basis": "320-run pipeline took 3.087 hours. Scaling to 520 runs gives 5.02 hours; allow overhead for forecasts, calibration, reporting and scheduling. Estimate, not a measured full-campaign rerun."
+  }
+}

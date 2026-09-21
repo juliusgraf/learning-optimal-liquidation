@@ -1,7 +1,7 @@
 cff-version: 1.2.0
 message: "Please cite this software when using its simulator or experimental framework. Citation is requested, not required by the MIT license."
 type: software
-title: "Learning Liquidation with Closing Auctions"
+title: "Learning Optimal Liquidation with Closing Auctions"
 authors:
   - family-names: Graf
     given-names: Julius
@@ -17,4 +17,4 @@ references:
         given-names: Julius
       - family-names: Mastrolia
         given-names: Thibaut
-    notes: "Accompanying manuscript; publication metadata and DOI have not been established."
+    notes: "Accompanying manuscript, distributed separately from this software repository; publication metadata and DOI have not been established."

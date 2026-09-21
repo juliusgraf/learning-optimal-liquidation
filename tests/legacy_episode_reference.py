@@ -10,7 +10,7 @@ import sys
 
 
 REFERENCE = Path(__file__).resolve().parent / "fixtures" / "pre_refinement"
-MANIFEST_SHA256 = "6edbf7f0a3750401d6a0583f33948928a98f7a5894b506f214565fc5436696ed"
+MANIFEST_SHA256 = "4690e0900efca0ac152df89ab30d213051d44e25a17c48e942759af91a9a3c3f"
 
 
 def validate_reference(root: Path) -> None:

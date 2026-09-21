@@ -1,10 +1,11 @@
 # Revised auction clearing: implementation and reruns
 
-The purple projection in the supplied `main-14.tex` and finding 1 of
-`review-2026-09-07-151509.tex` are implemented as **`max_volume_v2`**. The
-documents are specification/reference material; unrelated review suggestions
-are outside this change. Retained paper numbers, v19 campaign outputs and
-fitted forecast weights remain evidence for **`nearest_tick_v1` only**.
+The volume-maximizing tick projection is implemented as **`max_volume_v2`**
+and is used by all 520 runs in the current v20 paper campaign. Older v19
+outputs and their fitted forecasts describe **`nearest_tick_v1`** and are not
+interchangeable with v20 evidence. This document explains the implementation
+and launch workflow; the completed paper also requires the later synthetic
+refinement described in [the replication guide](../REPRODUCING.md).
 
 ## Mechanism and numerical conventions
 
@@ -183,7 +184,7 @@ legacy launchers/base configs retain their old defaults.
 For the financial-market rationale and the limits of the exchange analogy, see
 [auction market practice](auction_market_practice.md).
 
-## Verification and outstanding empirical work
+## Verification and completed campaign
 
 `tests/test_tick_projection.py` includes the review counterexample, on-grid and
 zero roots, zero and tied volumes, market orders, aggregate no-self-trade,
@@ -193,7 +194,8 @@ oracle checks 150 linear, 150 capped-external and 150 smooth signed-external
 random books, plus balanced pro-rata execution. Provenance tests cover native
 and SB3 checkpoint isolation and resolve every algorithm/setting/control worker configuration.
 
-Tests and small temporary fitting smoke checks are implementation validation,
-not revised scientific results. Full forecast/reference fits, all retraining
-and policy reselection, matched final evaluation and updated paper results
-remain unrun; the user will start the campaign with the command above.
+Tests and small temporary fitting smoke checks are implementation validation.
+The v20 scientific campaign was subsequently completed, including revised
+forecast/reference fits, training, checkpoint selection and matched evaluation.
+Its recorded outputs are in `release/evidence/`; the full run trees are not
+distributed. No new full campaign was run during submission preparation.

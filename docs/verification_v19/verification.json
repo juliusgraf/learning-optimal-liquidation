@@ -1,9 +1,0 @@
-{
-  "training_runs": 43,
-  "training_episodes": 7600,
-  "maximum_run_episodes": 200,
-  "finite_evaluations": true,
-  "finite_post_warmup_losses": true,
-  "final_test_used": false,
-  "interpretation": "Adaptive bounded development, not publication inference; all attempts retained."
-}

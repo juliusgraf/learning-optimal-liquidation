@@ -4,8 +4,11 @@ This is a test-only copy of the first-party synthetic simulator and its two
 configuration inputs from commit
 `881f6aa9ffcd7ce3928a5c68ad5b71e9129ec231`, the parent of the refinement change
 `ffb314dd736a750e026861284e437aafa1e935ee`. The 15 source/configuration files are
-verbatim Git blobs, individually bound by `provenance.json`, and remain covered
-by the repository's MIT license. This fixture contains no market data, training
+individually bound by `provenance.json` and remain covered
+by the repository's MIT license. Only the package docstring was updated during
+submission cleanup to match the title and remove an obsolete directory reference;
+its original hash and the change are recorded in the manifest. All executable
+statements and the other 14 files remain verbatim Git blobs. This fixture contains no market data, training
 code, model weights or paper results. Historical-input loader functions are
 retained verbatim as part of the source modules but are never called by this test.
 

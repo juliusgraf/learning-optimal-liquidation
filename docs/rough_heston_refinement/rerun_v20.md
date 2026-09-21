@@ -1,9 +1,11 @@
 # Replace the synthetic portion of v20 at 0.25 minutes
 
-The user selected a maximum internal step of **0.25 minutes**. This is the chosen
-rerun configuration, not an established accuracy threshold. No campaign was
-launched during preparation and no existing run, forecast, report, or log was
-moved or overwritten.
+This is the historical launch recipe for the completed 320-run synthetic
+replacement, using a maximum internal step of **0.25 minutes**. It requires the
+pre-existing full v20 result tree and is not a command for rebuilding the study
+from the compact evidence bundle. Preparation-time checks below predate the
+actual launch; completed records are in `release/evidence/campaign.json`.
+The selected step is not an established accuracy threshold.
 
 Commit the prepared changes so the worktree is clean, then run from the repository:
 
@@ -114,11 +116,9 @@ to remove the archives. Historical artifacts are never duplicated or regenerated
 The journal records original-to-archive paths for interpreting old absolute
 paths in the archived manifests.
 
-The command refreshes generated v20 research reports and comparisons. It does
-not automatically rewrite outcome-dependent prose in `paper/main.tex`; the
-current manuscript remains a snapshot of the earlier legacy-generator results.
-A later manuscript refresh should use the new reports and recheck narrative
-claims, rather than merely replacing numerical table cells beneath old claims.
+The command refreshes generated v20 research reports and comparisons. The
+manuscript is maintained separately and is not modified by this workflow.
+Its claims must be checked against the matching completed campaign records.
 
 ## Preparation checks
 

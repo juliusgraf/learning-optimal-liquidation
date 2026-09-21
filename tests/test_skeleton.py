@@ -1,7 +1,7 @@
 """Phase 2 smoke tests: imports, config round-trip, seeded reproducibility.
 
 Acceptance for the scaffold: every lmm module imports; configs carry the
-binding values from audit/PARAMS_FROM_CODE.md (rulings D6, D7, D15); the
+binding configuration values established during the original scaffold audit; the
 loader round-trips and applies CLI overrides; utils.seeding gives
 bit-identical streams for the same master seed, independent streams per
 component, and never touches global RNG state (ruling D10).
@@ -77,7 +77,7 @@ def _load_synthetic(**kw):
 
 def test_config_binding_values_synthetic() -> None:
     cfg = _load_synthetic()
-    # Rulings D6/D7/D15/D21 spot checks (audit/PARAMS_FROM_CODE.md + AUDIT F.2).
+    # Spot checks for the original scaffold configuration contract.
     assert (cfg.auction_flow.p1, cfg.auction_flow.p2) == (1.0, 0.0)  # D21: positive slope
     assert cfg.auction_flow.p4 == 0.05  # D7: effective rate, single Bernoulli
     assert cfg.algo1.tau == 0.95  # D15: smoothing, both settings

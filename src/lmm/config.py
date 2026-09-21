@@ -1,7 +1,7 @@
 """Configuration dataclasses and YAML loader (Phase 2, fully functional).
 
 Every active experiment parameter lives in ``configs/*.yaml``.  The legacy
-instantiation audit in ``audit/PARAMS_FROM_CODE.md`` is provenance only; revised
+instantiation audit in the original development history is provenance only; revised
 and author-resolved calibrations in the active config supersede it.  Nothing in
 ``src/`` hard-codes an experiment parameter; library code receives the
 dataclasses defined here.

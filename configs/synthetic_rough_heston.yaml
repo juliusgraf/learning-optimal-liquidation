@@ -19,6 +19,6 @@ midprice:
     rough_heston_max_step_minutes: null  # retained legacy generator; refinement is opt-in
 
 # Frozen from independent training paths, not policy/test PnL.
-# See docs/verification_v19/forecast_synthetic/protocol.json.
+# Original fit protocol is retained in the development Git history.
 algo1:
   clob_forecast_weights: [0.0, 0.19015297415681834, 0.2345652342449872, 0.4142559859516085]

@@ -8,30 +8,15 @@
 - [Metrics schema](metrics_schema.md) and [research outputs](research_outputs.md)
 - [Reproduction guide](../REPRODUCING.md) and [data setup](../data/README.md)
 
-## Completed study
+## Completed v20 study
 
-- [Main 440-run results](revision_v19_verdict.md)
-- [Raw cash-flow comparison results](cashflow_results_verdict_v19.md)
-- [Matched dense economic comparison results](economic_dense_h_results_verdict_v19.md)
-- [Initial 440-run protocol](final_run_scope_v19.md)
-- [Raw cash-flow follow-up protocol](economic_cashflow_comparison_v19.md)
-- [Matched dense economic follow-up protocol](economic_dense_h_comparison_v19.md)
-- [Structural repairs and limitations](pathology_repair_v19.md)
+- [Paper exhibits and saved numerical inputs](../README.md#paper-exhibits-and-their-sources)
+- [Campaign configurations, seeds and selection records](../release/evidence/campaign.json)
+- [Rough-Heston refinement](rough_heston_refinement/README.md)
+- [Original v20 replacement recipe](rough_heston_refinement/rerun_v20.md)
+- [Source and artifact provenance](../release/provenance.json)
 
-The legacy nearest-tick study contains 520 completed runs. These results do not
-evaluate the revised volume-maximizing projection. Protocol records describe decisions at
-launch; the result summaries record the completed outcomes.
-
-## Evidence and provenance
-
-`analysis_v19/`, `analysis_cashflow_v19/` and `analysis_dense_h_v19/` contain
-numeric summaries, analysis scripts and verification records. Scripts consuming
-full run records require the separately retained research artifacts.
-
-`verification_v19/` retains development ledgers, critic-calibration summaries
-and forecast-calibration records. These are development evidence, not additional
-final training seeds. `research_v19/` contains the supporting source ledger.
-
-The [earlier cleanup record](cleanup.md) indexes archived development work.
-The current source tree excludes market-data inputs, manuscript files and
-private writing materials. Earlier commits remain in Git history.
+The paper uses 320 refined synthetic runs and 200 retained historical runs.
+Full run trees and checkpoints are not bundled. Manuscript sources, the top-level
+development audit, legacy implementations and v19 documentation history were
+removed from this branch; earlier Git commits are unchanged.

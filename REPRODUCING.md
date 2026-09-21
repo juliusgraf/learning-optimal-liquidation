@@ -13,7 +13,7 @@ seeds), and 80 synthetic follow-up runs. No seed is excluded.
 | All 320 replacement synthetic runs | `ffb314dd736a750e026861284e437aafa1e935ee` | 0.25-minute internal mesh; new forecast fit, normalization, training and selection |
 | All 200 retained historical runs | `354656645a7e035be718e03cbf100664d1a87262` | Original historical bytes retained, not relabeled as refined-source runs |
 | Preparation starting checkout | `64df3bc6421fe0e7d267386831b699482beb2706` | Manuscript changes since the synthetic run revision; executable/configuration sources matched that revision before preparation |
-| Committed preparation baseline (HEAD at this status review) | `02a8f00524b63b288e7e6ae813b55b9d195fb368` | Includes release preparation and the revised regression test; hosted Linux validation passed for this exact commit |
+| Historical hosted preparation baseline | `02a8f00524b63b288e7e6ae813b55b9d195fb368` | Includes release preparation and the revised regression test; hosted Linux validation passed for this exact commit |
 | Final paper release commit/tag/identifier | Not assigned | The committed preparation baseline is not automatically the eventual immutable paper release; subsequent documentation/manuscript changes need their own commit and checks |
 
 All 520 current run records have clean original SHA identifiers. The earlier
@@ -50,14 +50,19 @@ See the result-provenance table in [release/READINESS.md](release/READINESS.md).
 
 ## Environment and tests
 
-Follow the fresh-environment installation in README. `pyproject.toml` remains the
+The pinned installation in README requires Python 3.11+ (the recorded NumPy,
+pandas, SciPy and Matplotlib versions require it). `pyproject.toml` remains the
 canonical package specification; no research dependency was upgraded during
 preparation. `release/paper-environment.txt` records the nine direct runtime
 versions from every v20 run, **not** today's environment inferred as historical.
 It is not a complete transitive lock. Paper runtime: Python 3.14.4, macOS 26.6.2,
 arm64, one native numerical/Torch thread per worker; production launcher used
-10 workers. Exact CPU model, RAM/GPU details and complete transitive environment
-were not captured in the supplied runtime records.
+10 workers. The owner identified the campaign machine during submission
+preparation as this MacBook Pro: Apple M5 Pro, 15 CPU cores, 24 GiB unified memory
+(model Mac17,9). Those hardware details were read from the machine, not the
+original run metadata. Allow 5–7 hours for 520 runs at ten workers; see
+[the measured timings and estimate](release/evidence/runtime_estimate.json).
+A complete transitive environment was not captured in the original records.
 
 ```sh
 pytest -q tests/test_revision_acceptance.py
@@ -184,9 +189,11 @@ Full figure/report regeneration needs local original runs and their provenance:
 `python -m lmm.experiments.make_report --root results/revision_v20 --seeds 42 7 99 123 2024 314 577 811 1618 2718 --publication`.
 Inspect source-attestation/retained-history gates before use; they intentionally
 reject incompatible source or artifacts. Main plots and tables must read saved
-numbers without stepping an environment. `paper/results/README.md` identifies
-all seven figure assets and manuscript table generators; its refresh/verify
-commands modify paper files and were **not** executed in this preparation.
+numbers without stepping an environment. Manuscript sources and their assembly
+scripts are maintained separately and are not bundled in this branch. See the
+[exhibit-to-input mapping](README.md#paper-exhibits-and-their-sources) for the
+retained numerical evidence; `scripts/release_support.py --check` verifies the
+paired benchmark table directly from bundled seed means.
 
 ## Full experiment opt-in and preserved originals
 
@@ -198,8 +205,7 @@ archiving/retraining workflow, not a harmless regeneration command.
 The original launch and settings are identified in
 `docs/rough_heston_refinement/rerun_v20.md`, the completion-bound configurations,
 and `release/evidence/campaign.json`. That document is a historical launch recipe;
-its statements that the replacement was not yet run are superseded by the
-completed records. The full replacement was invoked as:
+its preparation-time checks predate the completed campaign records. The full replacement was invoked as:
 `scripts/run_multiseed.sh --replace-synthetic --jobs 10 --threads-per-job 1`.
 It depended on the already completed v20 baseline, retained-history inventory
 and authorized local input archives. This is an original recipe, not a portable

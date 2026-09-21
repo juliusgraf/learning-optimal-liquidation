@@ -1,5 +1,0 @@
-{
-  "summary": "equal path weights within split and phase",
-  "decision_weighted_summary": "equal observation weights; retained for comparison",
-  "coefficients": "unchanged restricted least squares on training observations"
-}

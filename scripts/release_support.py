@@ -1,6 +1,7 @@
 """Regenerate P-003 from bundled, unrounded seed means; no simulator imports.
 
-The estimator follows make_report.mean_interval and paper/results/supplement.py:
+The estimator follows make_report.mean_interval and the original manuscript
+supplement estimator (manuscript sources are distributed separately):
 10,000 resamples, PCG64 seed 0, sorted values, equal seed weights, pointwise CIs.
 """
 from __future__ import annotations

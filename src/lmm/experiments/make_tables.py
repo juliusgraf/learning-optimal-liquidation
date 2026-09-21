@@ -1,8 +1,7 @@
 """Regenerate all tables from saved run outputs (Phase 7).
 
 Emits BOTH ``.tex`` (booktabs) and ``.csv`` into the output dir. Reported
-returns are UNDISCOUNTED episode sums (stated in each caption; CLAUDE.md
-objective conventions). All inputs are saved run-dir artifacts — no env
+returns are UNDISCOUNTED episode sums (stated in each caption). All inputs are saved run-dir artifacts — no env
 stepping.
 
 ``--run-dir`` accepts one or more run dirs (the cross-algorithm tables need the

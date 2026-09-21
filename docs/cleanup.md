@@ -1,8 +1,10 @@
 # Repository cleanup — September 6, 2026
 
-This is a historical cleanup record. A subsequent cleanup removes the
-manuscript and market data from the current source tree while preserving
-local copies. Git history, including the recovery commits below, is unchanged.
+This is a historical cleanup record. The submission branch also removes
+`CLAUDE.md`, top-level `audit/`, `legacy/`, their characterization tests, and
+`docs/*_v19` files/directories. The preservation list below describes the earlier
+cleanup, not the current distribution. Manuscript sources are maintained
+separately. Git history, including the recovery commits below, is unchanged.
 
 Removed **858 of the 1,116 previously tracked files**
 (76.9%), plus 99 ignored development checkpoint/cache files.

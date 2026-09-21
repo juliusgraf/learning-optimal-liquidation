@@ -293,7 +293,7 @@ def test_replay_state_dict_round_trip_restores_sampling_stream():
     assert len(b) == len(a)
 
 
-# -- Bellman targets (hand-computed; CLAUDE.md cross-phase junction rule) ---------
+# -- Bellman targets (hand-computed; cross-phase junction rule) ---------
 
 
 def _hand_batch(obs_dim, next_obs_dim, mask_dim, rows):
@@ -429,7 +429,7 @@ def test_masked_epsilon_greedy_property(dqn_cfg):
     step of a full episode at epsilon = 1 and at epsilon = 0. At the auction
     open (t = n+1) the cancel-all is structurally inadmissible: the env
     raises if the agent ever selects it, so episode completion is the
-    assertion (CLAUDE.md C(x) = 0 at the auction open)."""
+    assertion (C(x) = 0 at the auction open)."""
     env = new_env(dqn_cfg)
     for eval_mode in (False, True):  # epsilon = 1 (warmup) vs epsilon = 0
         agent = make_agent(dqn_cfg, master_seed=99)

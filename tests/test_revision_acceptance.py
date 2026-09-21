@@ -116,6 +116,13 @@ def _flow(cfg, **probabilities) -> ExogenousAuctionFlow:
 
 
 def test_settings_share_economics_but_fit_forecast_reliability_on_own_training_pool():
+    # Pin the original default-overlay fits independently of the pruned v19
+    # development ledgers. The v20 paper fits use different source/configuration
+    # records and must not be substituted for these compatibility defaults.
+    expected_weights = {
+        'synthetic': (0.0, 0.19015297415681834, 0.2345652342449872, 0.4142559859516085),
+        'historical': (0.1927835944860103, 0.31404426670363056, 0.38617992636298226, 0.5256308476764042),
+    }
     for algo in ("dqn", "ddpg", "td3", "sac"):
         synthetic = load_config(
             REPO_ROOT / "configs/base.yaml",
@@ -140,9 +147,7 @@ def test_settings_share_economics_but_fit_forecast_reliability_on_own_training_p
         assert replace(synthetic.algo1, clob_forecast_weights=()) == replace(
             historical.algo1, clob_forecast_weights=())
         for cfg, setting in ((synthetic, 'synthetic'), (historical, 'historical')):
-            protocol = json.loads((REPO_ROOT / 'docs/verification_v19' /
-                                   ('forecast_'+setting) / 'protocol.json').read_text())
-            assert cfg.algo1.clob_forecast_weights == tuple(protocol['weights'])
+            assert cfg.algo1.clob_forecast_weights == expected_weights[setting]
         for section in (
             "grid",
             "clob_flow",

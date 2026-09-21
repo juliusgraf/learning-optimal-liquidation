@@ -47,7 +47,6 @@ license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md"]
 testpaths = ["tests"]
 markers = [
     "slow: slow integration tests (deselect with -m 'not slow')",
-    "legacy: characterization tests of the legacy main.py/data.py emulators (pre-refactor golden values)",
     "network: tests that hit an external data API (deselect with -m 'not network')",
     "market_data: integration tests requiring separately obtained market data",
 ]

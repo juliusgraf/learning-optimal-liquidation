@@ -1,14 +1,17 @@
-# Launch and research outputs (v19)
+# Launch and research outputs (v20)
 
 Headline training retains the author-approved weighted shaped objective
 `J_omega`, with `omega=.0001`, `q=0` and both manuscript shaping terms enabled.
-Selection and all economic comparisons use `Jbar_lambda`. V19 adds a calibrated
+Selection and all economic comparisons use `Jbar_lambda`. The study uses a calibrated
 CLOB forecast, critic LayerNorm for native SB3 DDPG and mechanism-specific
-controls. The completed evidence is retained under `results/revision_v19/`.
+controls. The 320 synthetic runs use a maximum 0.25-minute internal rough-Heston
+step; the 200 historical runs retain their original source identity. Compact
+numerical evidence is bundled under `release/evidence/`; the full local report
+trees described below are not distributed.
 
 The main campaign and both economic-training follow-ups are complete. The table
 below records the original 440-run scope; each follow-up adds 40 synthetic runs.
-Use [the completed-study results](revision_v19_verdict.md) for the
+Use [the saved paper evidence](../README.md#paper-exhibits-and-their-sources) for the
 current interpretation and [the reproduction guide](../REPRODUCING.md) for
 report-only commands and source-identity requirements. No further training is
 needed to use these outputs.
@@ -26,11 +29,13 @@ and the existing maturity gate and patience rule. Each selected policy is
 then evaluated on 100 separate simulation paths. The new simulation namespace
 19001 does **not** make the previously inspected historical dates an untouched
 holdout. Do not claim out-of-sample evidence on new securities or dates from
-this rerun. See [the evidence and limitations](pathology_repair_v19.md).
+this rerun. See [the evidence and limitations](../REPRODUCING.md).
 
 ## The report to read
 
-Open **`results/revision_v19/_publication/index.html`**.
+With the full original result tree available, open
+**`results/revision_v20/_publication/index.html`**. The compact bundle instead
+provides the [saved numerical inputs](../README.md#paper-exhibits-and-their-sources).
 It contains five figure groups and three tables. Figures are vector PDF plus
 PNG, and tables are numeric CSV plus LaTeX. The report preserves negative
 results and poor seeds. Its pointwise 95% bootstrap intervals resample
@@ -106,9 +111,9 @@ configuration, training metrics, checkpoint/selection metadata and `eval/`
 records. Run directories are:
 
 ```text
-results/revision_v19/synthetic_rough_heston/<algo>_seed<seed>/
-results/revision_v19/historical_sp500_midquotes/<algo>_<ticker>_seed<seed>/
-results/revision_v19/synthetic_rough_heston__<arm>/<algo>__<arm>_seed<seed>/
+results/revision_v20/synthetic_rough_heston/<algo>_seed<seed>/
+results/revision_v20/historical_sp500_midquotes/<algo>_<ticker>_seed<seed>/
+results/revision_v20/synthetic_rough_heston__<arm>/<algo>__<arm>_seed<seed>/
 ```
 
 In each `eval/`, `h_forecast_summary.csv` reports bias, MAE, RMSE and improvement
@@ -128,17 +133,15 @@ scripts/run_multiseed.sh --jobs 10 --threads-per-job 1 --dry-run
 
 Regenerate from completed matching artifacts at the saved training commit.
 For later checkouts, follow the isolated-checkout procedure in
-[REPRODUCING.md](../REPRODUCING.md#regenerating-reports-without-training):
+[REPRODUCING.md](../REPRODUCING.md#saved-analysis-and-calibration-p-001-p-003-p-004-p-005):
 
 ```bash
-LMM_RESULTS_ROOT=results/revision_v19 scripts/make_multiseed_outputs.sh --publication
+LMM_RESULTS_ROOT=results/revision_v20 scripts/make_multiseed_outputs.sh --publication
 ```
 
 `--diagnostics` adds the legacy comprehensive outputs outside the publication
 bundle. Smoke and development reports are labelled separately and are not
-scientific training results. The bounded repair ledger remains under
-`verification_v19/`; its superseded one-off generator is recoverable using
-[the development archive instructions](cleanup.md).
+scientific training results. Development-only v19 ledgers are no longer bundled.
 
 Reports remain under the selected results root. They can be exported independently
 of the separately maintained manuscript.

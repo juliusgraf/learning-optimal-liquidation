@@ -78,7 +78,9 @@ def validate_evidence(root):
             p = safe_path(root, artifact['path'])
             if digest(p) != artifact['sha256']:
                 raise ValueError(f'provenance digest mismatch: {artifact["id"]}')
-        elif artifact['availability'] not in ('restricted-local', 'local-only', 'missing'):
+        # Excluded manuscript entries retain historical identities without
+        # requiring the manuscript to be present in this software branch.
+        elif artifact['availability'] not in ('restricted-local', 'local-only', 'missing', 'excluded'):
             raise ValueError('unknown artifact availability')
     campaign = json.loads((root / 'release/evidence/campaign.json').read_text())
     runs = campaign['runs']

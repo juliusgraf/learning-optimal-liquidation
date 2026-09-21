@@ -362,7 +362,7 @@ def fig_cancellation_strategy(
     Companion to ``episode_anatomy`` (called with the SAME ``policy``/``episode``,
     hence the same eval seed under CRN): the anatomy figure has no panel for the
     scalar cancel-all action A^5_t = c_t in {0, 1} (auction phase only,
-    t in {n+1, ..., m}; CLAUDE.md ruling D4). This isolates the cancellation
+    t in {n+1, ..., m}). This isolates the cancellation
     strategy, reading ``act_cancel`` (c_t) straight from the saved trace
     (``eval/traces/<policy>_ep<episode>.csv``); no env stepping happens here.
     """

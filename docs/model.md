@@ -26,8 +26,9 @@ The last strategic action enters clearing without a further exogenous update.
 H-off treatments anchor quotes to frozen midprice to avoid leaking the hidden
 forecast through execution.
 
-Auction clearing has two explicit versions. Retained v19 configurations use
-`nearest_tick_v1` (half-up nearest tick). To use the revised specification,
+Auction clearing has two explicit versions. All 520 v20 paper runs use
+`max_volume_v2`; older/default configurations retain `nearest_tick_v1` (half-up
+nearest tick). To select the paper's clearing rule in a new configuration,
 append [max_volume_v2.yaml](../configs/clearing/max_volume_v2.yaml) after the
 price-source overlay. For each continuous auction root, it compares the unique
 floor/ceil integer tick indices and maximizes matched volume `min(QS,QD)`, then
@@ -46,8 +47,11 @@ The agent's schedules are netted before pro-rata allocation. Actual fills may be
 negative and final inventory is not clipped. Residual inventory is marked at
 the frozen exogenous midprice, including when it is negative.
 
-All retained paper results and forecast weights belong to legacy clearing.
-Revised fits, policy selection and evaluation remain separate pending reruns.
+The completed v20 paper campaign has its own fitted forecasts, checkpoint
+selection and evaluation under volume-maximizing clearing. Its 320 synthetic
+runs also use 0.25-minute rough-Heston refinement. The default overlays retain
+legacy generator/forecast settings; use the exact resolved configurations in
+`release/evidence/campaign.json` when matching the paper.
 See [tolerances, compatibility and rerun commands](revised_clearing_reruns.md).
 
 See [mdp.py](../src/lmm/env/mdp.py), [action_spaces.py](../src/lmm/env/action_spaces.py)

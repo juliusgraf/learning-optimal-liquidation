@@ -1,6 +1,6 @@
 {
   "source_revision": "881f6aa9ffcd7ce3928a5c68ad5b71e9129ec231",
-  "origin": "Verbatim first-party synthetic simulator dependency closure from the parent of ffb314dd736a750e026861284e437aafa1e935ee; captured during CI repair, not a paper result.",
+  "origin": "First-party synthetic simulator dependency closure from the parent of ffb314dd736a750e026861284e437aafa1e935ee; captured during CI repair, not a paper result. All source/configuration files remain verbatim except the package docstring, updated during submission cleanup; executable statements are unchanged.",
   "original_golden": {
     "seed": 4201,
     "decisions": 71,
@@ -9,8 +9,11 @@
   "files": [
     {
       "path": "src/lmm/__init__.py",
-      "sha256": "0ed49b177b9db60fc392ba11a6378c5393072e50c8b2115e33d934d8296e06c5",
-      "bytes": 351
+      "sha256": "27a9484d33fe96d905f97c723aadc3be0735bc2461df2773175febbc14d3eca5",
+      "bytes": 297,
+      "original_sha256": "0ed49b177b9db60fc392ba11a6378c5393072e50c8b2115e33d934d8296e06c5",
+      "original_bytes": 351,
+      "modification": "Package docstring only: updated title and removed obsolete audit-directory reference."
     },
     {
       "path": "src/lmm/config.py",

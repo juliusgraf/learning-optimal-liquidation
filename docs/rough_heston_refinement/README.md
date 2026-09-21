@@ -1,9 +1,12 @@
 # Rough-Heston internal refinement
 
-This is an opt-in numerical-accuracy extension of the existing Euler-type
-scheme. The default, existing checkpoints, and manuscript results retain the
-legacy decision-grid generator. No candidate step has been established as an
-accuracy threshold, and no retraining or 520-run campaign was launched.
+This document describes the refinement implementation and the original
+pre-replacement diagnostic. Refinement remains opt-in in the default overlays.
+The paper now uses 320 synthetic runs retrained with a maximum internal step of
+0.25 minutes and 200 retained historical runs; see [the replication guide](../../REPRODUCING.md).
+No candidate step has been established as an accuracy threshold. The fixed-policy
+diagnostic below predates the replacement campaign and is not a comparison of
+its retrained policies.
 
 ## Configuration and timing
 
@@ -163,8 +166,9 @@ The saved diagnostic is **fixed-policy numerical sensitivity**: the original DQN
 checkpoint, embedded normalizer/inventory reference, forecast coefficients and
 all other calibration are held fixed. Its environments intentionally bypass the
 new training compatibility check and are labeled accordingly. It creates no new
-training artifacts. **Retrained-policy comparisons have not been performed** and
-must not be inferred from these results.
+training artifacts. **This diagnostic contains no retrained-policy comparisons**; those must not
+be inferred from its fixed-policy results. The later replacement campaign has
+separate configurations, source identities and saved numerical evidence.
 
 ## Files and verification
 
@@ -175,9 +179,8 @@ must not be inferred from these results.
 - `src/lmm/experiments/refinement.py`: reproducible price and fixed-policy sensitivity CLI.
 - `src/lmm/config.py`, `src/lmm/agents/{dqn,sb3}.py`, and
   `scripts/diagnose_forecast_credit.py`: configuration, provenance and compatibility.
-- Synthetic/refinement YAMLs, root README, and the localized rough-Heston paragraph
-  in `paper/main.tex`: configuration and legacy-result provenance documentation.
-  Pre-existing manuscript edits were preserved.
+- Synthetic/refinement YAMLs and root README: configuration documentation.
+  The manuscript is maintained separately from this software branch.
 - `tests/test_rough_heston_refinement.py`: grid/nesting, time conversion/coupling,
   analytic constant variance, direct full-history reference, negative variance,
   exact legacy episode fingerprint, independent streams, market chronology,

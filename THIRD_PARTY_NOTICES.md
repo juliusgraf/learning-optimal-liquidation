@@ -5,14 +5,16 @@ Graf and Thibaut Mastrolia are the authorized copyright holders, copyright 2026,
 and both authorize MIT licensing of first-party software and its documentation.
 The existing standard MIT LICENSE is preserved without additional conditions.
 Citation is requested separately in CITATION.cff; it is not a license condition.
+Manuscript sources/PDF, the top-level development audit, legacy implementations
+and v19 documentation history are excluded from this submission branch.
 
 | Material / paths | Basis and scope |
 |---|---|
-| `src/`, `scripts/`, `configs/`, `tests/`, `legacy/*.py`, software documentation, release tooling | First-party MIT, subject to preserved third-party notices. No separately vendored implementation identified in the inspected current tree. Legacy files are first-party predecessor implementations, not the paper's active specification. |
-| `paper/`, figures, `docs/analysis*/`, `docs/verification_v19/`, `docs/rough_heston_refinement/*.json`, `release/evidence/` | Author confirmed permission to publicly distribute manuscript, figures, derived historical-market summaries and checkpoints. This confirmation does not select a new license for non-code assets. These research assets are excluded from the blanket software MIT grant; no separate reuse license is assigned here. Python analysis scripts remain software. |
-| `data/*.csv`, `data/*.meta.json`, `data/raw/**`, `legacy/data.csv`, `.cache/**` | Vendor data / caches, excluded from the proposed package. Original SIP quote archives require authorized Alpaca access. No right to redistribute raw or processed vendor prices established. Historical Git snapshots also require review; ignore rules do not remove history. |
+| `src/`, `scripts/`, `configs/`, `tests/`, software documentation, release tooling | First-party MIT, subject to preserved third-party notices. No separately vendored implementation identified in the inspected current tree. |
+| `docs/rough_heston_refinement/*.json`, `release/evidence/` | Author confirmed permission to publicly distribute manuscript, figures, derived historical-market summaries and checkpoints. This confirmation does not select a new license for non-code assets. These research assets are excluded from the blanket software MIT grant; no separate reuse license is assigned here. Python analysis scripts remain software. |
+| `data/*.csv`, `data/*.meta.json`, `data/raw/**`, `.cache/**` | Vendor data / caches, excluded from the proposed package. Original SIP quote archives require authorized Alpaca access. No right to redistribute raw or processed vendor prices established. Historical Git snapshots also require review; ignore rules do not remove history. |
 | `results/**` checkpoints/evaluations/logs | Local originals retained. Author permits checkpoint and derived-result distribution, but the proposed compact bundle contains extracted metadata and numerical summaries, not model weights or raw paths. Original checkpoint hashes identify the local objects; hashes alone do not make them accessible. |
-| `paper` build products, local archives, prior history | Distribution permission for the manuscript is confirmed. Build logs, machine paths, superseded content and vendor data need separate exposure review; permission is not a security scan. |
+| Local archives and prior Git history | Outside the software/compact-evidence distribution scope. Earlier manuscript, development and vendor-data files are not restored by this notice. |
 
 Installed dependencies are not vendored in this repository or its source archive.
 The following licenses were inspected in the local installed distributions; these

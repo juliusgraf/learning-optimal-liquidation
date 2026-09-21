@@ -29,92 +29,105 @@
       "id": "auction_mechanism.pdf.txt",
       "path": "paper/figures/auction_mechanism.pdf.txt",
       "sha256": "7a8f869ac10c0a97a31766c02b69ec2b43db772fed8ff2a5a9eb50423018c872",
-      "availability": "bundled",
-      "origin": "existing figure asset; original publication source hash verified"
+      "availability": "excluded",
+      "origin": "existing figure asset; original publication source hash verified",
+      "distribution_note": "Removed from this software branch during submission cleanup; path and digest identify the original manuscript asset, not a bundled file."
     },
     {
       "id": "cashflow_comparison.pdf.txt",
       "path": "paper/figures/cashflow_comparison.pdf.txt",
       "sha256": "3755134214f6fbbd02d4affc339ce76b1277b97576b0bbef5938ff0c754a4e87",
-      "availability": "bundled",
-      "origin": "existing figure asset; original publication source hash verified"
+      "availability": "excluded",
+      "origin": "existing figure asset; original publication source hash verified",
+      "distribution_note": "Removed from this software branch during submission cleanup; path and digest identify the original manuscript asset, not a bundled file."
     },
     {
       "id": "credit_assignment.pdf.txt",
       "path": "paper/figures/credit_assignment.pdf.txt",
       "sha256": "829c5a4f04f71e2e1c0c50fa295054f8afaa41474da908d9171d6a7b57062366",
-      "availability": "bundled",
-      "origin": "existing figure asset; original publication source hash verified"
+      "availability": "excluded",
+      "origin": "existing figure asset; original publication source hash verified",
+      "distribution_note": "Removed from this software branch during submission cleanup; path and digest identify the original manuscript asset, not a bundled file."
     },
     {
       "id": "economic_performance.pdf.txt",
       "path": "paper/figures/economic_performance.pdf.txt",
       "sha256": "03ea90ec658c7eaf0a1e0078d113902de30b5644ceb2ba47872a47c37765a371",
-      "availability": "bundled",
-      "origin": "existing figure asset; original publication source hash verified"
+      "availability": "excluded",
+      "origin": "existing figure asset; original publication source hash verified",
+      "distribution_note": "Removed from this software branch during submission cleanup; path and digest identify the original manuscript asset, not a bundled file."
     },
     {
       "id": "learning.pdf.txt",
       "path": "paper/figures/learning.pdf.txt",
       "sha256": "a97afd3cd693871553917824eb14e0e681d084d336da0fcc45b6151bbb36038f",
-      "availability": "bundled",
-      "origin": "existing figure asset; original publication source hash verified"
+      "availability": "excluded",
+      "origin": "existing figure asset; original publication source hash verified",
+      "distribution_note": "Removed from this software branch during submission cleanup; path and digest identify the original manuscript asset, not a bundled file."
     },
     {
       "id": "preferences_comparison.pdf.txt",
       "path": "paper/figures/preferences_comparison.pdf.txt",
       "sha256": "976efb9b9d9fec43dbb2b0af81d14eed11c1113f31a658f0aff192f776726e88",
-      "availability": "bundled",
-      "origin": "existing figure asset; original publication source hash verified"
+      "availability": "excluded",
+      "origin": "existing figure asset; original publication source hash verified",
+      "distribution_note": "Removed from this software branch during submission cleanup; path and digest identify the original manuscript asset, not a bundled file."
     },
     {
       "id": "treatments.pdf.txt",
       "path": "paper/figures/treatments.pdf.txt",
       "sha256": "e458df5f73dcf0b7749e3691cc9b7d9097dd67a5e62295dc2e03e08f06565e32",
-      "availability": "bundled",
-      "origin": "existing figure asset; original publication source hash verified"
+      "availability": "excluded",
+      "origin": "existing figure asset; original publication source hash verified",
+      "distribution_note": "Removed from this software branch during submission cleanup; path and digest identify the original manuscript asset, not a bundled file."
     },
     {
       "id": "paper/main.tex",
       "path": "paper/main.tex",
       "sha256": "b1700c826eba2f3f9b1a92bbd2c749b95d25a57e27f99f4b29d2d28d0f284cdc",
-      "availability": "bundled",
-      "origin": "existing manuscript/provenance, untouched during release preparation"
+      "availability": "excluded",
+      "origin": "existing manuscript/provenance, untouched during release preparation",
+      "distribution_note": "Removed from this software branch during submission cleanup; path and digest identify the original manuscript asset, not a bundled file."
     },
     {
       "id": "paper/main.pdf",
       "path": "paper/main.pdf",
       "sha256": "527ce74db7fb783bf6b8f90dbd41f66f1108601014730fd5687d4c0a94504da4",
-      "availability": "bundled",
-      "origin": "existing manuscript/provenance, untouched during release preparation"
+      "availability": "excluded",
+      "origin": "existing manuscript/provenance, untouched during release preparation",
+      "distribution_note": "Removed from this software branch during submission cleanup; path and digest identify the original manuscript asset, not a bundled file."
     },
     {
       "id": "paper/results/refresh_manifest.json",
       "path": "paper/results/refresh_manifest.json",
       "sha256": "abf4d0666490a3865d59d2b48e2e31f658d5d8e741f326477786f364a31cf54c",
-      "availability": "bundled",
-      "origin": "existing manuscript/provenance, untouched during release preparation"
+      "availability": "excluded",
+      "origin": "existing manuscript/provenance, untouched during release preparation",
+      "distribution_note": "Removed from this software branch during submission cleanup; path and digest identify the original manuscript asset, not a bundled file."
     },
     {
       "id": "paper/results/analysis_inputs.json",
       "path": "paper/results/analysis_inputs.json",
       "sha256": "e60d4eef05e496fae7e0c63847437cd4f59939d457e683097fd0b6da246ca748",
-      "availability": "bundled",
-      "origin": "existing manuscript/provenance, untouched during release preparation"
+      "availability": "excluded",
+      "origin": "existing manuscript/provenance, untouched during release preparation",
+      "distribution_note": "Removed from this software branch during submission cleanup; path and digest identify the original manuscript asset, not a bundled file."
     },
     {
       "id": "paper/results/supplement_manifest.json",
       "path": "paper/results/supplement_manifest.json",
       "sha256": "47bf21bd7ae96545963d9400b842439a2fdfc8eb84192d567d28f8a3e9a46aab",
-      "availability": "bundled",
-      "origin": "existing manuscript/provenance, untouched during release preparation"
+      "availability": "excluded",
+      "origin": "existing manuscript/provenance, untouched during release preparation",
+      "distribution_note": "Removed from this software branch during submission cleanup; path and digest identify the original manuscript asset, not a bundled file."
     },
     {
       "id": "paper/results/verification.json",
       "path": "paper/results/verification.json",
       "sha256": "59217319e5ecb9b2c70338de1f7bfb6c90da05ea3e652b366c1603d55108e2fa",
-      "availability": "bundled",
-      "origin": "existing manuscript/provenance, untouched during release preparation"
+      "availability": "excluded",
+      "origin": "existing manuscript/provenance, untouched during release preparation",
+      "distribution_note": "Removed from this software branch during submission cleanup; path and digest identify the original manuscript asset, not a bundled file."
     },
     {
       "id": "original-historical-input",
@@ -299,6 +312,13 @@
       "sha256": "158c1eae13d1e13a68a5da25be7b540cee280fada582acfb00da2d3b3bd0e2a3",
       "availability": "bundled",
       "origin": "existing output or explicitly labeled preparation-time extraction; embedded origin identifies transformations"
+    },
+    {
+      "id": "runtime_estimate.json",
+      "path": "release/evidence/runtime_estimate.json",
+      "availability": "bundled",
+      "sha256": "2eb6c322207832fe15a7bcdacc7726f38dcdf718825c287d1671c31851b4086d",
+      "description": "Submission-time hardware identification, local training-log timing summary and explicitly estimated rerun budget."
     }
   ],
   "results": [
@@ -316,7 +336,8 @@
       "command_limit": "entry point identified from inspected code; original shell argv not universally recorded; regeneration command is not an invented original invocation",
       "verification_level": "A",
       "verification": "existing input/output digest bindings verified; P-003 additionally recomputed from supplied seed means",
-      "remaining_dependencies": "original full runs/checkpoints and authorized historical data needed for full regeneration/experiments; see artifact availability"
+      "remaining_dependencies": "original full runs/checkpoints and authorized historical data needed for full regeneration/experiments; see artifact availability",
+      "script_availability": "excluded from this branch with the manuscript; this field identifies the original generator, not a current runnable command"
     },
     {
       "paper_identifier": "tab:benchmark_supplement",
@@ -349,7 +370,8 @@
       "command_limit": "entry point identified from inspected code; original shell argv not universally recorded; regeneration command is not an invented original invocation",
       "verification_level": "A",
       "verification": "existing input/output digest bindings verified; P-003 additionally recomputed from supplied seed means",
-      "remaining_dependencies": "original full runs/checkpoints and authorized historical data needed for full regeneration/experiments; see artifact availability"
+      "remaining_dependencies": "original full runs/checkpoints and authorized historical data needed for full regeneration/experiments; see artifact availability",
+      "script_availability": "excluded from this branch with the manuscript; this field identifies the original generator, not a current runnable command"
     },
     {
       "paper_identifier": "tab:treatments",
@@ -513,7 +535,7 @@
       "id": "owner-candidate-review",
       "status": "open",
       "scope": "future public-release finalization",
-      "reason": "The owner approved the current readiness-documentation update and private retention. Approval of the scope and inclusion list of any future public-release candidate remains a separate owner step. Exact clean candidate SHA and owner-created tag are checked by the validator. The final paper release identifier remains unassigned; actual publication is a separate external verification.",
+      "reason": "The current cleanup and consistency review are authorized. The final candidate is still uncommitted, no immutable submission identifier has been assigned, and the anonymous mirror has not been created or verified. Finalization and publication have not been performed.",
       "classification": "OWNER ACTION"
     }
   ],
@@ -582,7 +604,7 @@
     "historical_scope": "Counts and security/artifact inspection results are retained from the original preparation audit, not a new exhaustive scan of the later baseline. The hosted current_head_ci record below is a separately verified update tied to its exact commit."
   },
   "preparation_committed_baseline": "02a8f00524b63b288e7e6ae813b55b9d195fb368",
-  "readiness_review_scope": "Documentation review of the clean committed baseline; subsequent documentation changes require author review and a new commit. This baseline is not the unassigned final paper-release identity.",
+  "readiness_review_scope": "Submission-branch consistency review of the uncommitted working tree. Historical hosted and campaign records retain their exact original revisions. No publication or full experiment rerun performed.",
   "limitations": [
     {
       "id": "as-sample-accounting",
@@ -590,7 +612,7 @@
       "scope": "P-004 evidence",
       "reason": "Saved A/k present for all 520 evaluations, but accepted/excluded calibration counts and sample records not saved. K_hat is algebraically derived, not a saved independent fit record.",
       "previous_classification": "Open blocker during initial preparation; reclassified after disclosure, without recovering the missing evidence.",
-      "disclosure": "README.md and REPRODUCING.md disclose the missing counts/samples. The author reports that the latest manuscript also discloses them; the retained paper/main.tex still lacks that update and is deliberately untouched in this documentation review."
+      "disclosure": "README.md and REPRODUCING.md disclose the missing counts/samples. The manuscript is maintained separately and is not included in this branch."
     },
     {
       "id": "cross-runtime-bitwise-equality",
@@ -606,6 +628,15 @@
     "reason": "History-distribution and artifact-availability remain unresolved",
     "intended_provision": "Source code, experiment configurations and saved numerical summaries upon request; historical Alpaca inputs obtained separately",
     "public_release_authorized": false,
-    "scope_limit": "Does not establish public availability, verify a full run/checkpoint package, or approve a future public-release candidate"
+    "scope_limit": "Does not establish public availability, verify a full run/checkpoint package, or approve a future public-release candidate",
+    "record_scope": "Historical preparation decision; current submission intent and verification scope are recorded separately below."
+  },
+  "submission_scope": "Software and compact numerical evidence; paper/, CLAUDE.md, top-level audit/, legacy/, legacy-only tests and docs/*_v19 history removed. Original manuscript paths/hashes are retained solely as historical provenance with availability excluded. Prior audit and publication decisions below are historical records.",
+  "submission_review": {
+    "intended_distribution": "Compact source/configuration/numerical-evidence bundle through an anonymous.4open.science mirror for Operations Research review.",
+    "mirror_status": "Not created, as confirmed by the owner during this review.",
+    "anonymity_status": "Not verified; current source retains authors, repository URLs and original diagnostic metadata.",
+    "technical_scope": "Offline CPU checks, recorded evidence bindings and software packaging; no fresh dependency installation or independent full experiment rerun.",
+    "manuscript_scope": "Manuscript maintained separately and not inspected in this review."
   }
 }

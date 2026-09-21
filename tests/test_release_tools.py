@@ -78,3 +78,25 @@ def test_fixture_cannot_be_substituted_for_paper(tmp_path):
 def test_saved_support_table():
     source=REPO/'release/evidence/revision_v20/audit/economic_by_seed.csv'
     S.check_expected(S.generate(source), REPO/'release/evidence/benchmark_supplement.csv')
+
+
+def test_excluded_manuscript_preserves_bundled_integrity_checks(tmp_path):
+    release = tmp_path / 'release'
+    (release / 'evidence').mkdir(parents=True)
+    evidence = release / 'evidence/summary.csv'
+    evidence.write_text('saved numerical evidence\n')
+    manifest = {'artifacts': [
+        {'id': 'manuscript', 'path': 'paper/main.tex', 'availability': 'excluded'},
+        {'id': 'summary', 'path': 'release/evidence/summary.csv',
+         'availability': 'bundled', 'sha256': V.digest(evidence)},
+    ]}
+    (release / 'provenance.json').write_text(json.dumps(manifest))
+    runs = [dict(run=f'run-{i}', original_revision='a' * 40, files={}, seeds={
+        'training': [300], 'validation': list(range(128)),
+        'test': list(range(128, 228)), 'normalizer': [301],
+    }) for i in range(520)]
+    (release / 'evidence/campaign.json').write_text(json.dumps({'runs': runs}))
+    assert V.validate_evidence(tmp_path) == manifest
+    evidence.write_text('changed numerical evidence\n')
+    with pytest.raises(ValueError, match='provenance digest mismatch: summary'):
+        V.validate_evidence(tmp_path)

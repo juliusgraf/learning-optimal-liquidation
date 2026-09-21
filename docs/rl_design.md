@@ -1,8 +1,9 @@
-# Learning and evaluation contract (v19)
+# Learning and evaluation contract
 
 `configs/base.yaml` and the algorithm/treatment overlays are the executable
-specification. [model.md](model.md) describes the simulator, and
-[pathology_repair_v19.md](pathology_repair_v19.md) records the development diagnosis.
+specification. [model.md](model.md) describes the simulator. The current
+campaign and its limitations are documented in
+[the reproduction guide](../REPRODUCING.md).
 
 ## Economics and observations
 
@@ -47,15 +48,20 @@ enter any feature or action.
 Before use as a future-close signal during the CLOB, Algorithm 1's raw output
 is calibrated as `H=mid+w[b]*(H_raw-mid)` in four equal time bins. Restricted,
 no-intercept least squares fits the four weights on 256 independent training
-no-order paths, with actual closing price as the target. Synthetic weights
-are `[0, .190153, .234565, .414256]`; historical training-pool weights are
-`[.192784, .314044, .386180, .525631]`. All weights are frozen for every algorithm
-and treatment. The internal raw estimator and exogenous carryover are unchanged.
+no-order paths, with actual closing price as the target. In the v20 paper
+campaign, synthetic weights are `[.074848, .112181, .224565, .340364]`; historical
+training-pool weights are `[.192492, .312255, .383803, .523008]` (rounded here).
+The exact coefficients and fit protocols are in
+[forecast_fits.json](../release/evidence/forecast_fits.json) and all resolved
+run configurations. Each setting's fitted weights are frozen across its algorithms
+and treatments. The default overlays preserve older compatibility coefficients
+and are not the v20 campaign fits. The internal raw estimator and exogenous carryover are unchanged.
 During the auction, the original indicative calculation is used. This is a
 change to the implemented forecast and hence the forecast-dependent shaped J,
 not a change to settlement or order flow. Its validation improves CLOB MAE;
 it does not guarantee economic improvement. The original indicative auction
-anchor remains the headline default. See the v19 report for errors by phase.
+anchor remains the headline default. See the
+[saved forecast summaries](../release/evidence/forecast_summary.csv) for errors by phase.
 
 The normalizer is fitted on 16 independent training paths and frozen. Its
 four calibration modes cover random actions, persistent auction schedules,
