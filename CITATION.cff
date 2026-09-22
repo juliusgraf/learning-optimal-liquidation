@@ -1,6 +1,7 @@
 cff-version: 1.2.0
 message: "Please cite this software when using its simulator or experimental framework. Citation is requested, not required by the MIT license."
 type: software
+version: "0.1.0"
 title: "Learning Optimal Liquidation with Closing Auctions"
 authors:
   - family-names: Graf

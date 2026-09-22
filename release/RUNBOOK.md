@@ -1,11 +1,15 @@
-# Submission candidate runbook
+# Public paper software release runbook
 
-Use this workflow for the compact software/evidence branch. Manuscript sources
-are maintained separately; do not restore `paper/` to complete this workflow.
-The current intended review venue is an anonymous.4open.science mirror, which
-has not yet been created. [READINESS.md](READINESS.md) records verified scope and
-remaining steps; older validation results retain their exact tested revisions
-in [verification.json](verification.json).
+**Status updated 2026-09-21.** This repository accompanies the open/arXiv version
+of the paper. Source code, configurations and compact saved numerical evidence
+are distributed through GitHub. The old 2026-09-08 private-retention decisions
+are historical snapshots and do not describe the current distribution scope.
+Manuscript sources remain separate; do not restore `paper/` for this workflow.
+
+The paper software version is **0.1.0**, identified by the annotated Git tag
+`v0.1.0`. [READINESS.md](READINESS.md) records scope and remaining verification;
+older test results retain their exact original revisions in
+[verification.json](verification.json).
 
 ## Prepare and check the source snapshot
 
@@ -36,30 +40,21 @@ in [verification.json](verification.json).
    A fresh dependency install is a separate check from reusing the existing local
    environment. Inspect wheel/sdist inventories and test the installed wheel;
    these software packages do not contain the complete research bundle.
-4. Commit the reviewed candidate and verify hosted CI for the exact new commit.
-   Record its full SHA as the submission source identity. Do not treat the old
-   successful hosted baseline as verification of later commits.
+4. Preserve the reviewed candidate with the annotated tag `v0.1.0`, matching
+   the version in `CITATION.cff` and `pyproject.toml`. Resolve its full SHA with
+   `git rev-parse 'v0.1.0^{commit}'`. Never move a published tag; later changes
+   require a new version. The old successful hosted baseline does not verify
+   later commits.
 
-## Verify the anonymous review copy
+## Publish and verify the tagged source
 
-Create the mirror from the intended candidate and inspect it as a signed-out
-reader. Check authors/citations/copyright metadata, repository and Actions links,
-package docstrings, validation literals, original diagnostic paths and any other
-identifying content. Also check file availability, download access and the
-README's relative file/section links. Do not assume the service has transformed
-every type of file or external link correctly.
-
-Hash validation applies to exact bytes. If the review service modifies files,
-its downloaded copy is a different artifact from the validated source snapshot.
-The content manifest, frozen-source fixture and MIT-text validator may then
-reject it. Check that actual downloadable artifact; use a deliberately reviewed
-and consistently rebound review copy if required, preserving the licensed
-original and the relationship to its source. Do not blindly refresh frozen
-executable reference code or remove checks to make a redacted copy pass.
-
-Record the reviewer URL, verified source identity, verification date and the scope
-of any transformations. Anonymous-site access is currently unverified. Neither
-that access nor permission to publish follows from local draft validation.
+Publish the reviewed commit and its tag to the public GitHub repository. Check
+hosted CI for that exact commit, then inspect the tagged source archive as a
+signed-out reader. Compare the downloaded bytes with `content-manifest.json`
+and rerun the validator from the extracted snapshot. Record the actual tag,
+commit, archive hash and verification date outside the tagged snapshot to avoid
+a self-referential commit identity. A local annotated tag preserves a version
+but does not by itself establish remote availability.
 
 ## Match the manuscript's claims
 
@@ -71,18 +66,17 @@ configuration recipe in [REPRODUCING.md](../REPRODUCING.md).
 
 Disclose missing AS fit sample counts/records and the reused historical holdout.
 Do not describe hashes as accessible checkpoints or a smoke test as independent
-replication. Evaluate any non-public-data exemption request against the journal's
-[code and data policy](https://pubsonline.informs.org/page/opre/code-and-data-disclosure-policy).
-The separately maintained manuscript and cover letter have not been inspected
-or changed in this review.
+replication. Keep the public manuscript's availability statement consistent with those
+limits. The separately maintained manuscript has not been inspected or changed
+by this software release update.
 
-## Optional later public-release finalization
+## Optional full-release finalization
 
 The public source repository's history contains excluded vendor and development
 material. A curated snapshot does not make that history suitable for exposure.
-Review the distribution strategy before any visibility change or history rewrite.
-Resolve the relevant blockers in `provenance.json` with recorded evidence and
-choose an immutable release identity before using finalization:
+The old history audit remains a separate record from this tagged compact
+snapshot. Resolve the relevant blockers in `provenance.json` with recorded
+evidence before using full-release finalization:
 
 ```sh
 python scripts/release_validate.py --finalize --commit FULL_CANDIDATE_SHA \

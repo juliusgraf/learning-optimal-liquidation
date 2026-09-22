@@ -1,6 +1,7 @@
 # Contributing
 
-Install the development dependencies with `python -m pip install -e ".[dev]"`.
+Follow the [README installation steps](README.md#installation), including the
+CPU-only Torch preinstallation on Linux, to install the development dependencies.
 Run the offline suite before submitting a change:
 
 ```bash

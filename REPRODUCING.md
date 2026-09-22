@@ -14,7 +14,7 @@ seeds), and 80 synthetic follow-up runs. No seed is excluded.
 | All 200 retained historical runs | `354656645a7e035be718e03cbf100664d1a87262` | Original historical bytes retained, not relabeled as refined-source runs |
 | Preparation starting checkout | `64df3bc6421fe0e7d267386831b699482beb2706` | Manuscript changes since the synthetic run revision; executable/configuration sources matched that revision before preparation |
 | Historical hosted preparation baseline | `02a8f00524b63b288e7e6ae813b55b9d195fb368` | Includes release preparation and the revised regression test; hosted Linux validation passed for this exact commit |
-| Final paper release commit/tag/identifier | Not assigned | The committed preparation baseline is not automatically the eventual immutable paper release; subsequent documentation/manuscript changes need their own commit and checks |
+| Paper software version | `v0.1.0` | Annotated tag for version 0.1.0; resolve its full commit with `git rev-parse 'v0.1.0^{commit}'`. Later changes receive a new tag; the old hosted baseline does not verify this version |
 
 All 520 current run records have clean original SHA identifiers. The earlier
 pre-replacement main campaign included 138 dirty identifiers and an author

@@ -1,12 +1,14 @@
 {
+  "status_updated_at": "2026-09-21",
+  "status_note": "Public GitHub distribution for the open/arXiv paper version supersedes the private-only and upon-request decisions of the 2026-09-08 audit. Historical observations below retain their original date/scope; they are not current availability statements.",
   "schema": "lmm-release-provenance-v1",
   "prepared_at_utc_date": "2026-09-08",
   "preparation_start_head": "64df3bc6421fe0e7d267386831b699482beb2706",
   "release_commit": null,
-  "release_identifier": null,
-  "publication_status": "NOT PERFORMED",
+  "release_identifier": "v0.1.0",
+  "publication_status": "Public GitHub source repository; remote availability of the corrected v0.1.0 tag and its CI result must be verified separately.",
   "repository_url": "https://github.com/juliusgraf/Learning-Market-Making",
-  "repository_visibility_observed": "private",
+  "repository_visibility_observed": "Public distribution channel confirmed by owner; historical visibility records in coverage describe the 2026-09-08 audit.",
   "origin": "Release-preparation audit of existing local evidence; not contemporaneous experiment provenance",
   "license_confirmation": {
     "holders": [
@@ -529,13 +531,13 @@
       "id": "artifact-availability",
       "status": "open",
       "scope": "full replication claim",
-      "reason": "Original code identities available only through history still under review; full run files/checkpoints have no stable public locator. Restricted data qualification and promised bundle scope need final owner review. Private retention and availability upon request do not themselves define or verify a full run/checkpoint package."
+      "reason": "Public code/configurations and compact summaries are supplied through GitHub. Full original run files/checkpoints have no verified public locator; code access does not establish complete experiment reproduction."
     },
     {
-      "id": "owner-candidate-review",
+      "id": "tagged-snapshot-publication",
       "status": "open",
-      "scope": "future public-release finalization",
-      "reason": "The current cleanup and consistency review are authorized. The final candidate is still uncommitted, no immutable submission identifier has been assigned, and the anonymous mirror has not been created or verified. Finalization and publication have not been performed.",
+      "scope": "versioned public paper snapshot",
+      "reason": "Publish the corrected v0.1.0 commit/tag and verify hosted CI and downloaded tagged bytes for that exact commit. Local version preservation does not verify remote publication.",
       "classification": "OWNER ACTION"
     }
   ],
@@ -604,7 +606,7 @@
     "historical_scope": "Counts and security/artifact inspection results are retained from the original preparation audit, not a new exhaustive scan of the later baseline. The hosted current_head_ci record below is a separately verified update tied to its exact commit."
   },
   "preparation_committed_baseline": "02a8f00524b63b288e7e6ae813b55b9d195fb368",
-  "readiness_review_scope": "Submission-branch consistency review of the uncommitted working tree. Historical hosted and campaign records retain their exact original revisions. No publication or full experiment rerun performed.",
+  "readiness_review_scope": "Corrected public paper software version v0.1.0. Previous audit and hosted records retain their original scope; full experiment reproduction and hosted CI for this version are not established by local validation.",
   "limitations": [
     {
       "id": "as-sample-accounting",
@@ -622,6 +624,15 @@
     }
   ],
   "owner_decision": {
+    "authority": "Owner requested CPU-only Linux installation, current public-repository documentation and preservation of the exact paper software version.",
+    "approved_scope": "Correct the public GitHub/arXiv software and evidence bundle and preserve its source snapshot with an annotated tag.",
+    "intended_provision": "Public GitHub source, configurations, provenance and saved numerical summaries; historical inputs obtained separately.",
+    "scope_limit": "Original full runs/checkpoints and restricted market inputs are not included in the compact bundle."
+  },
+  "submission_scope": "Software and compact numerical evidence; paper/, CLAUDE.md, top-level audit/, legacy/, legacy-only tests and docs/*_v19 history removed. Original manuscript paths/hashes are retained solely as historical provenance with availability excluded. Prior audit and publication decisions below are historical records.",
+  "release_commit_resolution": "git rev-parse 'v0.1.0^{commit}'",
+  "release_commit_note": "Resolve the full source commit through the annotated tag; embedding the containing commit SHA inside itself would be self-referential. Remote publication and hosted CI verification are separate from local version preservation.",
+  "historical_owner_decision": {
     "authority": "Explicit owner approval in this session",
     "approved_scope": "Current readiness-documentation update and private retention of the repository",
     "repository_visibility_intent": "private",
@@ -629,14 +640,12 @@
     "intended_provision": "Source code, experiment configurations and saved numerical summaries upon request; historical Alpaca inputs obtained separately",
     "public_release_authorized": false,
     "scope_limit": "Does not establish public availability, verify a full run/checkpoint package, or approve a future public-release candidate",
-    "record_scope": "Historical preparation decision; current submission intent and verification scope are recorded separately below."
+    "record_scope": "Historical snapshot as of 2026-09-08; superseded by the public GitHub distribution scope above."
   },
-  "submission_scope": "Software and compact numerical evidence; paper/, CLAUDE.md, top-level audit/, legacy/, legacy-only tests and docs/*_v19 history removed. Original manuscript paths/hashes are retained solely as historical provenance with availability excluded. Prior audit and publication decisions below are historical records.",
-  "submission_review": {
-    "intended_distribution": "Compact source/configuration/numerical-evidence bundle through an anonymous.4open.science mirror for Operations Research review.",
-    "mirror_status": "Not created, as confirmed by the owner during this review.",
-    "anonymity_status": "Not verified; current source retains authors, repository URLs and original diagnostic metadata.",
+  "release_review": {
+    "intended_distribution": "Public GitHub repository accompanying the open/arXiv paper.",
     "technical_scope": "Offline CPU checks, recorded evidence bindings and software packaging; no fresh dependency installation or independent full experiment rerun.",
-    "manuscript_scope": "Manuscript maintained separately and not inspected in this review."
+    "manuscript_scope": "Manuscript maintained separately and not inspected in this update.",
+    "source_snapshot_tag": "v0.1.0"
   }
 }

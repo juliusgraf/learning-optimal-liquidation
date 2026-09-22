@@ -54,6 +54,10 @@ The software wheel/source distribution alone does not include `release/` evidenc
 
 ```sh
 python3 -m venv .venv && . .venv/bin/activate
+# On Linux, install CPU-only Torch before the remaining dependencies.
+if [ "$(uname -s)" = Linux ]; then
+  python -m pip install -c release/paper-environment.txt torch --index-url https://download.pytorch.org/whl/cpu
+fi
 python -m pip install -c release/paper-environment.txt -e '.[dev]'
 export MPLBACKEND=Agg MPLCONFIGDIR="$PWD/.cache/matplotlib"
 ```
@@ -161,6 +165,10 @@ follow-ups require no market data.
 [Data setup](data/README.md) · [Release readiness ledger](release/READINESS.md)
 
 ## License and citation
+
+The paper software snapshot is version **0.1.0**, preserved by the annotated Git
+tag `v0.1.0`. Use that tag and its resolved commit when citing or archiving this
+version; later changes receive a new tag.
 
 First-party software and software documentation use the MIT license; see [LICENSE](LICENSE) and
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for non-code assets and vendor

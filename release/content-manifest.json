@@ -19,13 +19,13 @@
     },
     {
       "path": "CITATION.cff",
-      "bytes": 808,
-      "sha256": "2a79ae93bf5858e6d53b5b12cb07c1ad8a54af81b352c1e999e587d543856ecb"
+      "bytes": 825,
+      "sha256": "9cf96b0dfc1a4d299d2596e43c3f74d8d8600868f3416ea3ca5b739b3191fe27"
     },
     {
       "path": "CONTRIBUTING.md",
-      "bytes": 1336,
-      "sha256": "32d5612c9f85893777294f21930cbddccd5f0ddf0f363679e70ba65bf99782fc"
+      "bytes": 1417,
+      "sha256": "b8de183c5610e37ae4770bf6c7c9248aa7432633299f4da3158f0483cdd3ed65"
     },
     {
       "path": "LICENSE",
@@ -39,13 +39,13 @@
     },
     {
       "path": "README.md",
-      "bytes": 10805,
-      "sha256": "56b9d7cbaf15208f2d2a630cf47c6a722da4ff8a1a0eac4c63d1eb823d7799bc"
+      "bytes": 11230,
+      "sha256": "6078a9384472477f359b1db8809a18cc1234491c41b30e8b72832ed8b84c230b"
     },
     {
       "path": "REPRODUCING.md",
-      "bytes": 14704,
-      "sha256": "659ce45dd0f8e294282d71be9148d61bae229bca5a949f1bfb982ad8c23ee28d"
+      "bytes": 14693,
+      "sha256": "8a2a57a16bd0ffb89e9e63eeab53415a213a597fb9d139cad8ad541b07adba48"
     },
     {
       "path": "THIRD_PARTY_NOTICES.md",
@@ -284,13 +284,13 @@
     },
     {
       "path": "release/READINESS.md",
-      "bytes": 6540,
-      "sha256": "133dba75c7cf6426d62980a1fe5eca86aaf247d7d3633df59f24c1cee10742b8"
+      "bytes": 6371,
+      "sha256": "75ac1447f39a13fcf01cd96301cc26eea5780b21f4ee5065e985ab82712f3d97"
     },
     {
       "path": "release/RUNBOOK.md",
-      "bytes": 5231,
-      "sha256": "bd1be9e1c26e0813930e3f7e9f4959f2504338826d3bed5fdc1bc4ec18481e04"
+      "bytes": 4754,
+      "sha256": "f16ac527aead29177d99e912f11bf6cdfb6145d5623f9e0bc0a28e36dda807d7"
     },
     {
       "path": "release/evidence/as_calibration.json",
@@ -424,13 +424,13 @@
     },
     {
       "path": "release/provenance.json",
-      "bytes": 39851,
-      "sha256": "e5d10ed658c088b7d95c6283167688f16326888075c8c186a72d02ae11b43d3b"
+      "bytes": 40865,
+      "sha256": "7257b995c9f98385ee01f96eb7ae66b0368c7c3e5a191b54425735a50e2e3154"
     },
     {
       "path": "release/verification.json",
-      "bytes": 12610,
-      "sha256": "372b475783851751badaec308b98c3c5af4f4b8ae9f8718b853ebfe9025e8899"
+      "bytes": 13884,
+      "sha256": "18dd5057b4dbf1a434abc94272fed718bac8e4412e202e35e10b2e8e2d5bc92d"
     },
     {
       "path": "requirements.txt",

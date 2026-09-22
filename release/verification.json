@@ -243,9 +243,31 @@
     ],
     "fresh_dependency_install": false,
     "hosted_ci_for_this_candidate": "not run",
-    "anonymous_mirror": "not created; owner confirmed",
     "manuscript_review": "not performed; maintained separately",
     "full_experiment_rerun": false,
-    "exposure_scope": "Current allowlisted snapshot only. Bounded identity/path/credential-pattern inspection; not an exhaustive security or Git-history audit. Author metadata and original diagnostic paths remain; review-copy anonymization and byte-integrity checks need separate verification."
+    "exposure_scope": "Current allowlisted snapshot only. Bounded identity/path/credential-pattern inspection; not an exhaustive security or Git-history audit. Author/citation metadata and original diagnostic paths are retained in this public source repository.",
+    "record_scope": "Historical local consistency audit before the public release documentation update; see public_release_update for the current distribution scope."
+  },
+  "public_release_update": {
+    "date": "2026-09-21",
+    "repository_url": "https://github.com/juliusgraf/Learning-Market-Making",
+    "source_snapshot_tag": "v0.1.0",
+    "scope": "Public GitHub/arXiv software repository; historical private-retention observations do not describe current distribution.",
+    "changes": [
+      "Linux setup preinstalls constrained CPU-index Torch before editable installation",
+      "Citation identifies software version 0.1.0 at the public GitHub repository",
+      "Release documentation describes the public source/evidence scope and preserves historical audit records as dated observations"
+    ],
+    "remote_tag_and_ci": "Not verified by this local update.",
+    "validation": {
+      "release_tool_tests": 16,
+      "release_validator": "PASS",
+      "paired_intervals": 48,
+      "ordinary_shortfall_levels": 30,
+      "linux_cpu_install": "Shell syntax and mocked Linux/macOS branches checked; Linux command exactly matches CI and precedes editable install. No fresh dependency download performed.",
+      "markdown_links_and_anchors": "PASS",
+      "mirror_references_in_distribution": "Removed",
+      "scientific_code_changes": false
+    }
   }
 }

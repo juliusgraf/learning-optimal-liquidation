@@ -1,10 +1,17 @@
-# Submission readiness
+# Paper software release status
 
-The branch supplies software, configurations and compact numerical evidence for
-the 520-run v20 study. Local technical validation passes. It is not yet a
-published, anonymous or fully independently reproduced submission artifact.
-The anonymous.4open.science mirror has not been created, as confirmed by the
-owner during this review. The manuscript is maintained separately.
+**Status updated 2026-09-21.** This is the public GitHub repository accompanying
+the open/arXiv version of *Learning Optimal Liquidation with Closing Auctions*.
+It supplies software, configurations and compact numerical evidence for the
+520-run v20 study. Version **0.1.0** is preserved by the annotated Git tag
+`v0.1.0`; later corrections receive a new tag. The manuscript is maintained
+separately.
+
+The private-repository observations and distribution decisions recorded in the
+2026-09-08 audit are historical snapshots, superseded by this public distribution
+scope. They are not current restrictions to availability upon request. Local
+technical checks pass; remote tag publication and hosted CI for its exact commit
+must be verified separately. Full independent reproduction is not claimed.
 
 ## Current scope
 
@@ -52,9 +59,10 @@ The pinned install requires **Python 3.11+**; Python 3.10 in the package metadat
 allows other compatible dependency versions, not the recorded pins.
 
 The earlier hosted Ubuntu/Python 3.11 success applies only to commit
-`02a8f00524b63b288e7e6ae813b55b9d195fb368`. Preserve that distinction: the current
-cleanup remains uncommitted and has not run in hosted CI. Earlier preparation
-checks and hosted results are recorded in [verification.json](verification.json).
+`02a8f00524b63b288e7e6ae813b55b9d195fb368`. Preserve that distinction: hosted CI
+for the `v0.1.0` snapshot has not been verified here.
+Earlier preparation checks and hosted results remain historical records in
+[verification.json](verification.json).
 
 ## Result-provenance scope
 
@@ -73,28 +81,22 @@ See [the exhibit map](../README.md#paper-exhibits-and-their-sources),
 (verification level D) is claimed. Historical test dates were visible during
 development and are a reused holdout.
 
-## Remaining submission steps
+## Version preservation and verification
 
-1. Commit the reviewed candidate and verify hosted CI for that exact commit.
-2. Create the anonymous mirror and inspect its actual reviewer-visible files and
-   links. Current author/copyright/citation metadata, source URLs, validator
-   literals and original diagnostic paths are identifying. This local repository
-   has not been certified anonymous. Keep copyright/licensing records intact in
-   the source; verify the review copy separately.
-3. Check whether mirror transformations change file bytes. The release inventory,
-   frozen-source regression and standard-license check bind exact bytes; an
-   automatically redacted download may fail those checks. Validate the actual
-   downloadable review artifact rather than assuming a passing source checkout
-   proves the mirror works. Do not disable integrity checks to hide a mismatch.
-4. Align the separate manuscript's availability statement with the compact scope.
-   The journal expects code/data/instructions sufficient to reproduce results;
-   requests for non-public-data exemptions go in the cover letter to the Area
-   Editor. No exemption or manuscript compliance is established by this audit.
-   See the official [code and data policy](https://pubsonline.informs.org/page/opre/code-and-data-disclosure-policy)
-   and [submission guidelines](https://pubsonline.informs.org/page/opre/submission-guidelines).
+Use `git rev-parse 'v0.1.0^{commit}'` to resolve the exact version. The annotated
+tag binds the reviewed source and its checksum manifest; it does not establish
+that the full experiment has been independently reproduced. Keep it fixed after
+publication and create a new version for later edits.
 
-The existing release blockers remain open: Git history contains materials outside
-the reviewed snapshot; full runs/checkpoints lack a verified public location;
-and the final submission identity/access have not been established. These limit
-publication and full-replication claims, even when draft validation exits zero.
-No remote upload, visibility change or history rewrite was performed.
+Publishing the commit and tag to GitHub, verifying hosted CI for that commit, and
+checking the downloaded tagged archive are separate from local validation. The
+manuscript's availability statement should cite the version and accurately state
+the compact bundle's scope. Original run trees/checkpoints and restricted market
+inputs are not supplied; the default launchers alone do not rebuild all 520
+refined paper runs. See the [replication guide](../REPRODUCING.md).
+
+The unresolved historical-distribution and full-artifact-availability findings
+remain recorded in [provenance.json](provenance.json). Their inclusion does not
+mean the public code is available only on request, nor does public code access
+make unbundled inputs or checkpoints available. No history rewrite is part of
+this update. The publication runbook is [RUNBOOK.md](RUNBOOK.md).
